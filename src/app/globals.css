@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+:root {
+  /* Ink-navy base — warmer and more distinctive than pure black */
+  --background: #0b0f1a;
+  --surface: #121826;
+  --surface-raised: #1a2233;
+  --foreground: #e8ecf4;
+  --foreground-muted: #8b93a7;
+  --border: #232b3d;
+
+  /* Signal accent — active bounty / money-on-the-table cue */
+  --accent: #c4f135;
+  --accent-dim: #8fb02a;
+
+  /* Reserved exclusively for escrow / payment states */
+  --money: #ffb020;
+  --money-dim: #b3821a;
+
+  --danger: #ff5c5c;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-foreground: var(--foreground);
+  --color-foreground-muted: var(--foreground-muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-dim: var(--accent-dim);
+  --color-money: var(--money);
+  --color-money-dim: var(--money-dim);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-mono-display);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+/* Respect reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
