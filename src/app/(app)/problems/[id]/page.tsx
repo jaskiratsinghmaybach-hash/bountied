@@ -16,7 +16,7 @@ export default async function ProblemDetailPage({
   if (!problem) notFound();
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-12">
+    <main className="px-8 py-10 max-w-3xl">
       <div className="flex items-start justify-between mb-4">
         <h1 className="text-2xl font-semibold tracking-tight">{problem.title}</h1>
         <span className="font-mono text-xl font-semibold text-money shrink-0 pl-4">

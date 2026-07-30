@@ -9,7 +9,7 @@ export default async function ProblemsPage() {
   });
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-12">
+    <main className="px-8 py-10 max-w-4xl">
       <h1 className="text-2xl font-semibold tracking-tight mb-1">Open bounties</h1>
       <p className="text-sm text-foreground-muted mb-8">
         Pick something and submit a solution — funds are already in escrow.
