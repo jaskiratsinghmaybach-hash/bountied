@@ -86,9 +86,14 @@ export default async function GiverDashboardPage() {
       </div>
 
       <section>
-        <h2 className="text-sm font-medium text-foreground-muted uppercase tracking-wide mb-4">
-          Your problems
-        </h2>
+        <div className="flex items-center justify-between mb-4">
+  <h2 className="text-sm font-medium text-foreground-muted uppercase tracking-wide">
+    Your problems
+  </h2>
+  <Link href="/dashboard/giver/problems" className="text-sm text-accent hover:underline">
+    View all →
+  </Link>
+</div>
 
         {problems.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border p-10 text-center">
