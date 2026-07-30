@@ -62,7 +62,7 @@ export default async function GiverDashboardPage() {
             Welcome back, {profile.name}
           </h1>
           <p className="text-sm text-foreground-muted">
-            Manage the problems you&apos;ve posted and review submissions.
+            Manage the bounties you&apos;ve posted and review submissions.
           </p>
         </div>
         <Link
@@ -70,7 +70,7 @@ export default async function GiverDashboardPage() {
           className="flex items-center gap-2 rounded-md bg-accent text-background font-medium px-4 py-2.5 text-sm hover:bg-accent-dim transition-colors shrink-0"
         >
           <PlusCircle size={16} />
-          Post a problem
+          Post a bounty
         </Link>
       </div>
 
@@ -88,7 +88,7 @@ export default async function GiverDashboardPage() {
       <section>
         <div className="flex items-center justify-between mb-4">
   <h2 className="text-sm font-medium text-foreground-muted uppercase tracking-wide">
-    Your problems
+    Your bounties
   </h2>
   <Link href="/dashboard/giver/problems" className="text-sm text-accent hover:underline">
     View all →
@@ -98,14 +98,14 @@ export default async function GiverDashboardPage() {
         {problems.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border p-10 text-center">
             <p className="text-sm text-foreground-muted mb-4">
-              You haven&apos;t posted a problem yet. Fund a bounty and get it
+              You haven&apos;t posted a bounty yet. Fund a bounty and get it
               in front of solvers today.
             </p>
             <Link
               href="/problems/new"
               className="inline-block rounded-md bg-accent text-background font-medium px-5 py-2.5 text-sm hover:bg-accent-dim transition-colors"
             >
-              Post your first problem
+              Post your first bounty
             </Link>
           </div>
         ) : (

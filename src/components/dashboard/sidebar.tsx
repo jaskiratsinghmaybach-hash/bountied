@@ -20,8 +20,8 @@ const solverLinks = [
 
 const giverLinks = [
   { href: "/dashboard/giver", label: "Overview", icon: LayoutDashboard },
-  { href: "/dashboard/giver/problems", label: "My problems", icon: Inbox },
-  { href: "/problems/new", label: "Post a problem", icon: PlusCircle },
+  { href: "/dashboard/giver/problems", label: "My bounties", icon: Inbox },
+  { href: "/problems/new", label: "Post a bounty", icon: PlusCircle },
 ];
 
 /**
