@@ -11,7 +11,7 @@ export default async function SettingsPage() {
   if (!profile) redirect("/login");
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-12">
+    <main className="px-8 py-10 max-w-4xl">
       <h1 className="text-2xl font-semibold tracking-tight mb-8">Settings</h1>
 
       <div className="rounded-lg border border-border bg-surface p-6 flex flex-col gap-4">

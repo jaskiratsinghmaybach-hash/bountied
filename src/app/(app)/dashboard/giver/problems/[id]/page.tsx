@@ -15,12 +15,13 @@ const statusLabel: Record<string, { label: string; color: string }> = {
   REFUNDED: { label: "Refunded", color: "text-foreground-muted" },
 };
 
-const submissionStatusLabel: Record<string, { label: string; color: string }> = {
-  SUBMITTED: { label: "Submitted", color: "text-foreground-muted" },
-  UNDER_REVIEW: { label: "Under review", color: "text-money" },
-  ACCEPTED: { label: "Accepted", color: "text-accent" },
-  REJECTED: { label: "Rejected", color: "text-danger" },
-};
+const submissionStatusLabel: Record<string, { label: string; color: string }> =
+  {
+    SUBMITTED: { label: "Submitted", color: "text-foreground-muted" },
+    UNDER_REVIEW: { label: "Under review", color: "text-money" },
+    ACCEPTED: { label: "Accepted", color: "text-accent" },
+    REJECTED: { label: "Rejected", color: "text-danger" },
+  };
 
 export default async function GiverProblemDetailPage({
   params,
@@ -72,7 +73,9 @@ export default async function GiverProblemDetailPage({
 
       <div className="flex items-start justify-between mb-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight mb-1">{problem.title}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight mb-1">
+            {problem.title}
+          </h1>
           <p className={`text-xs font-mono ${status.color}`}>{status.label}</p>
         </div>
         <span className="font-mono text-xl font-semibold text-money shrink-0 pl-4">
@@ -110,7 +113,9 @@ export default async function GiverProblemDetailPage({
       ) : (
         <div className="flex flex-col gap-3">
           {problem.submissions.map((s) => {
-            const sStatus = submissionStatusLabel[s.status] ?? submissionStatusLabel.SUBMITTED;
+            const sStatus =
+              submissionStatusLabel[s.status] ??
+              submissionStatusLabel.SUBMITTED;
             return (
               <div
                 key={s.id}
@@ -118,15 +123,19 @@ export default async function GiverProblemDetailPage({
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <p className="text-sm font-medium text-foreground">{s.solver.name}</p>
-                    <span className={`text-xs font-mono ${sStatus.color}`}>{sStatus.label}</span>
+                    <p className="text-sm font-medium text-foreground">
+                      {s.solver.name}
+                    </p>
+                    <span className={`text-xs font-mono ${sStatus.color}`}>
+                      {sStatus.label}
+                    </span>
                   </div>
                   <p className="text-xs text-foreground-muted mb-2">
                     Submitted {s.submittedAt.toLocaleDateString()}
                   </p>
                   <p className="text-sm text-foreground-muted leading-relaxed">
                     {s.isRevealed ? (
-                      
+                      <a
                         href={s.codeBlobUrl}
                         className="text-accent hover:underline"
                         target="_blank"
@@ -140,9 +149,14 @@ export default async function GiverProblemDetailPage({
                   </p>
                 </div>
 
-                {canAccept && s.status !== "ACCEPTED" && s.status !== "REJECTED" && (
-                  <AcceptSubmissionButton problemId={problem.id} submissionId={s.id} />
-                )}
+                {canAccept &&
+                  s.status !== "ACCEPTED" &&
+                  s.status !== "REJECTED" && (
+                    <AcceptSubmissionButton
+                      problemId={problem.id}
+                      submissionId={s.id}
+                    />
+                  )}
               </div>
             );
           })}
