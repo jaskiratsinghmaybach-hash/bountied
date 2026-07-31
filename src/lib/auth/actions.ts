@@ -78,6 +78,8 @@ export async function setUserRole(role: "SOLVER" | "GIVER" | "BOTH") {
     redirect("/login");
   }
 
+  await syncUserFromSupabase(user);
+
   await prisma.user.update({
     where: { id: user.id },
     data: { role },

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { RoleSelector } from "@/components/onboarding/role-selector";
+import { syncUserFromSupabase } from "@/lib/auth/sync-user";
 
 export default async function OnboardingPage() {
   const supabase = await createClient();
@@ -10,6 +11,8 @@ export default async function OnboardingPage() {
   } = await supabase.auth.getUser();
 
   if (!user) redirect("/login");
+
+  await syncUserFromSupabase(user);
 
   const profile = await prisma.user.findUnique({ where: { id: user.id } });
 
