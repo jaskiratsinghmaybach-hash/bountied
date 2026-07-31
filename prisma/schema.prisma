@@ -34,6 +34,14 @@ model User {
   bankVerified     Boolean  @default(false)
   identityVerified Boolean  @default(false)
 
+  // Payout pipeline (Solver side)
+  legalName          String?
+  whopPayoutMethodId String?
+
+  // Credit wallet (Giver side)
+  creditBalance      Decimal              @default(0) @db.Decimal(12, 2)
+  creditTransactions CreditTransaction[]
+
   // Payment provider identity — generic so Whop -> Stripe swap doesn't touch schema
   paymentProviderId   String? // e.g. Whop user id now, Stripe customer id later
   paymentProviderType String  @default("whop") // "whop" | "stripe"
@@ -52,6 +60,26 @@ model User {
   reviewsReceived  Review[]       @relation("ReviewsReceived")
 
   @@index([email])
+}
+
+enum CreditTransactionType {
+  PURCHASE
+  BOUNTY_FUNDING
+  REFUND
+}
+
+model CreditTransaction {
+  id            String                  @id @default(cuid())
+  userId        String
+  user          User                    @relation(fields: [userId], references: [id])
+  type          CreditTransactionType
+  amount        Decimal                 @db.Decimal(12, 2)
+  balanceAfter  Decimal                 @db.Decimal(12, 2)
+  problemId     String?
+  whopChargeRef String?
+  createdAt     DateTime                @default(now())
+
+  @@index([userId])
 }
 
 // ─── Problems / Challenges ──────────────────────────────────────────────

@@ -21,6 +21,25 @@ export interface PayoutResult {
   raw?: unknown;
 }
 
+export interface BankDetailsPayload {
+  legalName: string;
+  country: string;
+  fields: Record<string, string>;
+}
+
+export interface PayoutMethodResult {
+  status: "succeeded" | "failed";
+  payoutMethodId?: string;
+  fieldErrors?: Record<string, string>;
+  raw?: unknown;
+}
+
+export interface CheckoutSessionResult {
+  checkoutUrl: string;
+  sessionId: string;
+  raw?: unknown;
+}
+
 export interface PaymentProvider {
   /**
    * Capture funds from the problem-giver into platform-held escrow.
@@ -60,4 +79,26 @@ export interface PaymentProvider {
    * Maps to your "simple identity + bank verification" requirement.
    */
   isPayoutReady(userId: string): Promise<boolean>;
+
+  /**
+   * Vaults a solver's bank details with the provider and returns a tokenized
+   * payout method id. We NEVER store raw account/routing/IBAN numbers
+   * ourselves — only whatever token the provider gives back.
+   */
+  createPayoutMethod(params: {
+    userId: string;
+    bankDetails: BankDetailsPayload;
+  }): Promise<PayoutMethodResult>;
+
+  /**
+   * Creates a hosted checkout session for a Giver to buy platform credits.
+   * metadata should include enough to reconcile the webhook back to this
+   * user/action (e.g. userId, draftProblemId if funding a specific problem).
+   */
+  createCreditCheckoutSession(params: {
+    userId: string;
+    amount: number;
+    currency: string;
+    metadata: Record<string, string>;
+  }): Promise<CheckoutSessionResult>;
 }

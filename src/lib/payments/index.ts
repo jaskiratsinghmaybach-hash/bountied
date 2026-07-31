@@ -11,4 +11,11 @@ export function getPaymentProvider(): PaymentProvider {
   return new WhopPaymentProvider();
 }
 
-export type { PaymentProvider, ChargeResult, PayoutResult } from "./types";
+export type {
+  PaymentProvider,
+  ChargeResult,
+  PayoutResult,
+  BankDetailsPayload,
+  PayoutMethodResult,
+  CheckoutSessionResult,
+} from "./types";
