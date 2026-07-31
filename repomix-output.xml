@@ -1,0 +1,3918 @@
+This file is a merged representation of a subset of the codebase, containing files not matching ignore patterns, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching these patterns are excluded: node_modules/**, .next/**, .git/**
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+prisma/
+  migrations/
+    20260728105103_init/
+      migration.sql
+    migration_lock.toml
+  schema.prisma
+public/
+  file.svg
+  globe.svg
+  next.svg
+  vercel.svg
+  window.svg
+src/
+  app/
+    (app)/
+      dashboard/
+        giver/
+          problems/
+            [id]/
+              page.tsx
+            page.tsx
+          page.tsx
+        solver/
+          earnings/
+            page.tsx
+          submissions/
+            page.tsx
+          page.tsx
+        layout.tsx
+        page.tsx
+      problems/
+        [id]/
+          page.tsx
+        new/
+          page.tsx
+        page.tsx
+      settings/
+        page.tsx
+      layout.tsx
+    (auth)/
+      forgot-password/
+        page.tsx
+      login/
+        page.tsx
+      reset-password/
+        page.tsx
+      signup/
+        page.tsx
+    auth/
+      callback/
+        route.ts
+    onboarding/
+      page.tsx
+    favicon.ico
+    globals.css
+    layout.tsx
+    page.tsx
+  components/
+    auth/
+      forgot-password-form.tsx
+      login-form.tsx
+      oauth-buttons.tsx
+      reset-password-form.tsx
+      signup-form.tsx
+    dashboard/
+      accept-submission-button.tsx
+      sidebar.tsx
+      stat-card.tsx
+    layout/
+      header.tsx
+    marketing/
+      bounty-ticket.tsx
+      challenge-types.tsx
+      hero.tsx
+    onboarding/
+      role-selector.tsx
+  lib/
+    auth/
+      actions.ts
+      sync-user.ts
+    escrow/
+      release.ts
+    evaluation/
+      types.ts
+    payments/
+      index.ts
+      types.ts
+      whop-provider.ts
+    problems/
+      actions.ts
+    supabase/
+      client.ts
+      middleware.ts
+      server.ts
+    db.ts
+    utils.ts
+  proxy.ts
+.gitattributes
+.gitignore
+eslint.config.mjs
+next.config.ts
+package.json
+postcss.config.mjs
+prisma.config.ts
+README.md
+tsconfig.json
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="prisma/migrations/20260728105103_init/migration.sql">
+-- CreateEnum
+CREATE TYPE "ProblemType" AS ENUM ('OPEN_FREE', 'OPEN_BOUNTY', 'FIRST_TO_SOLVE', 'INVITE_ONLY', 'FIXED_PRICE');
+
+-- CreateEnum
+CREATE TYPE "ProblemStatus" AS ENUM ('DRAFT', 'FUNDED', 'OPEN', 'IN_REVIEW', 'COMPLETED', 'CANCELLED', 'REFUNDED');
+
+-- CreateEnum
+CREATE TYPE "EscrowState" AS ENUM ('PENDING', 'HELD', 'RELEASED', 'REFUNDED', 'DISPUTED');
+
+-- CreateEnum
+CREATE TYPE "SubmissionStatus" AS ENUM ('SUBMITTED', 'UNDER_REVIEW', 'ACCEPTED', 'REJECTED');
+
+-- CreateTable
+CREATE TABLE "User" (
+    "id" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "avatarUrl" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "bankVerified" BOOLEAN NOT NULL DEFAULT false,
+    "identityVerified" BOOLEAN NOT NULL DEFAULT false,
+    "paymentProviderId" TEXT,
+    "paymentProviderType" TEXT NOT NULL DEFAULT 'whop',
+    "rating" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "totalEarned" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "completionCount" INTEGER NOT NULL DEFAULT 0,
+    "accuracyRate" DOUBLE PRECISION,
+
+    CONSTRAINT "User_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Problem" (
+    "id" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "description" TEXT NOT NULL,
+    "tags" TEXT[],
+    "type" "ProblemType" NOT NULL,
+    "status" "ProblemStatus" NOT NULL DEFAULT 'DRAFT',
+    "bountyAmount" DECIMAL(12,2),
+    "currency" TEXT NOT NULL DEFAULT 'USD',
+    "giverId" TEXT NOT NULL,
+    "deadline" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "completedAt" TIMESTAMP(3),
+    "inviteeIds" TEXT[] DEFAULT ARRAY[]::TEXT[],
+
+    CONSTRAINT "Problem_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Escrow" (
+    "id" TEXT NOT NULL,
+    "problemId" TEXT NOT NULL,
+    "amount" DECIMAL(12,2) NOT NULL,
+    "currency" TEXT NOT NULL DEFAULT 'USD',
+    "state" "EscrowState" NOT NULL DEFAULT 'PENDING',
+    "paymentProviderRef" TEXT,
+    "paymentProviderType" TEXT NOT NULL DEFAULT 'whop',
+    "heldAt" TIMESTAMP(3),
+    "releasedAt" TIMESTAMP(3),
+    "refundedAt" TIMESTAMP(3),
+    "releasedToSubmissionId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Escrow_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Submission" (
+    "id" TEXT NOT NULL,
+    "problemId" TEXT NOT NULL,
+    "solverId" TEXT NOT NULL,
+    "codeBlobUrl" TEXT NOT NULL,
+    "previewText" TEXT NOT NULL,
+    "status" "SubmissionStatus" NOT NULL DEFAULT 'SUBMITTED',
+    "submittedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "isRevealed" BOOLEAN NOT NULL DEFAULT false,
+    "evaluationResult" JSONB,
+
+    CONSTRAINT "Submission_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Badge" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "description" TEXT NOT NULL,
+    "criteria" JSONB NOT NULL,
+    "iconUrl" TEXT,
+
+    CONSTRAINT "Badge_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "UserBadge" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "badgeId" TEXT NOT NULL,
+    "earnedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "UserBadge_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Review" (
+    "id" TEXT NOT NULL,
+    "submissionId" TEXT NOT NULL,
+    "fromUserId" TEXT NOT NULL,
+    "toUserId" TEXT NOT NULL,
+    "rating" INTEGER NOT NULL,
+    "comment" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Review_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
+
+-- CreateIndex
+CREATE INDEX "User_email_idx" ON "User"("email");
+
+-- CreateIndex
+CREATE INDEX "Problem_status_type_idx" ON "Problem"("status", "type");
+
+-- CreateIndex
+CREATE INDEX "Problem_giverId_idx" ON "Problem"("giverId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Escrow_problemId_key" ON "Escrow"("problemId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Escrow_releasedToSubmissionId_key" ON "Escrow"("releasedToSubmissionId");
+
+-- CreateIndex
+CREATE INDEX "Escrow_state_idx" ON "Escrow"("state");
+
+-- CreateIndex
+CREATE INDEX "Submission_problemId_status_idx" ON "Submission"("problemId", "status");
+
+-- CreateIndex
+CREATE INDEX "Submission_solverId_idx" ON "Submission"("solverId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Badge_name_key" ON "Badge"("name");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "UserBadge_userId_badgeId_key" ON "UserBadge"("userId", "badgeId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Review_submissionId_key" ON "Review"("submissionId");
+
+-- AddForeignKey
+ALTER TABLE "Problem" ADD CONSTRAINT "Problem_giverId_fkey" FOREIGN KEY ("giverId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Escrow" ADD CONSTRAINT "Escrow_problemId_fkey" FOREIGN KEY ("problemId") REFERENCES "Problem"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Escrow" ADD CONSTRAINT "Escrow_releasedToSubmissionId_fkey" FOREIGN KEY ("releasedToSubmissionId") REFERENCES "Submission"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Submission" ADD CONSTRAINT "Submission_problemId_fkey" FOREIGN KEY ("problemId") REFERENCES "Problem"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Submission" ADD CONSTRAINT "Submission_solverId_fkey" FOREIGN KEY ("solverId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "UserBadge" ADD CONSTRAINT "UserBadge_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "UserBadge" ADD CONSTRAINT "UserBadge_badgeId_fkey" FOREIGN KEY ("badgeId") REFERENCES "Badge"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Review" ADD CONSTRAINT "Review_submissionId_fkey" FOREIGN KEY ("submissionId") REFERENCES "Submission"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Review" ADD CONSTRAINT "Review_fromUserId_fkey" FOREIGN KEY ("fromUserId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Review" ADD CONSTRAINT "Review_toUserId_fkey" FOREIGN KEY ("toUserId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+</file>
+
+<file path="prisma/migrations/migration_lock.toml">
+# Please do not edit this file manually
+# It should be added in your version-control system (e.g., Git)
+provider = "postgresql"
+</file>
+
+<file path="prisma/schema.prisma">
+// Prisma schema for the bounty/challenge platform
+// Connection URLs live in prisma.config.ts (Prisma 7+), not here.
+// Run `npx prisma generate` then `npx prisma migrate dev --name init` after setting up .env
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Core Users ──────────────────────────────────────────────────────────
+
+enum UserRole {
+  SOLVER
+  GIVER
+  BOTH
+}
+
+model User {
+  // This id is NOT generated by Prisma — it must match Supabase Auth's
+  // auth.users.id exactly (a UUID). Set explicitly when the row is created
+  // by the auth sync step in src/lib/auth/sync-user.ts, never auto-generated.
+  id               String   @id
+  email            String   @unique
+  role             UserRole?  // null until they complete onboarding
+  name             String
+  avatarUrl        String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Verification — kept lightweight per product decision (bank + basic identity only)
+  bankVerified     Boolean  @default(false)
+  identityVerified Boolean  @default(false)
+
+  // Payment provider identity — generic so Whop -> Stripe swap doesn't touch schema
+  paymentProviderId   String? // e.g. Whop user id now, Stripe customer id later
+  paymentProviderType String  @default("whop") // "whop" | "stripe"
+
+  // Reputation
+  rating           Float    @default(0)
+  totalEarned      Decimal  @default(0) @db.Decimal(12, 2)
+  completionCount  Int      @default(0)
+  accuracyRate     Float?   // nullable until they have enough completions to compute one
+
+  // Relations
+  problemsPosted   Problem[]      @relation("ProblemGiver")
+  submissions      Submission[]
+  badges           UserBadge[]
+  reviewsGiven     Review[]       @relation("ReviewsGiven")
+  reviewsReceived  Review[]       @relation("ReviewsReceived")
+
+  @@index([email])
+}
+
+// ─── Problems / Challenges ──────────────────────────────────────────────
+
+enum ProblemType {
+  OPEN_FREE       // no bounty, practice-only
+  OPEN_BOUNTY     // open to all, bounty attached
+  FIRST_TO_SOLVE  // paid only, but framed as a race — giver still picks best among submissions
+  INVITE_ONLY     // giver invites specific solvers by rating/badge
+  FIXED_PRICE     // enterprise — COMING SOON in v1, not enabled for creation
+}
+
+enum ProblemStatus {
+  DRAFT       // being written, not yet funded
+  FUNDED      // escrow funded, not yet visible/open
+  OPEN        // visible, accepting submissions
+  IN_REVIEW   // giver is reviewing submissions (open challenges can stay OPEN during review per product decision)
+  COMPLETED   // a submission was accepted, escrow released
+  CANCELLED   // giver cancelled before funding or before any submissions
+  REFUNDED    // funded but cancelled/expired, escrow refunded
+}
+
+model Problem {
+  id            String        @id @default(cuid())
+  title         String
+  description   String        @db.Text
+  tags          String[]
+  type          ProblemType
+  status        ProblemStatus @default(DRAFT)
+
+  bountyAmount  Decimal?      @db.Decimal(12, 2) // null for OPEN_FREE
+  currency      String        @default("USD")
+
+  giverId       String
+  giver         User          @relation("ProblemGiver", fields: [giverId], references: [id])
+
+  escrow        Escrow?
+
+  deadline      DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  completedAt   DateTime?
+
+  // INVITE_ONLY targeting — list of invited solver user ids
+  inviteeIds    String[]      @default([])
+
+  submissions   Submission[]
+
+  @@index([status, type])
+  @@index([giverId])
+}
+
+// ─── Escrow — the trust core of the platform ────────────────────────────
+
+enum EscrowState {
+  PENDING    // created, awaiting payment capture
+  HELD       // funds captured and held by platform
+  RELEASED   // funds paid out to a solver
+  REFUNDED   // funds returned to giver
+  DISPUTED   // manual intervention needed
+}
+
+model Escrow {
+  id                     String      @id @default(cuid())
+  problemId              String      @unique
+  problem                Problem     @relation(fields: [problemId], references: [id])
+
+  amount                 Decimal     @db.Decimal(12, 2)
+  currency               String      @default("USD")
+  state                  EscrowState @default(PENDING)
+
+  // Generic provider ref — currently a Whop charge id, later a Stripe payment_intent id
+  paymentProviderRef     String?
+  paymentProviderType    String      @default("whop")
+
+  heldAt                 DateTime?
+  releasedAt             DateTime?
+  refundedAt             DateTime?
+
+  releasedToSubmissionId String?     @unique
+  releasedToSubmission   Submission? @relation("EscrowRelease", fields: [releasedToSubmissionId], references: [id])
+
+  createdAt              DateTime    @default(now())
+  updatedAt               DateTime   @updatedAt
+
+  @@index([state])
+}
+
+// ─── Submissions ─────────────────────────────────────────────────────────
+
+enum SubmissionStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  ACCEPTED
+  REJECTED
+}
+
+model Submission {
+  id               String            @id @default(cuid())
+  problemId        String
+  problem          Problem           @relation(fields: [problemId], references: [id])
+  solverId         String
+  solver           User              @relation(fields: [solverId], references: [id])
+
+  // The actual code lives in object storage, never in the DB directly
+  codeBlobUrl      String
+  // A redacted/masked preview the giver can see BEFORE paying — enough to judge intent, not enough to steal
+  previewText      String            @db.Text
+
+  status           SubmissionStatus  @default(SUBMITTED)
+  submittedAt      DateTime          @default(now())
+
+  // Reveal gate — this MUST only ever be set true by the server-side escrow release handler,
+  // never set directly from client input. See src/lib/escrow/release.ts
+  isRevealed       Boolean           @default(false)
+
+  // Socket for future automated evaluation (LLM first-pass or sandbox judge).
+  // v1: always null. v2: populated by src/lib/evaluation service.
+  evaluationResult Json?
+
+  escrowRelease    Escrow?           @relation("EscrowRelease")
+  review           Review?
+
+  @@index([problemId, status])
+  @@index([solverId])
+}
+
+// ─── Reputation ──────────────────────────────────────────────────────────
+
+model Badge {
+  id        String      @id @default(cuid())
+  name      String      @unique
+  description String
+  // e.g. { "type": "completions", "threshold": 100 } or { "type": "earned", "threshold": 1000 }
+  criteria  Json
+  iconUrl   String?
+
+  users     UserBadge[]
+}
+
+model UserBadge {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  badgeId   String
+  badge     Badge    @relation(fields: [badgeId], references: [id])
+  earnedAt  DateTime @default(now())
+
+  @@unique([userId, badgeId])
+}
+
+model Review {
+  id           String     @id @default(cuid())
+  submissionId String     @unique
+  submission   Submission @relation(fields: [submissionId], references: [id])
+
+  fromUserId   String
+  fromUser     User       @relation("ReviewsGiven", fields: [fromUserId], references: [id])
+  toUserId     String
+  toUser       User       @relation("ReviewsReceived", fields: [toUserId], references: [id])
+
+  rating       Int        // 1-5
+  comment      String?    @db.Text
+  createdAt    DateTime   @default(now())
+}
+</file>
+
+<file path="public/file.svg">
+<svg fill="none" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M14.5 13.5V5.41a1 1 0 0 0-.3-.7L9.8.29A1 1 0 0 0 9.08 0H1.5v13.5A2.5 2.5 0 0 0 4 16h8a2.5 2.5 0 0 0 2.5-2.5m-1.5 0v-7H8v-5H3v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1M9.5 5V2.12L12.38 5zM5.13 5h-.62v1.25h2.12V5zm-.62 3h7.12v1.25H4.5zm.62 3h-.62v1.25h7.12V11z" clip-rule="evenodd" fill="#666" fill-rule="evenodd"/></svg>
+</file>
+
+<file path="public/globe.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g clip-path="url(#a)"><path fill-rule="evenodd" clip-rule="evenodd" d="M10.27 14.1a6.5 6.5 0 0 0 3.67-3.45q-1.24.21-2.7.34-.31 1.83-.97 3.1M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16m.48-1.52a7 7 0 0 1-.96 0H7.5a4 4 0 0 1-.84-1.32q-.38-.89-.63-2.08a40 40 0 0 0 3.92 0q-.25 1.2-.63 2.08a4 4 0 0 1-.84 1.31zm2.94-4.76q1.66-.15 2.95-.43a7 7 0 0 0 0-2.58q-1.3-.27-2.95-.43a18 18 0 0 1 0 3.44m-1.27-3.54a17 17 0 0 1 0 3.64 39 39 0 0 1-4.3 0 17 17 0 0 1 0-3.64 39 39 0 0 1 4.3 0m1.1-1.17q1.45.13 2.69.34a6.5 6.5 0 0 0-3.67-3.44q.65 1.26.98 3.1M8.48 1.5l.01.02q.41.37.84 1.31.38.89.63 2.08a40 40 0 0 0-3.92 0q.25-1.2.63-2.08a4 4 0 0 1 .85-1.32 7 7 0 0 1 .96 0m-2.75.4a6.5 6.5 0 0 0-3.67 3.44 29 29 0 0 1 2.7-.34q.31-1.83.97-3.1M4.58 6.28q-1.66.16-2.95.43a7 7 0 0 0 0 2.58q1.3.27 2.95.43a18 18 0 0 1 0-3.44m.17 4.71q-1.45-.12-2.69-.34a6.5 6.5 0 0 0 3.67 3.44q-.65-1.27-.98-3.1" fill="#666"/></g><defs><clipPath id="a"><path fill="#fff" d="M0 0h16v16H0z"/></clipPath></defs></svg>
+</file>
+
+<file path="public/next.svg">
+<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 394 80"><path fill="#000" d="M262 0h68.5v12.7h-27.2v66.6h-13.6V12.7H262V0ZM149 0v12.7H94v20.4h44.3v12.6H94v21h55v12.6H80.5V0h68.7zm34.3 0h-17.8l63.8 79.4h17.9l-32-39.7 32-39.6h-17.9l-23 28.6-23-28.6zm18.3 56.7-9-11-27.1 33.7h17.8l18.3-22.7z"/><path fill="#000" d="M81 79.3 17 0H0v79.3h13.6V17l50.2 62.3H81Zm252.6-.4c-1 0-1.8-.4-2.5-1s-1.1-1.6-1.1-2.6.3-1.8 1-2.5 1.6-1 2.6-1 1.8.3 2.5 1a3.4 3.4 0 0 1 .6 4.3 3.7 3.7 0 0 1-3 1.8zm23.2-33.5h6v23.3c0 2.1-.4 4-1.3 5.5a9.1 9.1 0 0 1-3.8 3.5c-1.6.8-3.5 1.3-5.7 1.3-2 0-3.7-.4-5.3-1s-2.8-1.8-3.7-3.2c-.9-1.3-1.4-3-1.4-5h6c.1.8.3 1.6.7 2.2s1 1.2 1.6 1.5c.7.4 1.5.5 2.4.5 1 0 1.8-.2 2.4-.6a4 4 0 0 0 1.6-1.8c.3-.8.5-1.8.5-3V45.5zm30.9 9.1a4.4 4.4 0 0 0-2-3.3 7.5 7.5 0 0 0-4.3-1.1c-1.3 0-2.4.2-3.3.5-.9.4-1.6 1-2 1.6a3.5 3.5 0 0 0-.3 4c.3.5.7.9 1.3 1.2l1.8 1 2 .5 3.2.8c1.3.3 2.5.7 3.7 1.2a13 13 0 0 1 3.2 1.8 8.1 8.1 0 0 1 3 6.5c0 2-.5 3.7-1.5 5.1a10 10 0 0 1-4.4 3.5c-1.8.8-4.1 1.2-6.8 1.2-2.6 0-4.9-.4-6.8-1.2-2-.8-3.4-2-4.5-3.5a10 10 0 0 1-1.7-5.6h6a5 5 0 0 0 3.5 4.6c1 .4 2.2.6 3.4.6 1.3 0 2.5-.2 3.5-.6 1-.4 1.8-1 2.4-1.7a4 4 0 0 0 .8-2.4c0-.9-.2-1.6-.7-2.2a11 11 0 0 0-2.1-1.4l-3.2-1-3.8-1c-2.8-.7-5-1.7-6.6-3.2a7.2 7.2 0 0 1-2.4-5.7 8 8 0 0 1 1.7-5 10 10 0 0 1 4.3-3.5c2-.8 4-1.2 6.4-1.2 2.3 0 4.4.4 6.2 1.2 1.8.8 3.2 2 4.3 3.4 1 1.4 1.5 3 1.5 5h-5.8z"/></svg>
+</file>
+
+<file path="public/vercel.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1155 1000"><path d="m577.3 0 577.4 1000H0z" fill="#fff"/></svg>
+</file>
+
+<file path="public/window.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill-rule="evenodd" clip-rule="evenodd" d="M1.5 2.5h13v10a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1zM0 1h16v11.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 0 12.5zm3.75 4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5M7 4.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0m1.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5" fill="#666"/></svg>
+</file>
+
+<file path="src/app/(app)/dashboard/giver/problems/page.tsx">
+import { createClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/db";
+import { redirect } from "next/navigation";
+import Link from "next/link";
+import { PlusCircle } from "lucide-react";
+import type { ProblemStatus } from "@prisma/client";
+
+const statusLabel: Record<string, { label: string; color: string }> = {
+  DRAFT: { label: "Draft", color: "text-foreground-muted" },
+  FUNDED: { label: "Funded", color: "text-money" },
+  OPEN: { label: "Open", color: "text-accent" },
+  IN_REVIEW: { label: "In review", color: "text-money" },
+  COMPLETED: { label: "Completed", color: "text-foreground-muted" },
+  CANCELLED: { label: "Cancelled", color: "text-danger" },
+  REFUNDED: { label: "Refunded", color: "text-foreground-muted" },
+};
+
+const filterTabs: { value: ProblemStatus | "ALL"; label: string }[] = [
+  { value: "ALL", label: "All" },
+  { value: "OPEN", label: "Open" },
+  { value: "IN_REVIEW", label: "In review" },
+  { value: "COMPLETED", label: "Completed" },
+  { value: "DRAFT", label: "Draft" },
+];
+
+export default async function GiverProblemsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string }>;
+}) {
+  const { status } = await searchParams;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const profile = await prisma.user.findUnique({ where: { id: user.id } });
+  if (!profile) redirect("/login");
+  if (profile.role === "SOLVER") redirect("/dashboard/solver");
+  if (!profile.role) redirect("/onboarding");
+
+  const activeFilter = status as ProblemStatus | undefined;
+
+  const problems = await prisma.problem.findMany({
+    where: {
+      giverId: user.id,
+      ...(activeFilter ? { status: activeFilter } : {}),
+    },
+    include: {
+      _count: { select: { submissions: true } },
+      escrow: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return (
+    <main className="px-8 py-10 max-w-4xl">
+      <div className="mb-8 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight mb-1">My problems</h1>
+          <p className="text-sm text-foreground-muted">
+            Every problem you&apos;ve posted, and where it stands.
+          </p>
+        </div>
+        <Link
+          href="/problems/new"
+          className="flex items-center gap-2 rounded-md bg-accent text-background font-medium px-4 py-2.5 text-sm hover:bg-accent-dim transition-colors shrink-0"
+        >
+          <PlusCircle size={16} />
+          Post a problem
+        </Link>
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-6">
+        {filterTabs.map((tab) => {
+          const isActive = tab.value === "ALL" ? !activeFilter : activeFilter === tab.value;
+          return (
+            <Link
+              key={tab.value}
+              href={tab.value === "ALL" ? "/dashboard/giver/problems" : `/dashboard/giver/problems?status=${tab.value}`}
+              className={`text-xs font-mono px-3 py-1.5 rounded-md border transition-colors ${
+                isActive
+                  ? "border-accent text-accent bg-surface-raised"
+                  : "border-border text-foreground-muted hover:text-foreground"
+              }`}
+            >
+              {tab.label}
+            </Link>
+          );
+        })}
+      </div>
+
+      {problems.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border p-10 text-center">
+          <p className="text-sm text-foreground-muted mb-4">
+            {activeFilter
+              ? "No problems match this filter."
+              : "You haven't posted a problem yet. Fund a bounty and get it in front of solvers today."}
+          </p>
+          <Link
+            href="/problems/new"
+            className="inline-block rounded-md bg-accent text-background font-medium px-5 py-2.5 text-sm hover:bg-accent-dim transition-colors"
+          >
+            Post your first problem
+          </Link>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {problems.map((p) => {
+            const s = statusLabel[p.status] ?? statusLabel.DRAFT;
+            return (
+              <Link
+                key={p.id}
+                href={`/dashboard/giver/problems/${p.id}`}
+                className="rounded-lg border border-border bg-surface p-4 flex items-center justify-between hover:border-foreground-muted transition-colors"
+              >
+                <div>
+                  <p className="text-sm font-medium text-foreground">{p.title}</p>
+                  <p className={`text-xs mt-1 font-mono ${s.color}`}>
+                    {s.label} · {p._count.submissions} submission
+                    {p._count.submissions === 1 ? "" : "s"}
+                  </p>
+                </div>
+                <span className="text-xs font-mono text-money">
+                  {p.bountyAmount ? `$${p.bountyAmount}` : "Free"}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </main>
+  );
+}
+</file>
+
+<file path="src/app/(app)/dashboard/solver/earnings/page.tsx">
+import { createClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/db";
+import { redirect } from "next/navigation";
+import { Wallet, Trophy } from "lucide-react";
+import { StatCard } from "@/components/dashboard/stat-card";
+
+export default async function SolverEarningsPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const profile = await prisma.user.findUnique({ where: { id: user.id } });
+  if (!profile) redirect("/login");
+  if (profile.role === "GIVER") redirect("/dashboard/giver");
+  if (!profile.role) redirect("/onboarding");
+
+  const accepted = await prisma.submission.findMany({
+    where: { solverId: user.id, status: "ACCEPTED" },
+    include: { problem: true },
+    orderBy: { submittedAt: "desc" },
+  });
+
+  return (
+    <main className="px-8 py-10 max-w-4xl">
+      <h1 className="text-2xl font-semibold tracking-tight mb-8">Earnings</h1>
+
+      <div className="grid grid-cols-2 gap-3 mb-10">
+        <StatCard
+          label="Total earned"
+          value={`$${Number(profile.totalEarned).toFixed(2)}`}
+          icon={Wallet}
+          accent
+        />
+        <StatCard label="Bounties won" value={String(profile.completionCount)} icon={Trophy} />
+      </div>
+
+      <h2 className="text-sm font-medium text-foreground-muted uppercase tracking-wide mb-4">
+        Paid out
+      </h2>
+
+      {accepted.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border p-10 text-center">
+          <p className="text-sm text-foreground-muted">Nothing paid out yet.</p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {accepted.map((s) => (
+            <div
+              key={s.id}
+              className="rounded-lg border border-border bg-surface p-4 flex items-center justify-between"
+            >
+              <p className="text-sm font-medium text-foreground">{s.problem.title}</p>
+              <span className="text-xs font-mono text-money">
+                {s.problem.bountyAmount ? `$${s.problem.bountyAmount}` : "Free"}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </main>
+  );
+}
+</file>
+
+<file path="src/app/(app)/dashboard/solver/submissions/page.tsx">
+import { createClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/db";
+import { redirect } from "next/navigation";
+import Link from "next/link";
+
+const statusLabel: Record<string, { label: string; color: string }> = {
+  SUBMITTED: { label: "Submitted", color: "text-foreground-muted" },
+  UNDER_REVIEW: { label: "Under review", color: "text-money" },
+  ACCEPTED: { label: "Accepted", color: "text-accent" },
+  REJECTED: { label: "Rejected", color: "text-danger" },
+};
+
+export default async function SolverSubmissionsPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const profile = await prisma.user.findUnique({ where: { id: user.id } });
+  if (!profile) redirect("/login");
+  if (profile.role === "GIVER") redirect("/dashboard/giver");
+  if (!profile.role) redirect("/onboarding");
+
+  const submissions = await prisma.submission.findMany({
+    where: { solverId: user.id },
+    include: { problem: true },
+    orderBy: { submittedAt: "desc" },
+  });
+
+  return (
+    <main className="px-8 py-10 max-w-4xl">
+      <h1 className="text-2xl font-semibold tracking-tight mb-8">My submissions</h1>
+
+      {submissions.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border p-10 text-center">
+          <p className="text-sm text-foreground-muted mb-4">
+            You haven&apos;t submitted anything yet.
+          </p>
+          <Link
+            href="/problems"
+            className="inline-block rounded-md bg-accent text-background font-medium px-5 py-2.5 text-sm hover:bg-accent-dim transition-colors"
+          >
+            Browse open bounties
+          </Link>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {submissions.map((s) => {
+            const status = statusLabel[s.status] ?? statusLabel.SUBMITTED;
+            return (
+              <Link
+                key={s.id}
+                href={`/problems/${s.problemId}`}
+                className="rounded-lg border border-border bg-surface p-4 flex items-center justify-between hover:border-foreground-muted transition-colors"
+              >
+                <div>
+                  <p className="text-sm font-medium text-foreground">{s.problem.title}</p>
+                  <p className={`text-xs mt-1 font-mono ${status.color}`}>{status.label}</p>
+                </div>
+                <span className="text-xs font-mono text-money">
+                  {s.problem.bountyAmount ? `$${s.problem.bountyAmount}` : "Free"}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </main>
+  );
+}
+</file>
+
+<file path="src/app/(app)/dashboard/solver/page.tsx">
+import { createClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/db";
+import { redirect } from "next/navigation";
+import Link from "next/link";
+import { Trophy, Wallet, Target, TrendingUp } from "lucide-react";
+import { StatCard } from "@/components/dashboard/stat-card";
+
+export default async function SolverDashboardPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const profile = await prisma.user.findUnique({ where: { id: user.id } });
+  if (!profile) redirect("/login");
+
+  // This page is SOLVER-only. Someone who picked GIVER (or hasn't picked
+  // yet) typing /dashboard/solver directly gets sent to where they
+  // actually belong — never shown content meant for a different role.
+  // BOTH-role users are allowed here since Solver is one of their two
+  // real views (see sidebar.tsx comment on the BOTH plan).
+  if (profile.role === "GIVER") redirect("/dashboard/giver");
+  if (!profile.role) redirect("/onboarding");
+
+  // Active submissions: ones not yet resolved either way.
+  const activeSubmissions = await prisma.submission.findMany({
+    where: {
+      solverId: user.id,
+      status: { in: ["SUBMITTED", "UNDER_REVIEW"] },
+    },
+    include: { problem: true },
+    orderBy: { submittedAt: "desc" },
+    take: 5,
+  });
+
+  return (
+    <main className="px-8 py-10 max-w-4xl">
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold tracking-tight mb-1">
+          Welcome back, {profile.name}
+        </h1>
+        <p className="text-sm text-foreground-muted">
+          Here&apos;s where things stand across your bounty work.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
+        <StatCard
+          label="Total earned"
+          value={`$${Number(profile.totalEarned).toFixed(2)}`}
+          icon={Wallet}
+          accent
+        />
+        <StatCard
+          label="Completed"
+          value={String(profile.completionCount)}
+          icon={Trophy}
+        />
+        <StatCard
+          label="Rating"
+          value={profile.rating > 0 ? profile.rating.toFixed(1) : "—"}
+          icon={TrendingUp}
+        />
+        <StatCard
+          label="Accuracy"
+          value={profile.accuracyRate ? `${Math.round(profile.accuracyRate * 100)}%` : "—"}
+          icon={Target}
+        />
+      </div>
+
+      <section>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-medium text-foreground-muted uppercase tracking-wide">
+            Active submissions
+          </h2>
+          <Link href="/problems" className="text-sm text-accent hover:underline">
+            Browse open bounties →
+          </Link>
+        </div>
+
+        {activeSubmissions.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border p-10 text-center">
+            <p className="text-sm text-foreground-muted mb-4">
+              You haven&apos;t submitted to anything yet. Find a bounty that
+              matches your skills and give it a shot.
+            </p>
+            <Link
+              href="/problems"
+              className="inline-block rounded-md bg-accent text-background font-medium px-5 py-2.5 text-sm hover:bg-accent-dim transition-colors"
+            >
+              Browse open bounties
+            </Link>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {activeSubmissions.map((s) => (
+              <Link
+                key={s.id}
+                href={`/problems/${s.problemId}`}
+                className="rounded-lg border border-border bg-surface p-4 flex items-center justify-between hover:border-foreground-muted transition-colors"
+              >
+                <div>
+                  <p className="text-sm font-medium text-foreground">{s.problem.title}</p>
+                  <p className="text-xs text-foreground-muted mt-1">
+                    Submitted {s.submittedAt.toLocaleDateString()}
+                  </p>
+                </div>
+                <span className="text-xs font-mono text-money">
+                  {s.problem.bountyAmount ? `$${s.problem.bountyAmount}` : "Free"}
+                </span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
+    </main>
+  );
+}
+</file>
+
+<file path="src/app/(app)/dashboard/page.tsx">
+import { createClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/db";
+import { redirect } from "next/navigation";
+
+/**
+ * /dashboard is a pure router — it never renders anything itself.
+ * It exists so links like Header's "Dashboard" button and post-login
+ * redirects have one stable URL to point at, regardless of role.
+ *
+ * SOLVER -> /dashboard/solver
+ * GIVER  -> /dashboard/giver
+ * BOTH   -> /dashboard/solver for now (combined view is a follow-up;
+ *           see DashboardSidebar comment for the plan)
+ */
+export default async function DashboardRouterPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) redirect("/login");
+
+  const profile = await prisma.user.findUnique({ where: { id: user.id } });
+
+  if (!profile?.role) redirect("/onboarding");
+
+  if (profile.role === "GIVER") redirect("/dashboard/giver");
+  redirect("/dashboard/solver");
+}
+</file>
+
+<file path="src/app/(app)/problems/new/page.tsx">
+import { createClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/db";
+import { redirect } from "next/navigation";
+import Link from "next/link";
+import { Sparkles } from "lucide-react";
+
+export default async function NewProblemPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const profile = await prisma.user.findUnique({ where: { id: user.id } });
+  if (!profile) redirect("/login");
+  if (profile.role === "SOLVER") redirect("/dashboard/solver");
+  if (!profile.role) redirect("/onboarding");
+
+  return (
+    <main className="px-8 py-10 max-w-2xl">
+      <h1 className="text-2xl font-semibold tracking-tight mb-1">Post a problem</h1>
+      <p className="text-sm text-foreground-muted mb-8">
+        The full creation flow — challenge type, bounty amount, escrow funding — is coming soon.
+      </p>
+
+      <div className="rounded-lg border border-dashed border-border p-10 text-center">
+        <Sparkles size={20} className="mx-auto mb-3 text-foreground-muted" />
+        <p className="text-sm text-foreground-muted mb-4">
+          This page is a placeholder so the button doesn&apos;t break navigation.
+          The real form goes here next.
+        </p>
+        <Link
+          href="/dashboard/giver"
+          className="inline-block rounded-md border border-border text-foreground text-sm font-medium px-5 py-2.5 hover:bg-surface transition-colors"
+        >
+          Back to dashboard
+        </Link>
+      </div>
+    </main>
+  );
+}
+</file>
+
+<file path="src/app/(app)/settings/page.tsx">
+import { createClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/db";
+import { redirect } from "next/navigation";
+
+export default async function SettingsPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const profile = await prisma.user.findUnique({ where: { id: user.id } });
+  if (!profile) redirect("/login");
+
+  return (
+    <main className="px-8 py-10 max-w-4xl">
+      <h1 className="text-2xl font-semibold tracking-tight mb-8">Settings</h1>
+
+      <div className="rounded-lg border border-border bg-surface p-6 flex flex-col gap-4">
+        <div>
+          <p className="text-xs text-foreground-muted uppercase tracking-wide mb-1">Name</p>
+          <p className="text-sm text-foreground">{profile.name}</p>
+        </div>
+        <div>
+          <p className="text-xs text-foreground-muted uppercase tracking-wide mb-1">Email</p>
+          <p className="text-sm text-foreground">{profile.email}</p>
+        </div>
+        <div>
+          <p className="text-xs text-foreground-muted uppercase tracking-wide mb-1">Role</p>
+          <p className="text-sm text-foreground">{profile.role ?? "Not set"}</p>
+        </div>
+      </div>
+    </main>
+  );
+}
+</file>
+
+<file path="src/app/(app)/layout.tsx">
+import { createClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/db";
+import { DashboardSidebar } from "@/components/dashboard/sidebar";
+
+export default async function AppLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // /problems and /problems/[id] are public browsing pages. A logged-out
+  // visitor, or someone who hasn't finished onboarding, sees plain content
+  // with no sidebar — the sidebar only makes sense once we know a role.
+  let role: "SOLVER" | "GIVER" | "BOTH" | null = null;
+  if (user) {
+    const profile = await prisma.user.findUnique({ where: { id: user.id } });
+    role = profile?.role ?? null;
+  }
+
+  if (!role) {
+    return <div className="flex-1 flex">{children}</div>;
+  }
+
+  return (
+    <div className="flex-1 flex">
+      <DashboardSidebar role={role} />
+      <div className="flex-1 min-w-0">{children}</div>
+    </div>
+  );
+}
+</file>
+
+<file path="src/app/(auth)/forgot-password/page.tsx">
+import Link from "next/link";
+import { ForgotPasswordForm } from "@/components/auth/forgot-password-form";
+
+export default async function ForgotPasswordPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ sent?: string }>;
+}) {
+  const params = await searchParams;
+
+  if (params.sent) {
+    return (
+      <main className="flex-1 flex items-center justify-center px-6 py-16">
+        <div className="w-full max-w-sm text-center">
+          <h1 className="text-2xl font-semibold tracking-tight mb-3">Check your email</h1>
+          <p className="text-sm text-foreground-muted leading-relaxed">
+            If an account exists for that email, we&apos;ve sent a link to set
+            your password. It expires in 1 hour and can only be used once.
+          </p>
+          <p className="text-sm text-foreground-muted leading-relaxed mt-3">
+            Signed up with Google or GitHub? This also works to add a
+            password so you can log in with email on any device.
+          </p>
+          <Link href="/login" className="mt-6 inline-block text-accent hover:underline text-sm">
+            Back to login
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="flex-1 flex items-center justify-center px-6 py-16">
+      <div className="w-full max-w-sm">
+        <h1 className="text-2xl font-semibold tracking-tight mb-1">Set or reset your password</h1>
+        <p className="text-sm text-foreground-muted mb-8">
+          Enter your account email. We&apos;ll send a secure link — works
+          whether you signed up with a password, Google, or GitHub.
+        </p>
+
+        <ForgotPasswordForm />
+
+        <p className="mt-6 text-sm text-foreground-muted text-center">
+          <Link href="/login" className="text-accent hover:underline">
+            Back to login
+          </Link>
+        </p>
+      </div>
+    </main>
+  );
+}
+</file>
+
+<file path="src/app/(auth)/login/page.tsx">
+import Link from "next/link";
+import { OAuthButtons } from "@/components/auth/oauth-buttons";
+import { LoginForm } from "@/components/auth/login-form";
+
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; redirectedFrom?: string }>;
+}) {
+  const params = await searchParams;
+
+  return (
+    <main className="flex-1 flex items-center justify-center px-6 py-16">
+      <div className="w-full max-w-sm">
+        <h1 className="text-2xl font-semibold tracking-tight mb-1">Log in</h1>
+        <p className="text-sm text-foreground-muted mb-8">
+          Welcome back. Pick up where you left off.
+        </p>
+
+        {params.error && (
+          <p className="mb-4 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+            Something went wrong signing you in. Please try again.
+          </p>
+        )}
+
+        <OAuthButtons />
+
+        <div className="flex items-center gap-3 my-6">
+          <div className="h-px flex-1 bg-border" />
+          <span className="text-xs text-foreground-muted uppercase tracking-wide">or</span>
+          <div className="h-px flex-1 bg-border" />
+        </div>
+
+        <LoginForm redirectedFrom={params.redirectedFrom ?? ""} />
+
+        <p className="mt-3 text-sm text-center">
+          <Link href="/forgot-password" className="text-foreground-muted hover:text-accent transition-colors">
+            Forgot password, or want to set one?
+          </Link>
+        </p>
+
+        <p className="mt-6 text-sm text-foreground-muted text-center">
+          Don&apos;t have an account?{" "}
+          <Link href="/signup" className="text-accent hover:underline">
+            Sign up
+          </Link>
+        </p>
+      </div>
+    </main>
+  );
+}
+</file>
+
+<file path="src/app/(auth)/reset-password/page.tsx">
+import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+import { ResetPasswordForm } from "@/components/auth/reset-password-form";
+
+export default async function ResetPasswordPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // No session at all means this page was reached directly, not via a
+  // valid recovery link. Don't show a password form with nothing behind it.
+  if (!user) {
+    redirect("/forgot-password");
+  }
+
+  return (
+    <main className="flex-1 flex items-center justify-center px-6 py-16">
+      <div className="w-full max-w-sm">
+        <h1 className="text-2xl font-semibold tracking-tight mb-1">Set a new password</h1>
+        <p className="text-sm text-foreground-muted mb-8">
+          You&apos;ll be able to log in with {user.email} and this password,
+          in addition to any other way you normally sign in.
+        </p>
+
+        <ResetPasswordForm />
+      </div>
+    </main>
+  );
+}
+</file>
+
+<file path="src/app/(auth)/signup/page.tsx">
+import Link from "next/link";
+import { OAuthButtons } from "@/components/auth/oauth-buttons";
+import { SignupForm } from "@/components/auth/signup-form";
+
+export default async function SignupPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ checkEmail?: string }>;
+}) {
+  const params = await searchParams;
+
+  if (params.checkEmail) {
+    return (
+      <main className="flex-1 flex items-center justify-center px-6 py-16">
+        <div className="w-full max-w-sm text-center">
+          <h1 className="text-2xl font-semibold tracking-tight mb-3">Check your email</h1>
+          <p className="text-sm text-foreground-muted leading-relaxed">
+            We sent you a confirmation link. Click it to activate your account,
+            then come back and log in.
+          </p>
+          <Link
+            href="/login"
+            className="mt-6 inline-block text-accent hover:underline text-sm"
+          >
+            Back to login
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="flex-1 flex items-center justify-center px-6 py-16">
+      <div className="w-full max-w-sm">
+        <h1 className="text-2xl font-semibold tracking-tight mb-1">Create your account</h1>
+        <p className="text-sm text-foreground-muted mb-8">
+          Post a bounty or start solving. Free to join.
+        </p>
+
+        <OAuthButtons />
+
+        <div className="flex items-center gap-3 my-6">
+          <div className="h-px flex-1 bg-border" />
+          <span className="text-xs text-foreground-muted uppercase tracking-wide">or</span>
+          <div className="h-px flex-1 bg-border" />
+        </div>
+
+        <SignupForm />
+
+        <p className="mt-6 text-sm text-foreground-muted text-center">
+          Already have an account?{" "}
+          <Link href="/login" className="text-accent hover:underline">
+            Log in
+          </Link>
+        </p>
+      </div>
+    </main>
+  );
+}
+</file>
+
+<file path="src/app/auth/callback/route.ts">
+import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { syncUserFromSupabase } from "@/lib/auth/sync-user";
+import { prisma } from "@/lib/db";
+
+/**
+ * GitHub/Google send the user here after they approve login, with a `code`
+ * param that we exchange for a real session. Configure this exact URL
+ * (https://yourdomain.com/auth/callback, and http://localhost:3000/auth/callback
+ * for local dev) in both:
+ *   - Supabase Dashboard -> Authentication -> URL Configuration
+ *   - Each OAuth provider's app settings (GitHub OAuth App, Google Cloud Console)
+ */
+export async function GET(request: Request) {
+  const { searchParams, origin } = new URL(request.url);
+  const code = searchParams.get("code");
+  // Password-recovery emails link here with ?next=/reset-password — that
+  // takes priority over the normal onboarding/dashboard routing below,
+  // since the user's whole reason for being here is to set a password,
+  // not to browse the app yet.
+  const next = searchParams.get("next");
+  // Only honor an explicit redirectedFrom for already-onboarded users;
+  // first-time OAuth users always go through /onboarding first (decided below).
+  const explicitRedirect = searchParams.get("redirectedFrom");
+
+  if (code) {
+    const supabase = await createClient();
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+
+    if (!error && data.user) {
+      if (next === "/reset-password") {
+        return NextResponse.redirect(`${origin}/reset-password`);
+      }
+
+      // Ensure a Prisma User row exists before sending them into the app.
+      await syncUserFromSupabase(data.user);
+
+      const profile = await prisma.user.findUnique({ where: { id: data.user.id } });
+      const destination = profile?.role
+        ? (explicitRedirect ?? "/dashboard")
+        : "/onboarding";
+
+      return NextResponse.redirect(`${origin}${destination}`);
+    }
+  }
+
+  // Something went wrong — send them back to login with an error flag
+  // rather than a broken/blank page.
+  return NextResponse.redirect(`${origin}/login?error=auth_callback_failed`);
+}
+</file>
+
+<file path="src/app/onboarding/page.tsx">
+import { createClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/db";
+import { redirect } from "next/navigation";
+import { RoleSelector } from "@/components/onboarding/role-selector";
+
+export default async function OnboardingPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) redirect("/login");
+
+  const profile = await prisma.user.findUnique({ where: { id: user.id } });
+
+  // Already picked a role — no need to see this screen again.
+  if (profile?.role) redirect("/dashboard");
+
+  return (
+    <main className="flex-1 flex items-center justify-center px-6 py-16">
+      <RoleSelector name={profile?.name ?? "there"} />
+    </main>
+  );
+}
+</file>
+
+<file path="src/app/globals.css">
+@import "tailwindcss";
+
+:root {
+  /* Ink-navy base — warmer and more distinctive than pure black */
+  --background: #0b0f1a;
+  --surface: #121826;
+  --surface-raised: #1a2233;
+  --foreground: #e8ecf4;
+  --foreground-muted: #8b93a7;
+  --border: #232b3d;
+
+  /* Signal accent — active bounty / money-on-the-table cue */
+  --accent: #c4f135;
+  --accent-dim: #8fb02a;
+
+  /* Reserved exclusively for escrow / payment states */
+  --money: #ffb020;
+  --money-dim: #b3821a;
+
+  --danger: #ff5c5c;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-foreground: var(--foreground);
+  --color-foreground-muted: var(--foreground-muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-dim: var(--accent-dim);
+  --color-money: var(--money);
+  --color-money-dim: var(--money-dim);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-mono-display);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+/* Respect reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+</file>
+
+<file path="src/app/layout.tsx">
+import type { Metadata } from "next";
+import { Inter, IBM_Plex_Mono } from "next/font/google";
+import { Header } from "@/components/layout/header";
+import "./globals.css";
+
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+});
+
+const plexMono = IBM_Plex_Mono({
+  variable: "--font-mono-display",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
+
+export const metadata: Metadata = {
+  title: "Bountied — Real problems. Real bounties. Real solvers.",
+  description:
+    "Post a coding challenge, fund it with escrow, and pay only the solver you accept. No connects, no proposals, no formalities.",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html
+      lang="en"
+      className={`${inter.variable} ${plexMono.variable} h-full antialiased`}
+    >
+      <body className="min-h-full flex flex-col bg-background text-foreground">
+        <Header />
+        {children}
+      </body>
+    </html>
+  );
+}
+</file>
+
+<file path="src/app/page.tsx">
+import { BountyTicket } from "@/components/marketing/bounty-ticket";
+import { Hero } from "@/components/marketing/hero";
+import { ChallengeTypes } from "@/components/marketing/challenge-types";
+
+export default function Home() {
+  return (
+    <main className="flex-1">
+      <Hero />
+      <ChallengeTypes />
+    </main>
+  );
+}
+</file>
+
+<file path="src/components/auth/forgot-password-form.tsx">
+"use client";
+
+import { useActionState } from "react";
+import { requestPasswordReset, type AuthActionResult } from "@/lib/auth/actions";
+
+export function ForgotPasswordForm() {
+  const [state, formAction, pending] = useActionState<AuthActionResult, FormData>(
+    (_prevState, formData) => requestPasswordReset(formData),
+    undefined
+  );
+
+  return (
+    <form action={formAction} className="flex flex-col gap-3">
+      {state?.error && (
+        <p className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+          {state.error}
+        </p>
+      )}
+
+      <div>
+        <label htmlFor="email" className="block text-xs text-foreground-muted mb-1.5">
+          Email
+        </label>
+        <input
+          id="email"
+          name="email"
+          type="email"
+          required
+          className="w-full rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent transition-colors"
+          placeholder="you@example.com"
+        />
+      </div>
+      <button
+        type="submit"
+        disabled={pending}
+        className="mt-2 rounded-md bg-accent text-background font-medium px-4 py-2.5 text-sm hover:bg-accent-dim transition-colors disabled:opacity-60"
+      >
+        {pending ? "Sending…" : "Send reset link"}
+      </button>
+    </form>
+  );
+}
+</file>
+
+<file path="src/components/auth/login-form.tsx">
+"use client";
+
+import { useActionState } from "react";
+import { signInWithEmail, type AuthActionResult } from "@/lib/auth/actions";
+
+export function LoginForm({ redirectedFrom }: { redirectedFrom: string }) {
+  const [state, formAction, pending] = useActionState<AuthActionResult, FormData>(
+    (_prevState, formData) => signInWithEmail(formData),
+    undefined
+  );
+
+  return (
+    <form action={formAction} className="flex flex-col gap-3">
+      <input type="hidden" name="redirectedFrom" value={redirectedFrom} />
+
+      {state?.error && (
+        <p className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+          {state.error}
+        </p>
+      )}
+
+      <div>
+        <label htmlFor="email" className="block text-xs text-foreground-muted mb-1.5">
+          Email
+        </label>
+        <input
+          id="email"
+          name="email"
+          type="email"
+          required
+          className="w-full rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent transition-colors"
+          placeholder="you@example.com"
+        />
+      </div>
+      <div>
+        <label htmlFor="password" className="block text-xs text-foreground-muted mb-1.5">
+          Password
+        </label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          required
+          className="w-full rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent transition-colors"
+          placeholder="••••••••"
+        />
+      </div>
+      <button
+        type="submit"
+        disabled={pending}
+        className="mt-2 rounded-md bg-accent text-background font-medium px-4 py-2.5 text-sm hover:bg-accent-dim transition-colors disabled:opacity-60"
+      >
+        {pending ? "Logging in…" : "Log in"}
+      </button>
+    </form>
+  );
+}
+</file>
+
+<file path="src/components/auth/oauth-buttons.tsx">
+"use client";
+
+import { createClient } from "@/lib/supabase/client";
+import { FaGithub } from "react-icons/fa";
+
+export function OAuthButtons() {
+  const supabase = createClient();
+
+  async function handleOAuth(provider: "github" | "google") {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+
+    await supabase.auth.signInWithOAuth({
+      provider,
+      options: {
+        redirectTo: `${origin}/auth/callback`,
+        queryParams: {
+          prompt: "select_account", // Forces Google to show the account picker every time
+        },
+      },
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-2.5">
+      {/* GitHub Button */}
+      <button
+        type="button"
+        onClick={() => handleOAuth("github")}
+        className="flex items-center justify-center gap-2 rounded-md border border-border bg-surface px-4 py-2.5 text-sm font-medium text-foreground hover:bg-surface-raised transition-colors"
+      >
+        <FaGithub size={16} />
+        Continue with GitHub
+      </button>
+
+      {/* Google Button */}
+      <button
+        type="button"
+        onClick={() => handleOAuth("google")}
+        className="flex items-center justify-center gap-2 rounded-md border border-border bg-surface px-4 py-2.5 text-sm font-medium text-foreground hover:bg-surface-raised transition-colors"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24">
+          <path
+            fill="#4285F4"
+            d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+          />
+          <path
+            fill="#34A853"
+            d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+          />
+          <path
+            fill="#FBBC05"
+            d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+          />
+          <path
+            fill="#EA4335"
+            d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+          />
+        </svg>
+        Continue with Google
+      </button>
+    </div>
+  );
+}
+</file>
+
+<file path="src/components/auth/reset-password-form.tsx">
+"use client";
+
+import { useActionState } from "react";
+import { updatePassword, type AuthActionResult } from "@/lib/auth/actions";
+
+export function ResetPasswordForm() {
+  const [state, formAction, pending] = useActionState<AuthActionResult, FormData>(
+    (_prevState, formData) => updatePassword(formData),
+    undefined
+  );
+
+  return (
+    <form action={formAction} className="flex flex-col gap-3">
+      {state?.error && (
+        <p className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+          {state.error}
+        </p>
+      )}
+
+      <div>
+        <label htmlFor="password" className="block text-xs text-foreground-muted mb-1.5">
+          New password
+        </label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          required
+          minLength={8}
+          className="w-full rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent transition-colors"
+          placeholder="At least 8 characters"
+        />
+      </div>
+      <div>
+        <label htmlFor="confirmPassword" className="block text-xs text-foreground-muted mb-1.5">
+          Confirm new password
+        </label>
+        <input
+          id="confirmPassword"
+          name="confirmPassword"
+          type="password"
+          required
+          minLength={8}
+          className="w-full rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent transition-colors"
+          placeholder="Type it again"
+        />
+      </div>
+      <button
+        type="submit"
+        disabled={pending}
+        className="mt-2 rounded-md bg-accent text-background font-medium px-4 py-2.5 text-sm hover:bg-accent-dim transition-colors disabled:opacity-60"
+      >
+        {pending ? "Saving…" : "Save password"}
+      </button>
+    </form>
+  );
+}
+</file>
+
+<file path="src/components/auth/signup-form.tsx">
+"use client";
+
+import { useActionState } from "react";
+import { signUpWithEmail, type AuthActionResult } from "@/lib/auth/actions";
+
+export function SignupForm() {
+  const [state, formAction, pending] = useActionState<AuthActionResult, FormData>(
+    (_prevState, formData) => signUpWithEmail(formData),
+    undefined
+  );
+
+  return (
+    <form action={formAction} className="flex flex-col gap-3">
+      {state?.error && (
+        <p className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+          {state.error}
+        </p>
+      )}
+
+      <div>
+        <label htmlFor="name" className="block text-xs text-foreground-muted mb-1.5">
+          Name
+        </label>
+        <input
+          id="name"
+          name="name"
+          type="text"
+          required
+          className="w-full rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent transition-colors"
+          placeholder="Your name"
+        />
+      </div>
+      <div>
+        <label htmlFor="email" className="block text-xs text-foreground-muted mb-1.5">
+          Email
+        </label>
+        <input
+          id="email"
+          name="email"
+          type="email"
+          required
+          className="w-full rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent transition-colors"
+          placeholder="you@example.com"
+        />
+      </div>
+      <div>
+        <label htmlFor="password" className="block text-xs text-foreground-muted mb-1.5">
+          Password
+        </label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          required
+          minLength={8}
+          className="w-full rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent transition-colors"
+          placeholder="At least 8 characters"
+        />
+      </div>
+      <button
+        type="submit"
+        disabled={pending}
+        className="mt-2 rounded-md bg-accent text-background font-medium px-4 py-2.5 text-sm hover:bg-accent-dim transition-colors disabled:opacity-60"
+      >
+        {pending ? "Creating account…" : "Create account"}
+      </button>
+    </form>
+  );
+}
+</file>
+
+<file path="src/components/dashboard/accept-submission-button.tsx">
+"use client";
+
+import { useActionState } from "react";
+import { acceptSubmission, type AcceptSubmissionResult } from "@/lib/problems/actions";
+
+export function AcceptSubmissionButton({
+  problemId,
+  submissionId,
+}: {
+  problemId: string;
+  submissionId: string;
+}) {
+  const [state, formAction, pending] = useActionState<AcceptSubmissionResult | undefined, FormData>(
+    () => acceptSubmission(problemId, submissionId),
+    undefined
+  );
+
+  return (
+    <form action={formAction} className="flex flex-col items-end gap-2 shrink-0">
+      {state && "error" in state && (
+        <p className="max-w-xs text-right rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
+          {state.error}
+        </p>
+      )}
+      <button
+        type="submit"
+        disabled={pending}
+        className="rounded-md bg-accent text-background font-medium px-4 py-2 text-xs hover:bg-accent-dim transition-colors disabled:opacity-60"
+      >
+        {pending ? "Processing…" : "Accept & pay"}
+      </button>
+    </form>
+  );
+}
+</file>
+
+<file path="src/components/dashboard/stat-card.tsx">
+import type { LucideIcon } from "lucide-react";
+
+export function StatCard({
+  label,
+  value,
+  icon: Icon,
+  accent = false,
+}: {
+  label: string;
+  value: string;
+  icon: LucideIcon;
+  /** Use sparingly — true renders the value in the money/accent color, for the one number that matters most on a given dashboard */
+  accent?: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-surface p-5">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs text-foreground-muted uppercase tracking-wide">
+          {label}
+        </span>
+        <Icon size={16} className="text-foreground-muted" />
+      </div>
+      <p
+        className={`font-mono text-2xl font-semibold ${
+          accent ? "text-money" : "text-foreground"
+        }`}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+</file>
+
+<file path="src/components/layout/header.tsx">
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
+import { signOut } from "@/lib/auth/actions";
+
+export async function Header() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  return (
+    <header className="border-b border-border">
+      <div className="mx-auto max-w-6xl px-6 h-16 flex items-center justify-between">
+        <Link href="/" className="font-mono font-semibold text-foreground tracking-tight">
+          bountied<span className="text-accent">.</span>
+        </Link>
+
+        <nav className="flex items-center gap-3">
+          {user ? (
+            <>
+              <Link
+                href="/dashboard"
+                className="text-sm text-foreground-muted hover:text-foreground transition-colors px-3 py-2"
+              >
+                Dashboard
+              </Link>
+              <form action={signOut}>
+                <button
+                  type="submit"
+                  className="rounded-md border border-border text-foreground text-sm font-medium px-4 py-2 hover:bg-surface transition-colors"
+                >
+                  Sign out
+                </button>
+              </form>
+            </>
+          ) : (
+            <>
+              <Link
+                href="/login"
+                className="text-sm text-foreground-muted hover:text-foreground transition-colors px-3 py-2"
+              >
+                Log in
+              </Link>
+              <Link
+                href="/signup"
+                className="rounded-md bg-accent text-background text-sm font-medium px-4 py-2 hover:bg-accent-dim transition-colors"
+              >
+                Sign up
+              </Link>
+            </>
+          )}
+        </nav>
+      </div>
+    </header>
+  );
+}
+</file>
+
+<file path="src/components/marketing/bounty-ticket.tsx">
+"use client";
+
+import { motion } from "framer-motion";
+
+interface BountyTicketProps {
+  title: string;
+  tags: string[];
+  bounty: string;
+  solverCount: number;
+  status: "open" | "in_review" | "completed";
+  delay?: number;
+}
+
+const statusConfig = {
+  open: { label: "OPEN", color: "text-accent", dot: "bg-accent" },
+  in_review: { label: "IN REVIEW", color: "text-money", dot: "bg-money" },
+  completed: { label: "COMPLETED", color: "text-foreground-muted", dot: "bg-foreground-muted" },
+};
+
+export function BountyTicket({
+  title,
+  tags,
+  bounty,
+  solverCount,
+  status,
+  delay = 0,
+}: BountyTicketProps) {
+  const cfg = statusConfig[status];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 24 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay, ease: [0.16, 1, 0.3, 1] }}
+      className="rounded-lg border border-border bg-surface p-5 w-full max-w-sm"
+    >
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-1.5">
+          <span className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
+          <span className={`text-xs font-mono font-medium tracking-wide ${cfg.color}`}>
+            {cfg.label}
+          </span>
+        </div>
+        <span className="text-xs text-foreground-muted font-mono">
+          {solverCount} solving
+        </span>
+      </div>
+
+      <h3 className="text-foreground font-medium text-[15px] mb-2 leading-snug">
+        {title}
+      </h3>
+
+      <div className="flex flex-wrap gap-1.5 mb-4">
+        {tags.map((tag) => (
+          <span
+            key={tag}
+            className="text-[11px] font-mono text-foreground-muted bg-surface-raised px-2 py-0.5 rounded border border-border"
+          >
+            {tag}
+          </span>
+        ))}
+      </div>
+
+      <div className="flex items-end justify-between pt-3 border-t border-border">
+        <span className="text-[11px] text-foreground-muted uppercase tracking-wide">
+          Bounty
+        </span>
+        <span className="font-mono text-lg font-semibold text-money">
+          {bounty}
+        </span>
+      </div>
+    </motion.div>
+  );
+}
+</file>
+
+<file path="src/components/marketing/challenge-types.tsx">
+"use client";
+
+import { motion } from "framer-motion";
+
+const types = [
+  {
+    name: "Open Challenges",
+    price: "Free or bountied",
+    description:
+      "Anyone can attempt these. Post for practice with no money attached, or add a bounty to attract serious solvers.",
+    live: true,
+  },
+  {
+    name: "First to Solve",
+    price: "Bountied only",
+    description:
+      "The race format. Every submission is funded before it's posted — the giver picks the fastest accurate solution.",
+    live: true,
+  },
+  {
+    name: "Invite Only",
+    price: "Bountied",
+    description:
+      "Bring your rated, badge-holding solvers directly onto your project. Built for ongoing work with people you trust.",
+    live: true,
+  },
+  {
+    name: "Fixed Price",
+    price: "Enterprise",
+    description:
+      "Traditional scoped engagements with premium tooling. Built for teams that need more than a single bounty.",
+    live: false,
+  },
+];
+
+export function ChallengeTypes() {
+  return (
+    <section className="mx-auto max-w-6xl px-6 py-24">
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-80px" }}
+        transition={{ duration: 0.5 }}
+        className="mb-12 max-w-xl"
+      >
+        <h2 className="text-2xl md:text-3xl font-semibold tracking-tight mb-3">
+          Four ways to get a problem solved
+        </h2>
+        <p className="text-foreground-muted leading-relaxed">
+          Every paid format is escrow-funded before it goes live — solvers
+          never race for money that might not exist.
+        </p>
+      </motion.div>
+
+      <div className="grid md:grid-cols-2 gap-4">
+        {types.map((type, i) => (
+          <motion.div
+            key={type.name}
+            initial={{ opacity: 0, y: 16 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-40px" }}
+            transition={{ duration: 0.4, delay: i * 0.06 }}
+            className={`rounded-lg border border-border p-6 ${
+              type.live ? "bg-surface" : "bg-surface/50"
+            }`}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-medium text-foreground">{type.name}</h3>
+              {!type.live && (
+                <span className="text-[10px] font-mono uppercase tracking-wide text-foreground-muted border border-border rounded px-1.5 py-0.5">
+                  Coming soon
+                </span>
+              )}
+            </div>
+            <p className="text-xs font-mono text-accent-dim mb-3">
+              {type.price}
+            </p>
+            <p className="text-sm text-foreground-muted leading-relaxed">
+              {type.description}
+            </p>
+          </motion.div>
+        ))}
+      </div>
+    </section>
+  );
+}
+</file>
+
+<file path="src/components/marketing/hero.tsx">
+"use client";
+
+import { motion } from "framer-motion";
+import { BountyTicket } from "./bounty-ticket";
+
+export function Hero() {
+  return (
+    <section className="relative overflow-hidden border-b border-border">
+      {/* Ambient grid texture — quiet, not a scroll-triggered gimmick */}
+      <div
+        className="absolute inset-0 opacity-[0.03] pointer-events-none"
+        style={{
+          backgroundImage:
+            "linear-gradient(var(--foreground) 1px, transparent 1px), linear-gradient(90deg, var(--foreground) 1px, transparent 1px)",
+          backgroundSize: "48px 48px",
+        }}
+      />
+
+      <div className="relative mx-auto max-w-6xl px-6 py-24 md:py-32 grid md:grid-cols-2 gap-16 items-center">
+        <div>
+          <motion.p
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="font-mono text-xs text-accent tracking-widest uppercase mb-5"
+          >
+            Escrow-backed &middot; No connects &middot; No proposals
+          </motion.p>
+
+          <motion.h1
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            className="text-4xl md:text-5xl font-semibold tracking-tight leading-[1.1] mb-6"
+          >
+            Post a problem.
+            <br />
+            Fund the bounty.
+            <br />
+            <span className="text-foreground-muted">Pay who you accept.</span>
+          </motion.h1>
+
+          <motion.p
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+            className="text-foreground-muted text-lg leading-relaxed mb-8 max-w-md"
+          >
+            Real programming problems, solved by real people, for real money
+            held in escrow before anyone writes a line of code. No formal
+            hiring process — just the fastest or best accepted solution wins.
+          </motion.p>
+
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.3 }}
+            className="flex flex-wrap gap-3"
+          >
+            <button className="rounded-md bg-accent text-background font-medium px-5 py-2.5 text-sm hover:bg-accent-dim transition-colors">
+              Post a challenge
+            </button>
+            <button className="rounded-md border border-border text-foreground font-medium px-5 py-2.5 text-sm hover:bg-surface transition-colors">
+              Browse open bounties
+            </button>
+          </motion.div>
+        </div>
+
+        {/* Signature element: stacked, slightly offset bounty tickets — a live problem feed, not a stock hero image */}
+        <div className="relative flex flex-col gap-4 md:pl-8">
+          <BountyTicket
+            title="Fix race condition in WebSocket reconnect logic"
+            tags={["typescript", "websockets"]}
+            bounty="$85"
+            solverCount={7}
+            status="open"
+            delay={0.2}
+          />
+          <div className="md:pl-6">
+            <BountyTicket
+              title="Optimize N+1 query in Django ORM order pipeline"
+              tags={["python", "django", "postgres"]}
+              bounty="$120"
+              solverCount={12}
+              status="in_review"
+              delay={0.35}
+            />
+          </div>
+          <div className="md:pl-2">
+            <BountyTicket
+              title="Parametric Blender script for cultivator model"
+              tags={["python", "blender"]}
+              bounty="$60"
+              solverCount={3}
+              status="open"
+              delay={0.5}
+            />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+</file>
+
+<file path="src/components/onboarding/role-selector.tsx">
+"use client";
+
+import { useState, useTransition } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Code2, Briefcase, Sparkles } from "lucide-react";
+import { setUserRole } from "@/lib/auth/actions";
+
+type Role = "SOLVER" | "GIVER" | "BOTH";
+
+const roles: {
+  value: Role;
+  title: string;
+  description: string;
+  icon: typeof Code2;
+}[] = [
+  {
+    value: "SOLVER",
+    title: "I want to solve problems",
+    description:
+      "Browse open bounties, submit solutions, and get paid the moment your work is accepted.",
+    icon: Code2,
+  },
+  {
+    value: "GIVER",
+    title: "I want problems solved",
+    description:
+      "Post a challenge, fund it in escrow, and only pay the solver whose submission you accept.",
+    icon: Briefcase,
+  },
+  {
+    value: "BOTH",
+    title: "Both",
+    description:
+      "Switch between posting bounties and solving them — most people end up here eventually.",
+    icon: Sparkles,
+  },
+];
+
+export function RoleSelector({ name }: { name: string }) {
+  const [selected, setSelected] = useState<Role | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function handleConfirm() {
+    if (!selected) return;
+    startTransition(async () => {
+      await setUserRole(selected);
+    });
+  }
+
+  return (
+    <div className="w-full max-w-2xl">
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="mb-10 text-center"
+      >
+        <p className="font-mono text-xs text-accent tracking-widest uppercase mb-3">
+          One quick thing, {name}
+        </p>
+        <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
+          How do you want to use Bountied?
+        </h1>
+      </motion.div>
+
+      <div className="grid gap-3">
+        {roles.map((role, i) => {
+          const Icon = role.icon;
+          const isSelected = selected === role.value;
+          return (
+            <motion.button
+              key={role.value}
+              type="button"
+              onClick={() => setSelected(role.value)}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.1 + i * 0.08 }}
+              className={`text-left rounded-lg border p-5 flex items-start gap-4 transition-colors ${
+                isSelected
+                  ? "border-accent bg-surface-raised"
+                  : "border-border bg-surface hover:border-foreground-muted"
+              }`}
+            >
+              <div
+                className={`rounded-md p-2 shrink-0 ${
+                  isSelected ? "bg-accent text-background" : "bg-surface-raised text-foreground-muted"
+                }`}
+              >
+                <Icon size={18} />
+              </div>
+              <div>
+                <h3 className="font-medium text-foreground mb-1">{role.title}</h3>
+                <p className="text-sm text-foreground-muted leading-relaxed">
+                  {role.description}
+                </p>
+              </div>
+            </motion.button>
+          );
+        })}
+      </div>
+
+      <AnimatePresence>
+        {selected && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.25 }}
+            className="mt-6 flex justify-end"
+          >
+            <button
+              type="button"
+              onClick={handleConfirm}
+              disabled={isPending}
+              className="rounded-md bg-accent text-background font-medium px-6 py-2.5 text-sm hover:bg-accent-dim transition-colors disabled:opacity-60"
+            >
+              {isPending ? "Setting up…" : "Continue"}
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+</file>
+
+<file path="src/lib/auth/actions.ts">
+"use server";
+
+import { createClient } from "@/lib/supabase/server";
+import { syncUserFromSupabase } from "@/lib/auth/sync-user";
+import { prisma } from "@/lib/db";
+import { redirect } from "next/navigation";
+
+export type AuthActionResult = { error: string } | void;
+
+/**
+ * Where a newly-authenticated user should land: onboarding if they haven't
+ * picked a role yet, otherwise the dashboard. Used by email/password login,
+ * signup, and the OAuth callback route so all three paths behave the same.
+ */
+async function postAuthRedirectPath(userId: string): Promise<string> {
+  const profile = await prisma.user.findUnique({ where: { id: userId } });
+  return profile?.role ? "/dashboard" : "/onboarding";
+}
+
+export async function signUpWithEmail(formData: FormData): Promise<AuthActionResult> {
+  const email = formData.get("email") as string;
+  const password = formData.get("password") as string;
+  const name = formData.get("name") as string;
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: { full_name: name },
+      emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
+    },
+  });
+
+  if (error) return { error: error.message };
+
+  // If email confirmation is required, there's no session yet — data.user
+  // exists but data.session is null. Don't sync to Prisma until they
+  // actually confirm and get a real session, otherwise you get orphaned
+  // rows for people who never verify their email.
+  if (data.user && data.session) {
+    await syncUserFromSupabase(data.user);
+    redirect(await postAuthRedirectPath(data.user.id));
+  }
+
+  redirect("/signup?checkEmail=true");
+}
+
+export async function signInWithEmail(formData: FormData): Promise<AuthActionResult> {
+  const email = formData.get("email") as string;
+  const password = formData.get("password") as string;
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+  if (error) return { error: error.message };
+  if (data.user) {
+    await syncUserFromSupabase(data.user);
+    redirect(await postAuthRedirectPath(data.user.id));
+  }
+
+  redirect("/dashboard");
+}
+
+export async function signOut() {
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+  redirect("/");
+}
+
+export async function setUserRole(role: "SOLVER" | "GIVER" | "BOTH") {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { role },
+  });
+
+  redirect("/dashboard");
+}
+
+/**
+ * Sends a password-recovery email. Works for BOTH:
+ *   - existing email/password users who forgot their password
+ *   - OAuth-only users (Google/GitHub) who want to add a password
+ *     so they can also log in with email+password on another device
+ * Supabase's recovery link is signed, single-use, and time-limited (1hr
+ * default) — do not build a custom token/link system for this yourself.
+ */
+export async function requestPasswordReset(formData: FormData): Promise<AuthActionResult> {
+  const email = formData.get("email") as string;
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback?next=/reset-password`,
+  });
+
+  // Deliberately do NOT branch on `error` here in a way that reveals
+  // whether the email exists in the system — that would let an attacker
+  // enumerate registered emails. Supabase's resetPasswordForEmail already
+  // returns success-shaped responses for unknown emails by default; we
+  // mirror that by always showing the same "check your email" message
+  // regardless of what happened server-side. Only surface an error for
+  // genuine input problems (malformed email), not "email not found".
+  if (error && error.status !== 400) {
+    // Non-4xx (network/server issues) are safe to surface generically.
+    return { error: "Something went wrong. Please try again in a moment." };
+  }
+
+  redirect("/forgot-password?sent=true");
+}
+
+/**
+ * Sets a new password. Only works if the caller currently holds a valid
+ * Supabase RECOVERY session — i.e. they arrived here by clicking the
+ * emailed link, which Supabase exchanged for a temporary authenticated
+ * session scoped to a password update. There is no email/token parameter
+ * accepted directly by this action; the session itself is the proof of
+ * ownership. This is what prevents anyone from setting a password for an
+ * account they don't control just by knowing or guessing the email.
+ */
+export async function updatePassword(formData: FormData): Promise<AuthActionResult> {
+  const password = formData.get("password") as string;
+  const confirmPassword = formData.get("confirmPassword") as string;
+
+  if (password !== confirmPassword) {
+    return { error: "Passwords don't match." };
+  }
+  if (password.length < 8) {
+    return { error: "Password must be at least 8 characters." };
+  }
+
+  const supabase = await createClient();
+
+  // getUser() here validates there IS an active session (recovery or
+  // otherwise) before we let anyone update anything.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { error: "This link has expired or already been used. Please request a new one." };
+  }
+
+  const { error } = await supabase.auth.updateUser({ password });
+
+  if (error) return { error: error.message };
+
+  redirect(await postAuthRedirectPath(user.id));
+}
+</file>
+
+<file path="src/lib/auth/sync-user.ts">
+import { prisma } from "@/lib/db";
+import type { User as SupabaseUser } from "@supabase/supabase-js";
+
+/**
+ * Ensures a Prisma User row exists for a given Supabase Auth user.
+ *
+ * Supabase Auth and your Prisma `User` table are two separate systems:
+ * Supabase owns login/password/OAuth/session tokens, Prisma's User table
+ * owns platform data (rating, badges, earnings, problems posted). This
+ * function is the bridge — call it right after a successful sign-up/login
+ * (in the OAuth callback route and the email/password sign-up action) so
+ * every authenticated Supabase user has a matching row here.
+ *
+ * Uses upsert so it's safe to call on every login, not just the first one —
+ * cheap no-op if the row already exists.
+ */
+export async function syncUserFromSupabase(supabaseUser: SupabaseUser) {
+  const email = supabaseUser.email;
+  if (!email) {
+    throw new Error(
+      `Supabase user ${supabaseUser.id} has no email — cannot sync to Prisma User table`
+    );
+  }
+
+  // Pull a display name from whatever the OAuth provider gave us,
+  // falling back to the email's local part for email/password sign-ups.
+  const name =
+    (supabaseUser.user_metadata?.full_name as string | undefined) ??
+    (supabaseUser.user_metadata?.name as string | undefined) ??
+    email.split("@")[0];
+
+  const avatarUrl =
+    (supabaseUser.user_metadata?.avatar_url as string | undefined) ?? null;
+
+  return prisma.user.upsert({
+    where: { id: supabaseUser.id },
+    update: {
+      // Keep email/name/avatar in sync in case they change at the provider,
+      // but never touch rating/earnings/etc. here — those are platform-owned.
+      email,
+      name,
+      avatarUrl,
+    },
+    create: {
+      id: supabaseUser.id,
+      email,
+      name,
+      avatarUrl,
+    },
+  });
+}
+</file>
+
+<file path="src/lib/escrow/release.ts">
+import { EscrowState, SubmissionStatus, ProblemStatus } from "@prisma/client";
+import { getPaymentProvider } from "@/lib/payments";
+import { prisma } from "@/lib/db";
+
+/**
+ * THE core trust guarantee of the platform:
+ *
+ *   Submission.isRevealed must ONLY ever become true here, as a side effect
+ *   of Escrow.state actually becoming RELEASED after a successful payout.
+ *
+ * Every place that serves submission code to a problem-giver (the API route
+ * that streams codeBlobUrl, for example) must check isRevealed server-side
+ * and refuse to serve the real code if false. Never trust a client-supplied
+ * "I paid" flag. Never let a UI button flip isRevealed directly.
+ *
+ * This function is intentionally the ONLY writer of:
+ *   - Escrow.state -> RELEASED
+ *   - Submission.isRevealed -> true
+ *   - Submission.status -> ACCEPTED / REJECTED
+ *   - Problem.status -> COMPLETED
+ * so there is exactly one code path to audit for the money-moves-code-unlocks
+ * guarantee.
+ */
+export async function acceptSubmissionAndRelease(params: {
+  problemId: string;
+  submissionId: string;
+  actingGiverId: string; // for authorization check — must equal Problem.giverId
+}): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const { problemId, submissionId, actingGiverId } = params;
+
+  return prisma.$transaction(async (tx) => {
+    const problem = await tx.problem.findUnique({
+      where: { id: problemId },
+      include: { escrow: true },
+    });
+
+    if (!problem) return { ok: false, reason: "Problem not found" };
+    if (problem.giverId !== actingGiverId) {
+      return { ok: false, reason: "Only the problem giver can accept a submission" };
+    }
+    if (!problem.escrow || problem.escrow.state !== EscrowState.HELD) {
+      return { ok: false, reason: "Escrow is not in a releasable state" };
+    }
+
+    const submission = await tx.submission.findUnique({ where: { id: submissionId } });
+    if (!submission || submission.problemId !== problemId) {
+      return { ok: false, reason: "Submission not found for this problem" };
+    }
+    if (submission.isRevealed) {
+      return { ok: false, reason: "Submission already revealed/paid" };
+    }
+
+    // 1. Call out to the payment provider FIRST — do not flip any DB state
+    //    until money has actually moved. If this throws, the transaction
+    //    rolls back and nothing changes.
+    const provider = getPaymentProvider();
+    const payout = await provider.payoutToSolver({
+      solverId: submission.solverId,
+      amount: Number(problem.escrow.amount),
+      currency: problem.escrow.currency,
+      escrowId: problem.escrow.id,
+    });
+
+    if (payout.status !== "succeeded") {
+      return { ok: false, reason: `Payout did not succeed: ${payout.status}` };
+    }
+
+    // 2. Only now do we flip the reveal gate.
+    await tx.submission.update({
+      where: { id: submissionId },
+      data: { status: SubmissionStatus.ACCEPTED, isRevealed: true },
+    });
+
+    // 3. Reject every other submission on this problem.
+    await tx.submission.updateMany({
+      where: { problemId, id: { not: submissionId } },
+      data: { status: SubmissionStatus.REJECTED },
+    });
+
+    // 4. Release escrow record.
+    await tx.escrow.update({
+      where: { id: problem.escrow.id },
+      data: {
+        state: EscrowState.RELEASED,
+        releasedAt: new Date(),
+        releasedToSubmissionId: submissionId,
+        paymentProviderRef: payout.providerRef,
+      },
+    });
+
+    // 5. Close out the problem.
+    await tx.problem.update({
+      where: { id: problemId },
+      data: { status: ProblemStatus.COMPLETED, completedAt: new Date() },
+    });
+
+    // 6. Bump solver stats. (Rating/badges recalculation can hook in here later.)
+    await tx.user.update({
+      where: { id: submission.solverId },
+      data: {
+        completionCount: { increment: 1 },
+        totalEarned: { increment: problem.escrow.amount },
+      },
+    });
+
+    return { ok: true };
+  });
+}
+</file>
+
+<file path="src/lib/evaluation/types.ts">
+/**
+ * Evaluation service socket.
+ *
+ * v1 decision: NO automated grading. Problem-givers manually review every
+ * submission. This interface exists so that when you're ready to add an
+ * LLM-assisted first-pass (OpenAI/Anthropic API, or self-hosted Qwen on
+ * RunPod), you implement one class and wire it in — no changes needed to
+ * submission flow, schema, or UI beyond rendering `evaluationResult`.
+ *
+ * Cost note for future you: API-based (OpenAI/Anthropic) is $0 fixed cost,
+ * pay-per-call — better until volume is high. RunPod GPU rental is a fixed
+ * hourly cost regardless of usage — better once submission volume is high
+ * enough to keep a GPU busy. Don't build the RunPod path until the API
+ * path's bill tells you it's worth it.
+ */
+
+export interface EvaluationResult {
+  /** 0-1 confidence score this submission correctly solves the problem */
+  confidenceScore: number;
+  /** short human-readable summary for the giver, e.g. "Passes stated requirements, no obvious edge-case gaps" */
+  summary: string;
+  /** flags worth the giver's attention, e.g. ["no error handling", "hardcoded test values"] */
+  flags: string[];
+  raw?: unknown;
+}
+
+export interface EvaluationService {
+  evaluateSubmission(params: {
+    problemDescription: string;
+    submissionPreview: string; // the masked preview, NOT full code, until reveal
+  }): Promise<EvaluationResult>;
+}
+
+/**
+ * v1 stub — always returns a neutral non-opinionated result.
+ * Swap for a real implementation (OpenAiEvaluationService, etc.) later.
+ */
+export class NullEvaluationService implements EvaluationService {
+  async evaluateSubmission(): Promise<EvaluationResult> {
+    return {
+      confidenceScore: 0.5,
+      summary: "Automated evaluation not yet enabled — please review manually.",
+      flags: [],
+    };
+  }
+}
+
+export function getEvaluationService(): EvaluationService {
+  return new NullEvaluationService();
+}
+</file>
+
+<file path="src/lib/payments/index.ts">
+import type { PaymentProvider } from "./types";
+import { WhopPaymentProvider } from "./whop-provider";
+
+/**
+ * Single switch point. When Stripe is ready:
+ *   1. Write src/lib/payments/stripe-provider.ts implementing PaymentProvider
+ *   2. Change the line below to `return new StripeProvider()`
+ * Nothing in the rest of the app needs to change.
+ */
+export function getPaymentProvider(): PaymentProvider {
+  return new WhopPaymentProvider();
+}
+
+export type { PaymentProvider, ChargeResult, PayoutResult } from "./types";
+</file>
+
+<file path="src/lib/payments/types.ts">
+/**
+ * Payment provider abstraction.
+ *
+ * Why this exists: v1 uses Whop (you already have it set up), but the plan
+ * is to move to Stripe at final launch. Every other part of the codebase
+ * (escrow logic, API routes) should talk to THIS interface, never to the
+ * Whop SDK directly. When Stripe is ready, we write StripeProvider and
+ * flip one line in getPaymentProvider() — nothing else changes.
+ */
+
+export interface ChargeResult {
+  /** Generic reference stored in Escrow.paymentProviderRef */
+  providerRef: string;
+  status: "succeeded" | "pending" | "failed";
+  raw?: unknown;
+}
+
+export interface PayoutResult {
+  providerRef: string;
+  status: "succeeded" | "pending" | "failed";
+  raw?: unknown;
+}
+
+export interface PaymentProvider {
+  /**
+   * Capture funds from the problem-giver into platform-held escrow.
+   * Called when a problem moves DRAFT -> FUNDED.
+   */
+  chargeForEscrow(params: {
+    userId: string;
+    amount: number; // in major currency units, e.g. dollars not cents
+    currency: string;
+    problemId: string;
+  }): Promise<ChargeResult>;
+
+  /**
+   * Release held funds to a solver's connected account.
+   * Called ONLY by src/lib/escrow/release.ts after a submission is accepted.
+   */
+  payoutToSolver(params: {
+    solverId: string;
+    amount: number;
+    currency: string;
+    escrowId: string;
+  }): Promise<PayoutResult>;
+
+  /**
+   * Refund held funds back to the problem-giver.
+   * Called when a problem is cancelled/expired with no accepted submission.
+   */
+  refundToGiver(params: {
+    giverId: string;
+    amount: number;
+    currency: string;
+    escrowId: string;
+  }): Promise<PayoutResult>;
+
+  /**
+   * Verify a user has a connected payout destination + passes basic KYC.
+   * Maps to your "simple identity + bank verification" requirement.
+   */
+  isPayoutReady(userId: string): Promise<boolean>;
+}
+</file>
+
+<file path="src/lib/payments/whop-provider.ts">
+import type { PaymentProvider, ChargeResult, PayoutResult } from "./types";
+
+/**
+ * Whop implementation of PaymentProvider.
+ *
+ * TODO (when you wire this up):
+ *  - npm install @whop/api (or whatever the current Whop SDK package is —
+ *    check https://dev.whop.com for the current package name, it has changed before)
+ *  - Set WHOP_API_KEY, WHOP_APP_ID in .env
+ *  - Whop's model is subscription/product-purchase-centric, not a generic
+ *    escrow/payout API like Stripe Connect. You will likely need to:
+ *      1. Charge the giver via a Whop checkout session for the bounty amount
+ *      2. Hold that as "platform revenue" internally (your own ledger row,
+ *         i.e. the Escrow model already in the schema) since Whop doesn't
+ *         natively know about your escrow concept
+ *      3. Pay solvers out manually/via a separate flow until Stripe Connect
+ *         replaces this — Whop is not designed for paying out third parties
+ *         who aren't creators on Whop's platform. This is the biggest
+ *         reason this whole class is an interface: expect this file's
+ *         internals to change a lot before it changes shape.
+ */
+export class WhopPaymentProvider implements PaymentProvider {
+  async chargeForEscrow(params: {
+    userId: string;
+    amount: number;
+    currency: string;
+    problemId: string;
+  }): Promise<ChargeResult> {
+    // TODO: create a Whop checkout/charge for params.amount, tagged with problemId
+    throw new Error(
+      "WhopPaymentProvider.chargeForEscrow not implemented yet — wire up Whop SDK here"
+    );
+  }
+
+  async payoutToSolver(params: {
+    solverId: string;
+    amount: number;
+    currency: string;
+    escrowId: string;
+  }): Promise<PayoutResult> {
+    // TODO: Whop does not natively support arbitrary third-party payouts.
+    // Likely needs a manual/batched payout flow for v1, or an early move
+    // to Stripe Connect Express accounts for solvers specifically.
+    throw new Error(
+      "WhopPaymentProvider.payoutToSolver not implemented yet — see TODO above"
+    );
+  }
+
+  async refundToGiver(params: {
+    giverId: string;
+    amount: number;
+    currency: string;
+    escrowId: string;
+  }): Promise<PayoutResult> {
+    throw new Error(
+      "WhopPaymentProvider.refundToGiver not implemented yet — wire up Whop SDK here"
+    );
+  }
+
+  async isPayoutReady(userId: string): Promise<boolean> {
+    // TODO: check bankVerified + identityVerified on the User row for now;
+    // later this should also check a real connected payout destination.
+    throw new Error(
+      "WhopPaymentProvider.isPayoutReady not implemented yet"
+    );
+  }
+}
+</file>
+
+<file path="src/lib/problems/actions.ts">
+"use server";
+
+import { createClient } from "@/lib/supabase/server";
+import { acceptSubmissionAndRelease } from "@/lib/escrow/release";
+import { revalidatePath } from "next/cache";
+
+export type AcceptSubmissionResult = { error: string } | { ok: true };
+
+export async function acceptSubmission(
+  problemId: string,
+  submissionId: string
+): Promise<AcceptSubmissionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "You must be logged in to do this." };
+
+  const result = await acceptSubmissionAndRelease({
+    problemId,
+    submissionId,
+    actingGiverId: user.id,
+  });
+
+  if (!result.ok) return { error: result.reason };
+
+  revalidatePath(`/dashboard/giver/problems/${problemId}`);
+  return { ok: true };
+}
+</file>
+
+<file path="src/lib/supabase/client.ts">
+import { createBrowserClient } from "@supabase/ssr";
+
+/**
+ * Use this in Client Components ("use client" files) — login forms,
+ * signup forms, anything that runs in the browser and needs to call
+ * supabase.auth.signInWithPassword(), signInWithOAuth(), etc.
+ *
+ * For Server Components / Route Handlers / Server Actions, use
+ * src/lib/supabase/server.ts instead — cookies work differently there.
+ */
+export function createClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
+</file>
+
+<file path="src/lib/supabase/middleware.ts">
+import { createServerClient } from "@supabase/ssr";
+import { NextResponse, type NextRequest } from "next/server";
+
+/**
+ * Refreshes the Supabase session on every request and redirects
+ * unauthenticated users away from protected routes.
+ *
+ * This MUST run on every request that touches auth state, which is why
+ * it lives in middleware.ts rather than being called ad-hoc in pages —
+ * Supabase's session tokens expire and need silent refreshing, and
+ * middleware is the only place that can rewrite the response cookies
+ * before the page itself renders.
+ */
+export async function updateSession(request: NextRequest) {
+  let supabaseResponse = NextResponse.next({ request });
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value)
+          );
+          supabaseResponse = NextResponse.next({ request });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options)
+          );
+        },
+      },
+    }
+  );
+
+  // IMPORTANT: do not remove this. getUser() validates the session against
+  // Supabase's servers (unlike getSession(), which just reads the local
+  // cookie and can be stale/spoofed client-side). This is the actual
+  // authentication check.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const isProtectedRoute =
+    request.nextUrl.pathname.startsWith("/dashboard") ||
+    request.nextUrl.pathname.startsWith("/onboarding") ||
+    request.nextUrl.pathname.startsWith("/problems/new") ||
+    request.nextUrl.pathname.startsWith("/settings");
+
+  const isAuthRoute =
+    request.nextUrl.pathname.startsWith("/login") ||
+    request.nextUrl.pathname.startsWith("/signup");
+
+  if (!user && isProtectedRoute) {
+    const redirectUrl = new URL("/login", request.url);
+    redirectUrl.searchParams.set("redirectedFrom", request.nextUrl.pathname);
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  if (user && isAuthRoute) {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
+
+  // IMPORTANT: supabaseResponse must be returned as-is. If you need to
+  // create a new response, copy the cookies from supabaseResponse onto it,
+  // or the session refresh will silently break.
+  return supabaseResponse;
+}
+</file>
+
+<file path="src/lib/supabase/server.ts">
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+
+/**
+ * Use this in Server Components, Route Handlers, and Server Actions.
+ * Must be called fresh (awaited) each time — it reads the current
+ * request's cookies to figure out who's logged in.
+ *
+ * Do NOT reuse a single instance across requests, unlike the Prisma
+ * client singleton pattern — this one is request-scoped by design.
+ */
+export async function createClient() {
+  const cookieStore = await cookies();
+
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            );
+          } catch {
+            // setAll was called from a Server Component, which can't set
+            // cookies directly. This is safe to ignore IF you have
+            // middleware refreshing the session (see middleware.ts) —
+            // the middleware's response is what actually persists the
+            // refreshed session cookie back to the browser.
+          }
+        },
+      },
+    }
+  );
+}
+</file>
+
+<file path="src/lib/db.ts">
+import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+
+// Prisma 7 requires an explicit driver adapter — this is the runtime
+// connection (pooled, via Supabase's pgbouncer endpoint). The CLI's own
+// migrations use DIRECT_URL, configured separately in prisma.config.ts.
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+
+// Prevents exhausting DB connections during Next.js dev hot-reload,
+// which creates a new module scope on every file save.
+const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+
+export const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter });
+
+if (process.env.NODE_ENV !== "production") {
+  globalForPrisma.prisma = prisma;
+}
+</file>
+
+<file path="src/lib/utils.ts">
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+</file>
+
+<file path="src/proxy.ts">
+import { type NextRequest } from "next/server";
+import { updateSession } from "@/lib/supabase/middleware";
+
+export async function proxy(request: NextRequest) {
+  return await updateSession(request);
+}
+
+export const config = {
+  matcher: [
+    /*
+     * Run on everything except static assets and image optimization files,
+     * so auth state stays fresh across normal page navigation without
+     * wasting a Supabase call on every image/font/css request.
+     */
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
+};
+</file>
+
+<file path=".gitattributes">
+# Auto detect text files and perform LF normalization
+* text=auto
+</file>
+
+<file path=".gitignore">
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+</file>
+
+<file path="eslint.config.mjs">
+import { defineConfig, globalIgnores } from "eslint/config";
+import nextVitals from "eslint-config-next/core-web-vitals";
+import nextTs from "eslint-config-next/typescript";
+
+const eslintConfig = defineConfig([
+  ...nextVitals,
+  ...nextTs,
+  // Override default ignores of eslint-config-next.
+  globalIgnores([
+    // Default ignores of eslint-config-next:
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+  ]),
+]);
+
+export default eslintConfig;
+</file>
+
+<file path="next.config.ts">
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  /* config options here */
+};
+
+export default nextConfig;
+</file>
+
+<file path="package.json">
+{
+  "name": "platform-scaffold",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.9.1",
+    "@prisma/client": "^7.9.1",
+    "@supabase/ssr": "^0.12.3",
+    "@supabase/supabase-js": "^2.110.9",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "dotenv": "^17.4.2",
+    "framer-motion": "^12.42.2",
+    "lucide-react": "^1.27.0",
+    "next": "16.2.12",
+    "pg": "^8.22.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "tailwind-merge": "^3.6.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/pg": "^8.20.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.12",
+    "prisma": "^7.9.1",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
+</file>
+
+<file path="postcss.config.mjs">
+const config = {
+  plugins: {
+    "@tailwindcss/postcss": {},
+  },
+};
+
+export default config;
+</file>
+
+<file path="prisma.config.ts">
+import "dotenv/config";
+import { defineConfig, env } from "prisma/config";
+
+// Prisma 7 moved connection config out of schema.prisma and into this file.
+// The Prisma CLI (migrate, studio, etc.) uses DIRECT_URL so migrations run
+// over a direct connection, not through Supabase's pooler.
+export default defineConfig({
+  schema: "prisma/schema.prisma",
+  migrations: {
+    path: "prisma/migrations",
+  },
+  datasource: {
+    url: env("DIRECT_URL"),
+  },
+});
+</file>
+
+<file path="README.md">
+# Platform (working name) — v1 scaffold
+
+Escrow-backed coding bounty platform. See project chat history for full product spec.
+
+## Stack
+- Next.js 15 (App Router) + TypeScript
+- Tailwind CSS + Framer Motion
+- Prisma + PostgreSQL (via Supabase)
+- Supabase Auth + Storage
+- Whop SDK for payments (v1) → Stripe planned for final launch
+
+## Getting started (PowerShell, from your D drive)
+
+```powershell
+# 1. Install dependencies
+npm install
+
+# 2. Set up environment
+Copy-Item .env.example .env
+# then fill in .env with your Supabase project's connection strings and keys
+# (Supabase dashboard -> Project Settings -> Database, and -> API)
+# DATABASE_URL = the pooled "Transaction" connection string (used at runtime)
+# DIRECT_URL   = the direct "Session" connection string (used by prisma.config.ts for migrations)
+
+# 3. Generate Prisma client and run first migration
+npx prisma generate
+npx prisma migrate dev --name init
+
+# 4. (Recommended) Add shadcn/ui components as you need them
+npx shadcn@latest init
+# then e.g.:
+npx shadcn@latest add button card dialog input badge avatar
+
+# 5. Run dev server
+npm run dev
+```
+
+Then open http://localhost:3000
+
+### Note on Prisma 7
+
+This project uses Prisma 7, which changed how connections work: URLs no longer
+live in `prisma/schema.prisma` — they live in `prisma.config.ts` (CLI/migrations,
+uses `DIRECT_URL`) and are passed explicitly to `PrismaClient` via a driver
+adapter in `src/lib/db.ts` (runtime, uses `DATABASE_URL`). If a tutorial or
+AI answer shows `url = env("DATABASE_URL")` inside `schema.prisma`, that's the
+pre-v7 way and will throw a schema validation error — the two files above are
+where that config actually lives now.
+
+## Project structure
+
+```
+prisma/schema.prisma        — full data model (User, Problem, Escrow, Submission, Badge, Review)
+src/lib/payments/           — payment provider abstraction (Whop now, Stripe-swappable)
+src/lib/escrow/release.ts   — THE core trust mechanism: money-moves-before-code-reveals
+src/lib/evaluation/         — stub socket for future LLM-assisted review (OpenAI/Anthropic/RunPod)
+src/lib/db.ts               — Prisma client singleton
+src/components/marketing/   — landing page components (hero, bounty ticket, challenge types)
+src/app/(marketing)/        — public-facing pages (empty, ready for you)
+src/app/(app)/              — authenticated app pages: problems, dashboard (empty, ready for you)
+src/app/api/                — API routes: problems, submissions, escrow (empty, ready for you)
+```
+
+## Design tokens
+
+Ink-navy background (`#0B0F1A`) with an electric lime accent (`#C4F135`) reserved for
+CTAs and active states, and amber (`#FFB020`) reserved exclusively for money/escrow states.
+Type: Inter (body) + IBM Plex Mono (numbers, bounty amounts, tags) — see `src/app/globals.css`
+for the full token list and `src/app/layout.tsx` for font setup.
+
+## What's NOT built yet (by design — v1 scope decisions)
+
+- No code execution sandbox — submissions are manually reviewed by the problem-giver.
+  `src/lib/evaluation/` has a stub interface ready for an LLM-assisted first pass later.
+- Whop provider methods are unimplemented stubs (`src/lib/payments/whop-provider.ts`) —
+  wire up the actual Whop SDK calls there. NOTE: Whop is built around creator subscriptions/
+  purchases, not generic third-party payouts — you'll likely need a manual/batched payout
+  flow for solvers until Stripe Connect replaces this.
+- No auth wired up yet — recommend Supabase Auth, integrate in src/app/(app)/ layout.
+- Badge-awarding logic (checking criteria, assigning UserBadge) not implemented —
+  schema supports it, logic goes in a new src/lib/badges/ module.
+- Rating/accuracy calculation not implemented — same, schema is ready.
+
+## Critical invariant — read before touching escrow code
+
+`Submission.isRevealed` must ONLY ever be set to `true` inside
+`src/lib/escrow/release.ts`, as a side effect of a successful payout. This is
+the entire trust guarantee of the platform (giver can't see full code until
+they've actually paid). Never set it from a client request, an admin panel
+shortcut, or any other code path without going through that function.
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "**/*.mts"
+  ],
+  "exclude": ["node_modules"]
+}
+</file>
+
+<file path="src/app/(app)/dashboard/giver/problems/[id]/page.tsx">
+import { prisma } from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
+import { redirect, notFound } from "next/navigation";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+import { AcceptSubmissionButton } from "@/components/dashboard/accept-submission-button";
+
+const statusLabel: Record<string, { label: string; color: string }> = {
+  DRAFT: { label: "Draft", color: "text-foreground-muted" },
+  FUNDED: { label: "Funded", color: "text-money" },
+  OPEN: { label: "Open", color: "text-accent" },
+  IN_REVIEW: { label: "In review", color: "text-money" },
+  COMPLETED: { label: "Completed", color: "text-foreground-muted" },
+  CANCELLED: { label: "Cancelled", color: "text-danger" },
+  REFUNDED: { label: "Refunded", color: "text-foreground-muted" },
+};
+
+const submissionStatusLabel: Record<string, { label: string; color: string }> =
+  {
+    SUBMITTED: { label: "Submitted", color: "text-foreground-muted" },
+    UNDER_REVIEW: { label: "Under review", color: "text-money" },
+    ACCEPTED: { label: "Accepted", color: "text-accent" },
+    REJECTED: { label: "Rejected", color: "text-danger" },
+  };
+
+export default async function GiverProblemDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const profile = await prisma.user.findUnique({ where: { id: user.id } });
+  if (!profile) redirect("/login");
+  if (profile.role === "SOLVER") redirect("/dashboard/solver");
+  if (!profile.role) redirect("/onboarding");
+
+  const problem = await prisma.problem.findUnique({
+    where: { id },
+    include: {
+      escrow: true,
+      submissions: {
+        include: { solver: true },
+        orderBy: { submittedAt: "desc" },
+      },
+    },
+  });
+
+  if (!problem) notFound();
+  // Ownership check — a giver can only manage their own problems.
+  if (problem.giverId !== user.id) notFound();
+
+  const status = statusLabel[problem.status] ?? statusLabel.DRAFT;
+  const canAccept =
+    problem.escrow?.state === "HELD" &&
+    (problem.status === "OPEN" || problem.status === "IN_REVIEW");
+
+  return (
+    <main className="px-8 py-10 max-w-4xl">
+      <Link
+        href="/dashboard/giver/problems"
+        className="inline-flex items-center gap-1.5 text-sm text-foreground-muted hover:text-foreground transition-colors mb-6"
+      >
+        <ArrowLeft size={14} />
+        Back to my problems
+      </Link>
+
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight mb-1">
+            {problem.title}
+          </h1>
+          <p className={`text-xs font-mono ${status.color}`}>{status.label}</p>
+        </div>
+        <span className="font-mono text-xl font-semibold text-money shrink-0 pl-4">
+          {problem.bountyAmount ? `$${problem.bountyAmount}` : "Free"}
+        </span>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5 mb-6">
+        {problem.tags.map((tag) => (
+          <span
+            key={tag}
+            className="text-[11px] font-mono text-foreground-muted bg-surface-raised px-2 py-0.5 rounded border border-border"
+          >
+            {tag}
+          </span>
+        ))}
+      </div>
+
+      <div className="rounded-lg border border-border bg-surface p-6 mb-10">
+        <p className="text-sm text-foreground-muted leading-relaxed whitespace-pre-wrap">
+          {problem.description}
+        </p>
+      </div>
+
+      <h2 className="text-sm font-medium text-foreground-muted uppercase tracking-wide mb-4">
+        Submissions ({problem.submissions.length})
+      </h2>
+
+      {problem.submissions.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border p-10 text-center">
+          <p className="text-sm text-foreground-muted">
+            No submissions yet — solvers will show up here once they submit.
+          </p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {problem.submissions.map((s) => {
+            const sStatus =
+              submissionStatusLabel[s.status] ??
+              submissionStatusLabel.SUBMITTED;
+            return (
+              <div
+                key={s.id}
+                className="rounded-lg border border-border bg-surface p-5 flex items-start justify-between gap-4"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="text-sm font-medium text-foreground">
+                      {s.solver.name}
+                    </p>
+                    <span className={`text-xs font-mono ${sStatus.color}`}>
+                      {sStatus.label}
+                    </span>
+                  </div>
+                  <p className="text-xs text-foreground-muted mb-2">
+                    Submitted {s.submittedAt.toLocaleDateString()}
+                  </p>
+                  <p className="text-sm text-foreground-muted leading-relaxed">
+                    {s.isRevealed ? (
+                      <a
+                        href={s.codeBlobUrl}
+                        className="text-accent hover:underline"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        View full solution →
+                      </a>
+                    ) : (
+                      s.previewText
+                    )}
+                  </p>
+                </div>
+
+                {canAccept &&
+                  s.status !== "ACCEPTED" &&
+                  s.status !== "REJECTED" && (
+                    <AcceptSubmissionButton
+                      problemId={problem.id}
+                      submissionId={s.id}
+                    />
+                  )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </main>
+  );
+}
+</file>
+
+<file path="src/app/(app)/dashboard/layout.tsx">
+import { createClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/db";
+import { redirect } from "next/navigation";
+
+export default async function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) redirect("/login");
+
+  const profile = await prisma.user.findUnique({ where: { id: user.id } });
+
+  if (!profile?.role) redirect("/onboarding");
+
+  return <>{children}</>;
+}
+</file>
+
+<file path="src/app/(app)/problems/[id]/page.tsx">
+import { prisma } from "@/lib/db";
+import { notFound } from "next/navigation";
+
+export default async function ProblemDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+
+  const problem = await prisma.problem.findUnique({
+    where: { id },
+    include: { giver: true, _count: { select: { submissions: true } } },
+  });
+
+  if (!problem) notFound();
+
+  return (
+    <main className="px-8 py-10 max-w-3xl">
+      <div className="flex items-start justify-between mb-4">
+        <h1 className="text-2xl font-semibold tracking-tight">{problem.title}</h1>
+        <span className="font-mono text-xl font-semibold text-money shrink-0 pl-4">
+          {problem.bountyAmount ? `$${problem.bountyAmount}` : "Free"}
+        </span>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5 mb-6">
+        {problem.tags.map((tag) => (
+          <span
+            key={tag}
+            className="text-[11px] font-mono text-foreground-muted bg-surface-raised px-2 py-0.5 rounded border border-border"
+          >
+            {tag}
+          </span>
+        ))}
+      </div>
+
+      <div className="rounded-lg border border-border bg-surface p-6 mb-6">
+        <p className="text-sm text-foreground-muted leading-relaxed whitespace-pre-wrap">
+          {problem.description}
+        </p>
+      </div>
+
+      <div className="flex items-center justify-between text-sm text-foreground-muted mb-8">
+        <span>Posted by {problem.giver.name}</span>
+        <span>{problem._count.submissions} submission{problem._count.submissions === 1 ? "" : "s"}</span>
+      </div>
+
+      {/* TODO: submission form goes here once the code-upload flow is wired up */}
+      <button
+        type="button"
+        className="rounded-md bg-accent text-background font-medium px-5 py-2.5 text-sm hover:bg-accent-dim transition-colors"
+      >
+        Submit a solution
+      </button>
+    </main>
+  );
+}
+</file>
+
+<file path="src/app/(app)/problems/page.tsx">
+import { prisma } from "@/lib/db";
+import Link from "next/link";
+
+export default async function ProblemsPage() {
+  const problems = await prisma.problem.findMany({
+    where: { status: "OPEN" },
+    include: { _count: { select: { submissions: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return (
+    <main className="px-8 py-10 max-w-4xl">
+      <h1 className="text-2xl font-semibold tracking-tight mb-1">Open bounties</h1>
+      <p className="text-sm text-foreground-muted mb-8">
+        Pick something and submit a solution — funds are already in escrow.
+      </p>
+
+      {problems.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border p-10 text-center">
+          <p className="text-sm text-foreground-muted">
+            No open bounties right now. Check back soon.
+          </p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {problems.map((p) => (
+            <Link
+              key={p.id}
+              href={`/problems/${p.id}`}
+              className="rounded-lg border border-border bg-surface p-5 flex items-center justify-between hover:border-foreground-muted transition-colors"
+            >
+              <div>
+                <h3 className="font-medium text-foreground mb-1">{p.title}</h3>
+                <div className="flex flex-wrap gap-1.5">
+                  {p.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="text-[11px] font-mono text-foreground-muted bg-surface-raised px-2 py-0.5 rounded border border-border"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="text-right shrink-0 pl-4">
+                <span className="font-mono text-lg font-semibold text-money block">
+                  {p.bountyAmount ? `$${p.bountyAmount}` : "Free"}
+                </span>
+                <span className="text-xs text-foreground-muted">
+                  {p._count.submissions} submission{p._count.submissions === 1 ? "" : "s"}
+                </span>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+    </main>
+  );
+}
+</file>
+
+<file path="src/components/dashboard/sidebar.tsx">
+import Link from "next/link";
+import {
+  LayoutDashboard,
+  Search,
+  FileText,
+  Wallet,
+  Settings,
+  PlusCircle,
+  Inbox,
+} from "lucide-react";
+
+type Role = "SOLVER" | "GIVER" | "BOTH";
+
+const solverLinks = [
+  { href: "/dashboard/solver", label: "Overview", icon: LayoutDashboard },
+  { href: "/problems", label: "Browse bounties", icon: Search },
+  { href: "/dashboard/solver/submissions", label: "My submissions", icon: FileText },
+  { href: "/dashboard/solver/earnings", label: "Earnings", icon: Wallet },
+];
+
+const giverLinks = [
+  { href: "/dashboard/giver", label: "Overview", icon: LayoutDashboard },
+  { href: "/dashboard/giver/problems", label: "My bounties", icon: Inbox },
+  { href: "/problems/new", label: "Post a bounty", icon: PlusCircle },
+];
+
+/**
+ * Role-aware sidebar. For BOTH, this will eventually merge/toggle between
+ * the two link sets (product decision made 2026-07-29: build Solver and
+ * Giver dashboards first, compose BOTH from their pieces afterward).
+ */
+export function DashboardSidebar({ role }: { role: Role }) {
+  const links = role === "GIVER" ? giverLinks : solverLinks;
+
+  return (
+    <aside className="w-56 shrink-0 border-r border-border px-3 py-6 flex flex-col gap-1">
+      {links.map((link) => {
+        const Icon = link.icon;
+        return (
+          <Link
+            key={link.href}
+            href={link.href}
+            className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-foreground-muted hover:text-foreground hover:bg-surface transition-colors"
+          >
+            <Icon size={16} />
+            {link.label}
+          </Link>
+        );
+      })}
+
+      <div className="mt-auto pt-4 border-t border-border">
+        <Link
+          href="/settings"
+          className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-foreground-muted hover:text-foreground hover:bg-surface transition-colors"
+        >
+          <Settings size={16} />
+          Settings
+        </Link>
+      </div>
+    </aside>
+  );
+}
+</file>
+
+<file path="src/app/(app)/dashboard/giver/page.tsx">
+import { createClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/db";
+import { redirect } from "next/navigation";
+import Link from "next/link";
+import { Briefcase, Clock, DollarSign, PlusCircle } from "lucide-react";
+import { StatCard } from "@/components/dashboard/stat-card";
+
+const statusLabel: Record<string, { label: string; color: string }> = {
+  DRAFT: { label: "Draft", color: "text-foreground-muted" },
+  FUNDED: { label: "Funded", color: "text-money" },
+  OPEN: { label: "Open", color: "text-accent" },
+  IN_REVIEW: { label: "In review", color: "text-money" },
+  COMPLETED: { label: "Completed", color: "text-foreground-muted" },
+  CANCELLED: { label: "Cancelled", color: "text-danger" },
+  REFUNDED: { label: "Refunded", color: "text-foreground-muted" },
+};
+
+export default async function GiverDashboardPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const profile = await prisma.user.findUnique({ where: { id: user.id } });
+  if (!profile) redirect("/login");
+
+  // This page is GIVER-only. Someone who picked SOLVER (or hasn't picked
+  // yet) typing /dashboard/giver directly gets sent to where they
+  // actually belong — never shown content meant for a different role.
+  // BOTH-role users are allowed here since Giver is one of their two
+  // real views (see sidebar.tsx comment on the BOTH plan).
+  if (profile.role === "SOLVER") redirect("/dashboard/solver");
+  if (!profile.role) redirect("/onboarding");
+
+  const problems = await prisma.problem.findMany({
+    where: { giverId: user.id },
+    include: {
+      _count: { select: { submissions: true } },
+      escrow: true,
+    },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+  });
+
+  const activeCount = problems.filter((p) =>
+    ["OPEN", "IN_REVIEW", "FUNDED"].includes(p.status)
+  ).length;
+
+  const totalFunded = problems.reduce(
+    (sum, p) => sum + (p.escrow ? Number(p.escrow.amount) : 0),
+    0
+  );
+
+  const pendingReview = problems.reduce((sum, p) => sum + p._count.submissions, 0);
+
+  return (
+    <main className="px-8 py-10 max-w-4xl">
+      <div className="mb-8 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight mb-1">
+            Welcome back, {profile.name}
+          </h1>
+          <p className="text-sm text-foreground-muted">
+            Manage the bounties you&apos;ve posted and review submissions.
+          </p>
+        </div>
+        <Link
+          href="/problems/new"
+          className="flex items-center gap-2 rounded-md bg-accent text-background font-medium px-4 py-2.5 text-sm hover:bg-accent-dim transition-colors shrink-0"
+        >
+          <PlusCircle size={16} />
+          Post a bounty
+        </Link>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-10">
+        <StatCard label="Active problems" value={String(activeCount)} icon={Briefcase} />
+        <StatCard
+          label="Total in escrow"
+          value={`$${totalFunded.toFixed(2)}`}
+          icon={DollarSign}
+          accent
+        />
+        <StatCard label="Submissions to review" value={String(pendingReview)} icon={Clock} />
+      </div>
+
+      <section>
+        <div className="flex items-center justify-between mb-4">
+  <h2 className="text-sm font-medium text-foreground-muted uppercase tracking-wide">
+    Your bounties
+  </h2>
+  <Link href="/dashboard/giver/problems" className="text-sm text-accent hover:underline">
+    View all →
+  </Link>
+</div>
+
+        {problems.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border p-10 text-center">
+            <p className="text-sm text-foreground-muted mb-4">
+              You haven&apos;t posted a bounty yet. Fund a bounty and get it
+              in front of solvers today.
+            </p>
+            <Link
+              href="/problems/new"
+              className="inline-block rounded-md bg-accent text-background font-medium px-5 py-2.5 text-sm hover:bg-accent-dim transition-colors"
+            >
+              Post your first bounty
+            </Link>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {problems.map((p) => {
+              const status = statusLabel[p.status] ?? statusLabel.DRAFT;
+              return (
+                <Link
+                  key={p.id}
+                  href={`/dashboard/giver/problems/${p.id}`}
+                  className="rounded-lg border border-border bg-surface p-4 flex items-center justify-between hover:border-foreground-muted transition-colors"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{p.title}</p>
+                    <p className={`text-xs mt-1 font-mono ${status.color}`}>
+                      {status.label} · {p._count.submissions} submission
+                      {p._count.submissions === 1 ? "" : "s"}
+                    </p>
+                  </div>
+                  <span className="text-xs font-mono text-money">
+                    {p.bountyAmount ? `$${p.bountyAmount}` : "Free"}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </section>
+    </main>
+  );
+}
+</file>
+
+</files>
