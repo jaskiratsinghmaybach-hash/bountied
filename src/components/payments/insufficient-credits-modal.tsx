@@ -1,6 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { WhopCheckoutEmbed } from "@whop/checkout/react";
+import { retryFundDraft } from "@/lib/problems/create-actions";
+
+const POLL_INTERVAL_MS = 2000;
+const POLL_TIMEOUT_MS = 30000;
+
+type Phase = "picking" | "checkout" | "confirming" | "error";
 
 /**
  * Shown when a Giver tries to fund a bounty and their credit balance falls
@@ -8,21 +16,25 @@ import { useMemo, useState } from "react";
  * and nothing more sits idle), but also offers round quick-pick amounts
  * for people who'd rather pre-load their wallet for future bounties, plus
  * a manual amount for anything larger — per product spec.
+ *
+ * On completion, the embedded checkout's onComplete is a UI cue only —
+ * the real credit lands via the signature-verified webhook. This polls
+ * /api/checkout/status until the balance actually reflects the top-up,
+ * then retries funding the draft problem automatically.
  */
 export function InsufficientCreditsModal({
   required,
   onClose,
   draftProblemId,
 }: {
-  /** Exact amount still needed (bountyAmount * 1.10, minus current balance already applied server-side, or the full required total — caller decides). */
+  /** Shortfall — amount still needed on top of current balance. */
   required: number;
   onClose: () => void;
   draftProblemId?: string;
 }) {
+  const router = useRouter();
   const exactShortfall = Math.round(required * 100) / 100;
 
-  // Quick-pick pills: the exact shortfall first, then round-number options
-  // at or above it so the giver can pre-load extra for next time.
   const pillOptions = useMemo(() => {
     const rounded = [50, 100, 250].filter((v) => v > exactShortfall);
     return [exactShortfall, ...rounded];
@@ -31,25 +43,122 @@ export function InsufficientCreditsModal({
   const [selected, setSelected] = useState<number>(exactShortfall);
   const [customValue, setCustomValue] = useState("");
   const [useCustom, setUseCustom] = useState(false);
-  const [pending, setPending] = useState(false);
+  const [phase, setPhase] = useState<Phase>("picking");
+  const [planId, setPlanId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const amount = useCustom ? Number(customValue) : selected;
   const isValid = Number.isFinite(amount) && amount >= exactShortfall && amount > 0;
 
-  async function handleAddCredits() {
-    if (!isValid) return;
-    setPending(true);
-    const res = await fetch("/api/checkout/create-session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount, draftProblemId }),
-    });
-    const data = await res.json();
-    setPending(false);
+  useEffect(() => {
+    return () => {
+      if (pollTimer.current) clearInterval(pollTimer.current);
+    };
+  }, []);
 
-    if (data.checkoutUrl) {
-      window.location.href = data.checkoutUrl;
+  async function handleStartCheckout() {
+    if (!isValid) return;
+    setPhase("checkout");
+    setErrorMessage(null);
+
+    try {
+      const res = await fetch("/api/checkout/create-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount, draftProblemId }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.planId) {
+        setPhase("error");
+        setErrorMessage(data.error ?? "Could not start checkout. Try again.");
+        return;
+      }
+
+      setPlanId(data.planId);
+    } catch {
+      setPhase("error");
+      setErrorMessage("Could not reach the server. Check your connection and try again.");
     }
+  }
+
+  function handleCheckoutComplete() {
+    setPhase("confirming");
+    const startedAt = Date.now();
+
+    pollTimer.current = setInterval(async () => {
+      if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
+        if (pollTimer.current) clearInterval(pollTimer.current);
+        setPhase("error");
+        setErrorMessage(
+          "Payment received, but it's taking longer than usual to confirm. Refresh the page in a moment — your bounty will fund automatically."
+        );
+        return;
+      }
+
+      const res = await fetch("/api/checkout/status");
+      if (!res.ok) return;
+      const data = await res.json();
+
+      // Balance grew by at least the shortfall — enough to retry funding.
+      if (Number(data.creditBalance) >= exactShortfall) {
+        if (pollTimer.current) clearInterval(pollTimer.current);
+
+        if (draftProblemId) {
+          const result = await retryFundDraft(draftProblemId);
+          if ("ok" in result) {
+            router.push(`/dashboard/giver/problems/${draftProblemId}`);
+            return;
+          }
+        }
+
+        router.refresh();
+        onClose();
+      }
+    }, POLL_INTERVAL_MS);
+  }
+
+  if (phase === "checkout" && planId) {
+    return (
+      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
+        <div className="w-full max-w-md rounded-lg border border-border bg-surface p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-medium text-foreground">Add ${amount.toFixed(2)}</h2>
+            <button
+              type="button"
+              onClick={() => {
+                setPhase("picking");
+                setPlanId(null);
+              }}
+              className="text-xs text-foreground-muted hover:text-foreground transition-colors"
+            >
+              Back
+            </button>
+          </div>
+          <WhopCheckoutEmbed
+            planId={planId}
+            theme="dark"
+            skipRedirect
+            fallback={
+              <div className="h-[420px] w-full animate-pulse rounded-md bg-surface-raised" />
+            }
+            onComplete={handleCheckoutComplete}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === "confirming") {
+    return (
+      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
+        <div className="w-full max-w-sm rounded-lg border border-money/30 bg-money/10 p-6 text-center">
+          <p className="text-sm text-foreground mb-1">Payment received</p>
+          <p className="text-xs text-foreground-muted">Funding your bounty…</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -63,6 +172,12 @@ export function InsufficientCreditsModal({
           <span className="font-mono text-money">${exactShortfall.toFixed(2)}</span> more to
           post this bounty.
         </p>
+
+        {errorMessage && (
+          <p className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger mb-4">
+            {errorMessage}
+          </p>
+        )}
 
         <div className="grid grid-cols-2 gap-2 mb-3">
           {pillOptions.map((value, i) => {
@@ -131,11 +246,13 @@ export function InsufficientCreditsModal({
         <div className="flex flex-col gap-2">
           <button
             type="button"
-            onClick={handleAddCredits}
-            disabled={pending || !isValid}
+            onClick={handleStartCheckout}
+            disabled={!isValid || phase === "checkout"}
             className="rounded-md bg-accent text-background font-medium px-5 py-2.5 text-sm hover:bg-accent-dim transition-colors disabled:opacity-60"
           >
-            {pending ? "Redirecting…" : `Add $${isValid ? amount.toFixed(2) : "0.00"} via Whop`}
+            {phase === "checkout" && !planId
+              ? "Loading…"
+              : `Add $${isValid ? amount.toFixed(2) : "0.00"}`}
           </button>
           <button
             type="button"

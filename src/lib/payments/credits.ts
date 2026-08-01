@@ -2,17 +2,10 @@ import { prisma } from "@/lib/db";
 import { EscrowState, ProblemStatus, CreditTransactionType } from "@prisma/client";
 import { creditsRequiredToFund } from "./fees";
 
-export type FundBountyFailureReason =
-  | "Problem not found"
-  | "Only the problem's giver can fund it"
-  | "Problem is not in DRAFT status"
-  | "Problem has no bounty amount set"
-  | "Giver not found";
-
 export type FundBountyResult =
   | { ok: true }
   | { ok: false; reason: "INSUFFICIENT_FUNDS"; required: number; balance: number }
-  | { ok: false; reason: FundBountyFailureReason };
+  | { ok: false; reason: string };
 
 /**
  * Attempts to fund a Problem's Escrow directly from a Giver's credit

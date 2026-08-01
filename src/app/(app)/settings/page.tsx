@@ -41,7 +41,7 @@ export default async function SettingsPage() {
 
         {showSolverSection && (
           <SettingsPayoutSection
-            bankVerified={profile.bankVerified}
+            bankDetailsAdded={profile.bankDetailsAdded}
             availableBalance={Number(profile.availableBalance)}
           />
         )}

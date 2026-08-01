@@ -37,7 +37,7 @@ export default async function SolverEarningsPage() {
 
       <div className="mb-10">
         <EarningsWithdrawSection
-          bankVerified={profile.bankVerified}
+          bankDetailsAdded={profile.bankDetailsAdded}
           availableBalance={Number(profile.availableBalance)}
         />
       </div>

@@ -6,24 +6,24 @@ import Link from "next/link";
 
 const DISMISS_KEY = "payout-warning-dismissed";
 
-export function PayoutWarningBanner({ bankVerified }: { bankVerified: boolean }) {
+export function PayoutWarningBanner({ bankDetailsAdded }: { bankDetailsAdded: boolean }) {
   const [dismissed, setDismissed] = useState(true);
 
   useEffect(() => {
-    if (bankVerified) return;
+    if (bankDetailsAdded) return;
     setDismissed(sessionStorage.getItem(DISMISS_KEY) === "true");
-  }, [bankVerified]);
+  }, [bankDetailsAdded]);
 
-  if (bankVerified || dismissed) return null;
+  if (bankDetailsAdded || dismissed) return null;
 
   return (
     <div className="rounded-md border border-money/30 bg-money/10 px-4 py-3 flex items-start gap-3 mb-6">
       <AlertTriangle size={16} className="text-money shrink-0 mt-0.5" />
       <div className="flex-1 min-w-0">
         <p className="text-sm text-foreground">
-          You need to verify your bank details to start withdrawing payout earnings. {" "}
-          <Link href="/info/payouts" className="text-accent hover:underline">
-            Learn more
+          Add your bank details to start requesting payouts. {" "}
+          <Link href="/settings" className="text-accent hover:underline">
+            Add now
           </Link>
         </p>
       </div>

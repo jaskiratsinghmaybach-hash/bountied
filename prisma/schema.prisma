@@ -31,12 +31,16 @@ model User {
   updatedAt        DateTime @updatedAt
 
   // Verification — kept lightweight per product decision (bank + basic identity only)
-  bankVerified     Boolean  @default(false)
   identityVerified Boolean  @default(false)
 
-  // Payout pipeline (Solver side)
-  legalName          String?
-  whopPayoutMethodId String?
+  // Payout pipeline (Solver side) — v1 is manual: solver submits bank
+  // details directly (no external verification API), platform admin
+  // transfers manually via Wise. See PayoutRequest for the 7-day queue.
+  legalName         String?
+  bankDetailsAdded  Boolean  @default(false)
+  bankCountry       String?
+  bankAccountNumber String?  // stored as given — v1 has no encryption-at-rest layer yet, see README
+  bankIfscOrSwift   String?  // IFSC for India, SWIFT/BIC elsewhere
 
   // Credit wallet (Giver side)
   creditBalance      Decimal              @default(0) @db.Decimal(12, 2)
@@ -108,9 +112,11 @@ model CreditTransaction {
 }
 
 // Tracks a solver's request to withdraw from availableBalance to their bank.
-// requestedAmount is what left availableBalance; payoutAmount (95% of that)
-// is what was actually sent to Whop for bank transfer — the difference is
-// the platform's second 5% cut, applied here at withdrawal time.
+// v1 is fully manual: requestedAmount leaves availableBalance immediately
+// (see lib/payouts/withdraw.ts), the request becomes visible in the admin
+// payout queue, and eligibleAt marks when the platform's 7-day payout
+// window closes — the admin transfers the money by hand (Wise) any time
+// at or after eligibleAt and marks the request SUCCEEDED.
 model PayoutRequest {
   id              String              @id @default(cuid())
   userId          String
@@ -120,13 +126,21 @@ model PayoutRequest {
   feeAmount       Decimal             @db.Decimal(12, 2)
   payoutAmount    Decimal             @db.Decimal(12, 2)
 
+  // Snapshot of the bank details at request time, so a later profile edit
+  // never changes where an already-queued payout gets sent.
+  legalName         String
+  bankCountry       String
+  bankAccountNumber String
+  bankIfscOrSwift   String
+
   status          PayoutRequestStatus @default(PENDING)
-  providerRef     String?
+  eligibleAt      DateTime            // createdAt + 7 days, computed at creation
 
   createdAt       DateTime            @default(now())
   completedAt     DateTime?
 
   @@index([userId])
+  @@index([status])
 }
 
 // ─── Problems / Challenges ──────────────────────────────────────────────

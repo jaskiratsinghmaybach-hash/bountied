@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 
 export type WithdrawActionResult =
   | { error: string }
-  | { ok: true; payoutAmount: number };
+  | { ok: true; payoutAmount: number; eligibleAt: Date };
 
 export async function withdrawEarnings(
   _prevState: WithdrawActionResult | undefined,
@@ -32,5 +32,5 @@ export async function withdrawEarnings(
   if (!result.ok) return { error: result.reason };
 
   revalidatePath("/dashboard/solver/earnings");
-  return { ok: true, payoutAmount: result.payoutAmount };
+  return { ok: true, payoutAmount: result.payoutAmount, eligibleAt: result.eligibleAt };
 }

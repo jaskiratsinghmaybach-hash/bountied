@@ -46,7 +46,7 @@ export default async function SolverDashboardPage() {
         </p>
       </div>
 
-      <PayoutWarningBanner bankVerified={profile.bankVerified} />
+      <PayoutWarningBanner bankDetailsAdded={profile.bankDetailsAdded} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
         <StatCard

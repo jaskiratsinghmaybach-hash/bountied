@@ -19,17 +19,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
   }
 
-  const provider = getPaymentProvider();
-  const session = await provider.createCreditCheckoutSession({
-    userId: user.id,
-    amount,
-    currency: "USD",
-    metadata: {
-      giverId: user.id,
-      ...(draftProblemId ? { draftProblemId } : {}),
-      requiredAmount: String(amount),
-    },
-  });
+  try {
+    const provider = getPaymentProvider();
+    const session = await provider.createCreditCheckoutSession({
+      userId: user.id,
+      amount,
+      currency: "USD",
+      metadata: {
+        giverId: user.id,
+        ...(draftProblemId ? { draftProblemId } : {}),
+        requiredAmount: String(amount),
+      },
+    });
 
-  return NextResponse.json({ checkoutUrl: session.checkoutUrl });
+    return NextResponse.json({ planId: session.planId });
+  } catch (err) {
+    console.error("Whop checkout configuration creation failed:", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Checkout could not be created" },
+      { status: 502 }
+    );
+  }
 }

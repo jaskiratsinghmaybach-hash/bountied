@@ -130,11 +130,7 @@ export async function createProblem(
     redirect(`/dashboard/giver/problems/${problem.id}`);
   }
 
-  if (
-    fundResult.reason === "INSUFFICIENT_FUNDS" &&
-    "required" in fundResult &&
-    "balance" in fundResult
-  ) {
+  if (fundResult.reason === "INSUFFICIENT_FUNDS") {
     return {
       insufficientCredits: true,
       draftProblemId: problem.id,
@@ -176,11 +172,7 @@ export async function retryFundDraft(
     return { ok: true };
   }
 
-  if (
-    fundResult.reason === "INSUFFICIENT_FUNDS" &&
-    "required" in fundResult &&
-    "balance" in fundResult
-  ) {
+  if (fundResult.reason === "INSUFFICIENT_FUNDS") {
     return {
       insufficientCredits: true,
       draftProblemId,

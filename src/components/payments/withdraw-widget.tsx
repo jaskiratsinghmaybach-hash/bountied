@@ -15,14 +15,18 @@ export function WithdrawWidget({ availableBalance }: { availableBalance: number 
   const payout = isValid ? amount - fee : 0;
 
   if (state && "ok" in state) {
+    const eligibleDate = new Date(state.eligibleAt).toLocaleDateString(undefined, {
+      month: "long",
+      day: "numeric",
+    });
     return (
       <div className="rounded-lg border border-money/30 bg-money/10 p-6 text-center">
-        <p className="text-sm text-foreground mb-1">Withdrawal on its way</p>
+        <p className="text-sm text-foreground mb-1">Payout requested</p>
         <p className="font-mono text-2xl font-semibold text-money mb-1">
           ${state.payoutAmount.toFixed(2)}
         </p>
         <p className="text-xs text-foreground-muted">
-          Sent to your verified bank account via Whop.
+          Will be sent to your bank account by {eligibleDate}.
         </p>
       </div>
     );
@@ -37,7 +41,7 @@ export function WithdrawWidget({ availableBalance }: { availableBalance: number 
         </span>
       </div>
       <p className="text-xs text-foreground-muted mb-5">
-        A 5% platform fee applies when you withdraw to your bank.
+        A 5% platform fee applies. Payouts are sent within 7 days of request.
       </p>
 
       {state && "error" in state && (
@@ -88,7 +92,7 @@ export function WithdrawWidget({ availableBalance }: { availableBalance: number 
         disabled={pending || !isValid || availableBalance <= 0}
         className="w-full rounded-md bg-accent text-background font-medium px-5 py-2.5 text-sm hover:bg-accent-dim transition-colors disabled:opacity-60"
       >
-        {pending ? "Processing…" : "Withdraw to bank"}
+        {pending ? "Requesting…" : "Request payout"}
       </button>
     </form>
   );

@@ -22,14 +22,14 @@ import { prisma } from "@/lib/db";
  * so there is exactly one code path to audit for the money-moves-code-unlocks
  * guarantee.
  *
- * NOTE on the fee model: release does NOT call the payment provider's real
- * bank payout anymore. Escrow is platform-held credit, not a live bank
- * transfer per problem, so "releasing" it means crediting the solver's
- * internal availableBalance at 95% of the bounty (the platform's first 5%
- * cut — see lib/payments/fees.ts). The actual bank wire only happens later,
- * on-demand, when the solver requests a withdrawal — see
- * lib/payouts/withdraw.ts, which is the ONLY caller of
- * provider.payoutToSolver now.
+ * NOTE on the fee model: release does NOT call any payment provider —
+ * escrow is platform-held credit, not a live bank transfer per problem, so
+ * "releasing" it means crediting the solver's internal availableBalance at
+ * 95% of the bounty (the platform's first 5% cut — see
+ * lib/payments/fees.ts). The actual bank transfer happens later and is
+ * fully manual in v1: the solver requests a withdrawal (see
+ * lib/payouts/withdraw.ts), which creates a PayoutRequest that the
+ * platform admin transfers by hand via Wise — see /admin/payouts.
  */
 export async function acceptSubmissionAndRelease(params: {
   problemId: string;
