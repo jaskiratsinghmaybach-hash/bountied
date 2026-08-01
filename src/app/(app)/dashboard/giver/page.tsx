@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Briefcase, Clock, DollarSign, PlusCircle } from "lucide-react";
+import { Briefcase, Clock, DollarSign, PlusCircle, Wallet } from "lucide-react";
 import { StatCard } from "@/components/dashboard/stat-card";
 
 const statusLabel: Record<string, { label: string; color: string }> = {
@@ -74,13 +74,18 @@ export default async function GiverDashboardPage() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-10">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
+        <StatCard
+          label="Credit balance"
+          value={`$${Number(profile.creditBalance).toFixed(2)}`}
+          icon={Wallet}
+          accent
+        />
         <StatCard label="Active problems" value={String(activeCount)} icon={Briefcase} />
         <StatCard
           label="Total in escrow"
           value={`$${totalFunded.toFixed(2)}`}
           icon={DollarSign}
-          accent
         />
         <StatCard label="Submissions to review" value={String(pendingReview)} icon={Clock} />
       </div>

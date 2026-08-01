@@ -1,16 +1,29 @@
 import { prisma } from "@/lib/db";
 import { EscrowState, ProblemStatus, CreditTransactionType } from "@prisma/client";
+import { creditsRequiredToFund } from "./fees";
+
+export type FundBountyFailureReason =
+  | "Problem not found"
+  | "Only the problem's giver can fund it"
+  | "Problem is not in DRAFT status"
+  | "Problem has no bounty amount set"
+  | "Giver not found";
 
 export type FundBountyResult =
   | { ok: true }
   | { ok: false; reason: "INSUFFICIENT_FUNDS"; required: number; balance: number }
-  | { ok: false; reason: string };
+  | { ok: false; reason: FundBountyFailureReason };
 
 /**
  * Attempts to fund a Problem's Escrow directly from a Giver's credit
  * balance. This is the "balance check" step from the payment spec. If the
  * balance is insufficient, the caller (a Server Action or route) is
  * responsible for surfacing the "Add Credits via Whop" flow.
+ *
+ * The Giver is charged bountyAmount * 1.10 (the platform's 10% funding
+ * fee) — see lib/payments/fees.ts. Escrow itself always holds exactly
+ * bountyAmount, since that's the number solvers see and the number that
+ * gets released on acceptance.
  */
 export async function fundProblemFromCredits(params: {
   problemId: string;
@@ -36,7 +49,8 @@ export async function fundProblemFromCredits(params: {
     const giver = await tx.user.findUnique({ where: { id: params.giverId } });
     if (!giver) return { ok: false, reason: "Giver not found" };
 
-    const required = Number(problem.bountyAmount);
+    const bountyAmount = Number(problem.bountyAmount);
+    const required = creditsRequiredToFund(bountyAmount); // bountyAmount + 10%
     const balance = Number(giver.creditBalance);
 
     if (balance < required) {
@@ -81,7 +95,11 @@ export async function fundProblemFromCredits(params: {
 
     await tx.problem.update({
       where: { id: problem.id },
-      data: { status: ProblemStatus.FUNDED },
+      // Funded bounties go straight to OPEN — that's the only status the
+      // public /problems listing shows, and there is no separate "publish"
+      // step in this product. FUNDED remains a valid enum value/label for
+      // display purposes but is no longer used as a real transitional state.
+      data: { status: ProblemStatus.OPEN },
     });
 
     return { ok: true };

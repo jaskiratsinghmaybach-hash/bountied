@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
+import { AddCreditsWidget } from "@/components/payments/add-credits-widget";
+import { SettingsPayoutSection } from "@/components/payments/settings-payout-section";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -10,11 +12,14 @@ export default async function SettingsPage() {
   const profile = await prisma.user.findUnique({ where: { id: user.id } });
   if (!profile) redirect("/login");
 
+  const showGiverSection = profile.role === "GIVER" || profile.role === "BOTH";
+  const showSolverSection = profile.role === "SOLVER" || profile.role === "BOTH";
+
   return (
     <main className="px-8 py-10 max-w-4xl">
       <h1 className="text-2xl font-semibold tracking-tight mb-8">Settings</h1>
 
-      <div className="rounded-lg border border-border bg-surface p-6 flex flex-col gap-4">
+      <div className="rounded-lg border border-border bg-surface p-6 flex flex-col gap-4 mb-6">
         <div>
           <p className="text-xs text-foreground-muted uppercase tracking-wide mb-1">Name</p>
           <p className="text-sm text-foreground">{profile.name}</p>
@@ -27,6 +32,19 @@ export default async function SettingsPage() {
           <p className="text-xs text-foreground-muted uppercase tracking-wide mb-1">Role</p>
           <p className="text-sm text-foreground">{profile.role ?? "Not set"}</p>
         </div>
+      </div>
+
+      <div className="flex flex-col gap-6">
+        {showGiverSection && (
+          <AddCreditsWidget currentBalance={Number(profile.creditBalance)} />
+        )}
+
+        {showSolverSection && (
+          <SettingsPayoutSection
+            bankVerified={profile.bankVerified}
+            availableBalance={Number(profile.availableBalance)}
+          />
+        )}
       </div>
     </main>
   );

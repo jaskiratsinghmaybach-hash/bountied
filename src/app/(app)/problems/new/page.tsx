@@ -2,7 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { Wallet } from "lucide-react";
+import { NewBountyForm } from "@/components/problems/new-bounty-form";
 
 export default async function NewProblemPage() {
   const supabase = await createClient();
@@ -18,24 +19,26 @@ export default async function NewProblemPage() {
 
   return (
     <main className="px-8 py-10 max-w-2xl">
-      <h1 className="text-2xl font-semibold tracking-tight mb-1">Post a problem</h1>
-      <p className="text-sm text-foreground-muted mb-8">
-        The full creation flow — challenge type, bounty amount, escrow funding — is coming soon.
-      </p>
-
-      <div className="rounded-lg border border-dashed border-border p-10 text-center">
-        <Sparkles size={20} className="mx-auto mb-3 text-foreground-muted" />
-        <p className="text-sm text-foreground-muted mb-4">
-          This page is a placeholder so the button doesn&apos;t break navigation.
-          The real form goes here next.
-        </p>
+      <div className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight mb-1">Post a bounty</h1>
+          <p className="text-sm text-foreground-muted">
+            Funds are held in escrow the moment you post and only released when
+            you accept a submission.
+          </p>
+        </div>
         <Link
-          href="/dashboard/giver"
-          className="inline-block rounded-md border border-border text-foreground text-sm font-medium px-5 py-2.5 hover:bg-surface transition-colors"
+          href="/settings"
+          className="flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-xs text-foreground-muted hover:text-foreground hover:border-foreground-muted transition-colors shrink-0"
         >
-          Back to dashboard
+          <Wallet size={14} className="text-money" />
+          <span className="font-mono text-foreground">
+            ${Number(profile.creditBalance).toFixed(2)}
+          </span>
         </Link>
       </div>
+
+      <NewBountyForm />
     </main>
   );
 }

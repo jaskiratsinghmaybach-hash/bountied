@@ -1,12 +1,13 @@
 import { EscrowState, SubmissionStatus, ProblemStatus } from "@prisma/client";
-import { getPaymentProvider } from "@/lib/payments";
+import { amountCreditedOnRelease } from "@/lib/payments/fees";
 import { prisma } from "@/lib/db";
 
 /**
  * THE core trust guarantee of the platform:
  *
  *   Submission.isRevealed must ONLY ever become true here, as a side effect
- *   of Escrow.state actually becoming RELEASED after a successful payout.
+ *   of Escrow.state actually becoming RELEASED after funds are credited to
+ *   the solver.
  *
  * Every place that serves submission code to a problem-giver (the API route
  * that streams codeBlobUrl, for example) must check isRevealed server-side
@@ -20,6 +21,15 @@ import { prisma } from "@/lib/db";
  *   - Problem.status -> COMPLETED
  * so there is exactly one code path to audit for the money-moves-code-unlocks
  * guarantee.
+ *
+ * NOTE on the fee model: release does NOT call the payment provider's real
+ * bank payout anymore. Escrow is platform-held credit, not a live bank
+ * transfer per problem, so "releasing" it means crediting the solver's
+ * internal availableBalance at 95% of the bounty (the platform's first 5%
+ * cut — see lib/payments/fees.ts). The actual bank wire only happens later,
+ * on-demand, when the solver requests a withdrawal — see
+ * lib/payouts/withdraw.ts, which is the ONLY caller of
+ * provider.payoutToSolver now.
  */
 export async function acceptSubmissionAndRelease(params: {
   problemId: string;
@@ -50,59 +60,50 @@ export async function acceptSubmissionAndRelease(params: {
       return { ok: false, reason: "Submission already revealed/paid" };
     }
 
-    // 1. Call out to the payment provider FIRST — do not flip any DB state
-    //    until money has actually moved. If this throws, the transaction
-    //    rolls back and nothing changes.
-    const provider = getPaymentProvider();
-    const payout = await provider.payoutToSolver({
-      solverId: submission.solverId,
-      amount: Number(problem.escrow.amount),
-      currency: problem.escrow.currency,
-      escrowId: problem.escrow.id,
-    });
+    const bountyAmount = Number(problem.escrow.amount);
+    const creditedAmount = amountCreditedOnRelease(bountyAmount); // bounty * 0.95
 
-    if (payout.status !== "succeeded") {
-      return { ok: false, reason: `Payout did not succeed: ${payout.status}` };
-    }
-
-    // 2. Only now do we flip the reveal gate.
+    // 1. Flip the reveal gate.
     await tx.submission.update({
       where: { id: submissionId },
       data: { status: SubmissionStatus.ACCEPTED, isRevealed: true },
     });
 
-    // 3. Reject every other submission on this problem.
+    // 2. Reject every other submission on this problem.
     await tx.submission.updateMany({
       where: { problemId, id: { not: submissionId } },
       data: { status: SubmissionStatus.REJECTED },
     });
 
-    // 4. Release escrow record.
+    // 3. Release escrow record. paymentProviderRef stays null here — no
+    //    external payout happened yet, only an internal balance credit.
     await tx.escrow.update({
       where: { id: problem.escrow.id },
       data: {
         state: EscrowState.RELEASED,
         releasedAt: new Date(),
         releasedToSubmissionId: submissionId,
-        paymentProviderRef: payout.providerRef,
       },
     });
 
-    // 5. Close out the problem.
+    // 4. Close out the problem.
     await tx.problem.update({
       where: { id: problemId },
       data: { status: ProblemStatus.COMPLETED, completedAt: new Date() },
     });
 
-    // 6. Bump solver stats. (Rating/badges recalculation can hook in here later.)
+    // 5. Credit the solver: availableBalance (withdrawable now) at 95%,
+    //    totalEarned (lifetime stat, always the full bounty) unchanged.
     await tx.user.update({
       where: { id: submission.solverId },
       data: {
         completionCount: { increment: 1 },
-        totalEarned: { increment: problem.escrow.amount },
+        totalEarned: { increment: bountyAmount },
+        availableBalance: { increment: creditedAmount },
       },
     });
 
     return { ok: true };
   });
 }
+

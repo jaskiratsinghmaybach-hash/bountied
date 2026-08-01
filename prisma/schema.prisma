@@ -42,6 +42,13 @@ model User {
   creditBalance      Decimal              @default(0) @db.Decimal(12, 2)
   creditTransactions CreditTransaction[]
 
+  // Withdrawable balance (Solver side) — credited at 95% of bountyAmount when
+  // a submission is accepted (platform's first 5% cut taken here, silently).
+  // Separate from totalEarned, which is a lifetime stat and never decreases.
+  // The second 5% cut is taken at withdrawal time, see PayoutRequest.
+  availableBalance   Decimal              @default(0) @db.Decimal(12, 2)
+  payoutRequests     PayoutRequest[]
+
   // Payment provider identity — generic so Whop -> Stripe swap doesn't touch schema
   paymentProviderId   String? // e.g. Whop user id now, Stripe customer id later
   paymentProviderType String  @default("whop") // "whop" | "stripe"
@@ -68,6 +75,24 @@ enum CreditTransactionType {
   REFUND
 }
 
+// ─── Platform fee model (product decision 2026-07-31) ───────────────────
+// Giver side:  funding a bounty of $X debits $X * 1.10 from creditBalance.
+//              Escrow always holds exactly $X (what solvers see/expect).
+// Solver side: on acceptance, availableBalance += $X * 0.95 (first 5% cut,
+//              taken silently at release — see lib/payments/fees.ts).
+//              On withdrawal, the solver requests an amount from
+//              availableBalance; the amount actually wired to their bank
+//              is requested * 0.95 (second 5% cut, shown explicitly at
+//              withdrawal time). Two separate 5% cuts, never combined into
+//              one 10% deduction, so the solver only ever sees a small cut
+//              at each step rather than one large one.
+
+enum PayoutRequestStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
 model CreditTransaction {
   id            String                  @id @default(cuid())
   userId        String
@@ -78,6 +103,28 @@ model CreditTransaction {
   problemId     String?
   whopChargeRef String?
   createdAt     DateTime                @default(now())
+
+  @@index([userId])
+}
+
+// Tracks a solver's request to withdraw from availableBalance to their bank.
+// requestedAmount is what left availableBalance; payoutAmount (95% of that)
+// is what was actually sent to Whop for bank transfer — the difference is
+// the platform's second 5% cut, applied here at withdrawal time.
+model PayoutRequest {
+  id              String              @id @default(cuid())
+  userId          String
+  user            User                @relation(fields: [userId], references: [id])
+
+  requestedAmount Decimal             @db.Decimal(12, 2)
+  feeAmount       Decimal             @db.Decimal(12, 2)
+  payoutAmount    Decimal             @db.Decimal(12, 2)
+
+  status          PayoutRequestStatus @default(PENDING)
+  providerRef     String?
+
+  createdAt       DateTime            @default(now())
+  completedAt     DateTime?
 
   @@index([userId])
 }

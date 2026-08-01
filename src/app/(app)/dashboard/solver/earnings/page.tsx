@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { Wallet, Trophy } from "lucide-react";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { EarningsWithdrawSection } from "@/components/payments/earnings-withdraw-section";
 
 export default async function SolverEarningsPage() {
   const supabase = await createClient();
@@ -24,7 +25,7 @@ export default async function SolverEarningsPage() {
     <main className="px-8 py-10 max-w-4xl">
       <h1 className="text-2xl font-semibold tracking-tight mb-8">Earnings</h1>
 
-      <div className="grid grid-cols-2 gap-3 mb-10">
+      <div className="grid grid-cols-2 gap-3 mb-6">
         <StatCard
           label="Total earned"
           value={`$${Number(profile.totalEarned).toFixed(2)}`}
@@ -32,6 +33,13 @@ export default async function SolverEarningsPage() {
           accent
         />
         <StatCard label="Bounties won" value={String(profile.completionCount)} icon={Trophy} />
+      </div>
+
+      <div className="mb-10">
+        <EarningsWithdrawSection
+          bankVerified={profile.bankVerified}
+          availableBalance={Number(profile.availableBalance)}
+        />
       </div>
 
       <h2 className="text-sm font-medium text-foreground-muted uppercase tracking-wide mb-4">

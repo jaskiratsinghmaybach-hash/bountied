@@ -4,6 +4,8 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { AcceptSubmissionButton } from "@/components/dashboard/accept-submission-button";
+import { FundDraftButton } from "@/components/problems/fund-draft-button";
+import { creditsRequiredToFund } from "@/lib/payments/fees";
 
 const statusLabel: Record<string, { label: string; color: string }> = {
   DRAFT: { label: "Draft", color: "text-foreground-muted" },
@@ -93,6 +95,13 @@ export default async function GiverProblemDetailPage({
           </span>
         ))}
       </div>
+
+      {problem.status === "DRAFT" && problem.bountyAmount && (
+        <FundDraftButton
+          problemId={problem.id}
+          requiredTotal={creditsRequiredToFund(Number(problem.bountyAmount))}
+        />
+      )}
 
       <div className="rounded-lg border border-border bg-surface p-6 mb-10">
         <p className="text-sm text-foreground-muted leading-relaxed whitespace-pre-wrap">

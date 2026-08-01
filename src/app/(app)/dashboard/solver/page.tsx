@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Trophy, Wallet, Target, TrendingUp } from "lucide-react";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { PayoutWarningBanner } from "@/components/payments/payout-warning-banner";
 
 export default async function SolverDashboardPage() {
   const supabase = await createClient();
@@ -45,16 +46,18 @@ export default async function SolverDashboardPage() {
         </p>
       </div>
 
+      <PayoutWarningBanner bankVerified={profile.bankVerified} />
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
         <StatCard
-          label="Total earned"
-          value={`$${Number(profile.totalEarned).toFixed(2)}`}
+          label="Available balance"
+          value={`$${Number(profile.availableBalance).toFixed(2)}`}
           icon={Wallet}
           accent
         />
         <StatCard
-          label="Completed"
-          value={String(profile.completionCount)}
+          label="Total earned"
+          value={`$${Number(profile.totalEarned).toFixed(2)}`}
           icon={Trophy}
         />
         <StatCard
