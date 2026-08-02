@@ -2,7 +2,11 @@
 
 import { useActionState, useState } from "react";
 import { Sparkles, Trophy, Users, Zap } from "lucide-react";
-import { createProblem, type CreateProblemResult } from "@/lib/problems/create-actions";
+import {
+  createProblem,
+  updateProblem,
+  type CreateProblemResult,
+} from "@/lib/problems/create-actions";
 import { InsufficientCreditsModal } from "@/components/payments/insufficient-credits-modal";
 
 const TYPES: {
@@ -44,10 +48,36 @@ const TYPES: {
 
 const initialState: CreateProblemResult | undefined = undefined;
 
-export function NewBountyForm() {
-  const [state, formAction, pending] = useActionState(createProblem, initialState);
-  const [type, setType] = useState("OPEN_BOUNTY");
-  const [bountyAmount, setBountyAmount] = useState("");
+export type ExistingProblem = {
+  id: string;
+  title: string;
+  description: string;
+  type: string;
+  tags: string[];
+  bountyAmount: number | null;
+  deadline: string | null; // yyyy-mm-dd, for the date input's defaultValue
+};
+
+export function NewBountyForm({ existingProblem }: { existingProblem?: ExistingProblem }) {
+  const isEditing = !!existingProblem;
+  const problemId = existingProblem?.id;
+
+  async function editAction(
+    prevState: CreateProblemResult | undefined,
+    formData: FormData
+  ): Promise<CreateProblemResult> {
+    if (!problemId) return { error: "Missing problem id." };
+    return updateProblem(problemId, prevState, formData);
+  }
+
+  const [state, formAction, pending] = useActionState(
+    isEditing ? editAction : createProblem,
+    initialState
+  );
+  const [type, setType] = useState(existingProblem?.type ?? "OPEN_BOUNTY");
+  const [bountyAmount, setBountyAmount] = useState(
+    existingProblem?.bountyAmount ? String(existingProblem.bountyAmount) : ""
+  );
   const [modalDismissed, setModalDismissed] = useState(false);
 
   const selected = TYPES.find((t) => t.value === type)!;
@@ -112,6 +142,7 @@ export function NewBountyForm() {
             required
             minLength={5}
             maxLength={120}
+            defaultValue={existingProblem?.title}
             placeholder="Fix race condition in our WebSocket reconnect logic"
             className="w-full rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent transition-colors"
           />
@@ -127,6 +158,7 @@ export function NewBountyForm() {
             required
             minLength={20}
             rows={6}
+            defaultValue={existingProblem?.description}
             placeholder="What's the problem? What does a correct solution look like? Include repro steps, constraints, and how you'll judge submissions."
             className="w-full rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent transition-colors resize-y"
           />
@@ -139,6 +171,7 @@ export function NewBountyForm() {
           <input
             id="tags"
             name="tags"
+            defaultValue={existingProblem?.tags.join(", ")}
             placeholder="react, websockets, debugging"
             className="w-full rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent transition-colors"
           />
@@ -152,6 +185,7 @@ export function NewBountyForm() {
             id="deadline"
             name="deadline"
             type="date"
+            defaultValue={existingProblem?.deadline ?? undefined}
             className="w-full sm:w-64 rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent transition-colors"
           />
         </div>
@@ -198,17 +232,30 @@ export function NewBountyForm() {
           </div>
         )}
 
-        <button
-          type="submit"
-          disabled={pending}
-          className="self-start rounded-md bg-accent text-background font-medium px-6 py-3 text-sm hover:bg-accent-dim transition-colors disabled:opacity-60"
-        >
-          {pending
-            ? "Posting…"
-            : selected.hasBounty
-              ? "Fund & post bounty"
-              : "Post bounty"}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="submit"
+            name="intent"
+            value="publish"
+            disabled={pending}
+            className="rounded-md bg-accent text-background font-medium px-6 py-3 text-sm hover:bg-accent-dim transition-colors disabled:opacity-60"
+          >
+            {pending
+              ? "Posting…"
+              : selected.hasBounty
+                ? "Fund & post bounty"
+                : "Post bounty"}
+          </button>
+          <button
+            type="submit"
+            name="intent"
+            value="draft"
+            disabled={pending}
+            className="rounded-md border border-border text-foreground font-medium px-6 py-3 text-sm hover:bg-surface-raised transition-colors disabled:opacity-60"
+          >
+            Save as draft
+          </button>
+        </div>
       </form>
 
       {state && "insufficientCredits" in state && !modalDismissed && (

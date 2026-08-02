@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { AcceptSubmissionButton } from "@/components/dashboard/accept-submission-button";
 import { FundDraftButton } from "@/components/problems/fund-draft-button";
+import { DraftActions } from "@/components/problems/draft-actions";
 import { creditsRequiredToFund } from "@/lib/payments/fees";
 
 const statusLabel: Record<string, { label: string; color: string }> = {
@@ -80,9 +81,12 @@ export default async function GiverProblemDetailPage({
           </h1>
           <p className={`text-xs font-mono ${status.color}`}>{status.label}</p>
         </div>
-        <span className="font-mono text-xl font-semibold text-money shrink-0 pl-4">
-          {problem.bountyAmount ? `$${problem.bountyAmount}` : "Free"}
-        </span>
+        <div className="flex flex-col items-end gap-1.5 shrink-0 pl-4">
+          {problem.status === "DRAFT" && <DraftActions problemId={problem.id} />}
+          <span className="font-mono text-xl font-semibold text-money">
+            {problem.bountyAmount ? `$${problem.bountyAmount}` : "Free"}
+          </span>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-1.5 mb-6">

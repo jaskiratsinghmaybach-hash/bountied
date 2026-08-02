@@ -6,6 +6,7 @@ import { fundProblemFromCredits } from "@/lib/payments/credits";
 import { creditsRequiredToFund } from "@/lib/payments/fees";
 import { ProblemType } from "@prisma/client";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 
 export type CreateProblemResult =
   | { error: string }
@@ -25,38 +26,20 @@ const CREATABLE_TYPES: ProblemType[] = [
   // FIXED_PRICE intentionally excluded — COMING SOON, not enabled in v1.
 ];
 
-/**
- * Creates a Problem in DRAFT status, then immediately attempts to fund it
- * from the giver's credit balance.
- *
- *  - OPEN_FREE (no bounty): created and published as OPEN directly, no
- *    funding step at all.
- *  - Anything with a bounty: created as DRAFT, then fundProblemFromCredits
- *    is attempted right away.
- *      - Enough balance -> funded and moved to OPEN in one step, we
- *        redirect straight to the live problem.
- *      - Not enough balance -> we do NOT fail the whole action. The DRAFT
- *        problem is kept (nothing is lost) and we return the exact
- *        shortfall so the UI can show the insufficient-credits modal with
- *        draftProblemId attached. The Whop webhook finishes funding this
- *        exact draft once checkout succeeds (see api/webhooks/whop/route.ts).
- */
-export async function createProblem(
-  _prevState: CreateProblemResult | undefined,
-  formData: FormData
-): Promise<CreateProblemResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "You must be logged in to do this." };
+type ParsedFields =
+  | { error: string }
+  | {
+      title: string;
+      description: string;
+      type: ProblemType;
+      tags: string[];
+      bountyAmount: number | null;
+      isFree: boolean;
+      deadline: Date | null;
+    };
 
-  const profile = await prisma.user.findUnique({ where: { id: user.id } });
-  if (!profile) return { error: "Profile not found." };
-  if (profile.role !== "GIVER" && profile.role !== "BOTH") {
-    return { error: "Only problem-givers can post a bounty." };
-  }
-
+/** Shared validation for both create and update — no DB writes here. */
+function parseFields(formData: FormData): ParsedFields {
   const title = String(formData.get("title") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
   const type = String(formData.get("type") ?? "") as ProblemType;
@@ -88,6 +71,7 @@ export async function createProblem(
     if (!bountyAmountRaw || !Number.isFinite(parsed) || parsed <= 0) {
       return { error: "Enter a valid bounty amount." };
     }
+    // TEMP for live-payment testing — was 5, restore before real launch.
     if (parsed < 1) {
       return { error: "Minimum bounty is $1." };
     }
@@ -99,21 +83,64 @@ export async function createProblem(
     return { error: "Invalid deadline." };
   }
 
+  return { title, description, type, tags, bountyAmount, isFree, deadline };
+}
+
+/**
+ * Creates a Problem. Branches on formData's "intent" field:
+ *
+ *  - intent="draft": creates in DRAFT status and stops. No funding attempt,
+ *    no money touched, giver can come back and finish later. This is the
+ *    "Save as draft" button.
+ *  - intent="publish" (default, for backwards compatibility): the original
+ *    behavior — OPEN_FREE publishes immediately with no funding step;
+ *    anything with a bounty attempts fundProblemFromCredits right away.
+ *      - Enough balance -> funded and moved to OPEN in one step, redirect
+ *        straight to the live problem.
+ *      - Not enough balance -> the DRAFT problem is kept (nothing lost)
+ *        and we return the exact shortfall so the UI can show the
+ *        insufficient-credits modal with draftProblemId attached.
+ */
+export async function createProblem(
+  _prevState: CreateProblemResult | undefined,
+  formData: FormData
+): Promise<CreateProblemResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "You must be logged in to do this." };
+
+  const profile = await prisma.user.findUnique({ where: { id: user.id } });
+  if (!profile) return { error: "Profile not found." };
+  if (profile.role !== "GIVER" && profile.role !== "BOTH") {
+    return { error: "Only problem-givers can post a bounty." };
+  }
+
+  const parsed = parseFields(formData);
+  if ("error" in parsed) return parsed;
+
+  const intent = String(formData.get("intent") ?? "publish");
+
   const problem = await prisma.problem.create({
     data: {
-      title,
-      description,
-      type,
-      tags,
-      bountyAmount,
+      title: parsed.title,
+      description: parsed.description,
+      type: parsed.type,
+      tags: parsed.tags,
+      bountyAmount: parsed.bountyAmount,
       giverId: user.id,
-      deadline,
+      deadline: parsed.deadline,
       status: "DRAFT",
     },
   });
 
+  if (intent === "draft") {
+    redirect(`/dashboard/giver/problems/${problem.id}`);
+  }
+
   // Free challenges have nothing to fund — publish immediately.
-  if (isFree) {
+  if (parsed.isFree) {
     await prisma.problem.update({
       where: { id: problem.id },
       data: { status: "OPEN" },
@@ -140,6 +167,116 @@ export async function createProblem(
   }
 
   return { error: fundResult.message };
+}
+
+/**
+ * Updates an existing DRAFT problem. DRAFT-only by design — once a
+ * problem is funded/published, nothing here can touch it (money has
+ * already moved, so editing title/bounty afterward would be misleading
+ * at best and a funding-math bug at worst). Same intent branching as
+ * create: "draft" just saves, "publish" saves then attempts funding.
+ */
+export async function updateProblem(
+  problemId: string,
+  _prevState: CreateProblemResult | undefined,
+  formData: FormData
+): Promise<CreateProblemResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "You must be logged in to do this." };
+
+  const existing = await prisma.problem.findUnique({ where: { id: problemId } });
+  if (!existing) return { error: "Problem not found." };
+  if (existing.giverId !== user.id) return { error: "Not authorized." };
+  if (existing.status !== "DRAFT") {
+    return { error: "Only draft bounties can be edited." };
+  }
+
+  const parsed = parseFields(formData);
+  if ("error" in parsed) return parsed;
+
+  const intent = String(formData.get("intent") ?? "publish");
+
+  await prisma.problem.update({
+    where: { id: problemId },
+    data: {
+      title: parsed.title,
+      description: parsed.description,
+      type: parsed.type,
+      tags: parsed.tags,
+      bountyAmount: parsed.bountyAmount,
+      deadline: parsed.deadline,
+    },
+  });
+
+  if (intent === "draft") {
+    redirect(`/dashboard/giver/problems/${problemId}`);
+  }
+
+  if (parsed.isFree) {
+    await prisma.problem.update({
+      where: { id: problemId },
+      data: { status: "OPEN" },
+    });
+    redirect(`/dashboard/giver/problems/${problemId}`);
+  }
+
+  const fundResult = await fundProblemFromCredits({
+    problemId,
+    giverId: user.id,
+  });
+
+  if (fundResult.ok) {
+    redirect(`/dashboard/giver/problems/${problemId}`);
+  }
+
+  if (fundResult.reason === "INSUFFICIENT_FUNDS") {
+    return {
+      insufficientCredits: true,
+      draftProblemId: problemId,
+      required: Math.round((fundResult.required - fundResult.balance) * 100) / 100,
+      balance: fundResult.balance,
+    };
+  }
+
+  return { error: fundResult.message };
+}
+
+/**
+ * Deletes a DRAFT problem outright. DRAFT-only by design — no escrow has
+ * ever existed for a draft (funding is what creates the Escrow row), so
+ * there is nothing to refund and a hard delete is safe. Anything beyond
+ * DRAFT is refused here rather than silently no-op'd.
+ */
+export async function deleteProblem(
+  problemId: string
+): Promise<{ error: string } | { ok: true }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "You must be logged in to do this." };
+
+  const existing = await prisma.problem.findUnique({
+    where: { id: problemId },
+    include: { escrow: true, submissions: { select: { id: true }, take: 1 } },
+  });
+  if (!existing) return { error: "Problem not found." };
+  if (existing.giverId !== user.id) return { error: "Not authorized." };
+  if (existing.status !== "DRAFT") {
+    return { error: "Only draft bounties can be deleted." };
+  }
+  // Defensive — DRAFT structurally shouldn't have either, but never delete
+  // a problem that has real money or submissions attached to it.
+  if (existing.escrow || existing.submissions.length > 0) {
+    return { error: "This bounty has activity on it and can't be deleted." };
+  }
+
+  await prisma.problem.delete({ where: { id: problemId } });
+  revalidatePath("/dashboard/giver/problems");
+  return { ok: true };
 }
 
 /**

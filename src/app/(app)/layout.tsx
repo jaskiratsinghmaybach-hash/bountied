@@ -22,13 +22,13 @@ export default async function AppLayout({
   }
 
   if (!role) {
-    return <div className="flex-1 flex">{children}</div>;
+    return <div className="flex-1 min-h-0 flex overflow-y-auto">{children}</div>;
   }
 
   return (
-    <div className="flex-1 flex">
+    <div className="flex-1 min-h-0 flex">
       <DashboardSidebar role={role} />
-      <div className="flex-1 min-w-0">{children}</div>
+      <div className="flex-1 min-w-0 overflow-y-auto">{children}</div>
     </div>
   );
 }
