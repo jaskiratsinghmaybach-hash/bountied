@@ -169,7 +169,7 @@ export function NewBountyForm() {
                 id="bountyAmount"
                 name="bountyAmount"
                 type="number"
-                min={5}
+                min={1}
                 step="0.01"
                 required
                 value={bountyAmount}

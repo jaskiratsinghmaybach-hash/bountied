@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import {
   saveBankDetails,
   type SaveBankDetailsResult,
@@ -25,9 +25,12 @@ export function BankVerificationModal({
 }) {
   const [state, formAction, pending] = useActionState(saveBankDetails, initialState);
 
-  if (state && "ok" in state) {
-    onSaved();
-  }
+  // ✅ FIX: Move side-effects into useEffect so it runs AFTER render completes
+  useEffect(() => {
+    if (state && "ok" in state) {
+      onSaved();
+    }
+  }, [state, onSaved]);
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">

@@ -88,8 +88,8 @@ export async function createProblem(
     if (!bountyAmountRaw || !Number.isFinite(parsed) || parsed <= 0) {
       return { error: "Enter a valid bounty amount." };
     }
-    if (parsed < 5) {
-      return { error: "Minimum bounty is $5." };
+    if (parsed < 1) {
+      return { error: "Minimum bounty is $1." };
     }
     bountyAmount = Math.round(parsed * 100) / 100;
   }
@@ -139,7 +139,7 @@ export async function createProblem(
     };
   }
 
-  return { error: fundResult.reason };
+  return { error: fundResult.message };
 }
 
 /**
@@ -181,7 +181,7 @@ export async function retryFundDraft(
     };
   }
 
-  return { error: fundResult.reason };
+  return { error: fundResult.message };
 }
 
 /** Quick lookup used by the insufficient-credits modal to show bounty context. */

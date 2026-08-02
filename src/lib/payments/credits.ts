@@ -5,7 +5,7 @@ import { creditsRequiredToFund } from "./fees";
 export type FundBountyResult =
   | { ok: true }
   | { ok: false; reason: "INSUFFICIENT_FUNDS"; required: number; balance: number }
-  | { ok: false; reason: string };
+  | { ok: false; reason: "OTHER"; message: string };
 
 /**
  * Attempts to fund a Problem's Escrow directly from a Giver's credit
@@ -28,19 +28,19 @@ export async function fundProblemFromCredits(params: {
       include: { escrow: true },
     });
 
-    if (!problem) return { ok: false, reason: "Problem not found" };
+    if (!problem) return { ok: false, reason: "OTHER", message: "Problem not found" };
     if (problem.giverId !== params.giverId) {
-      return { ok: false, reason: "Only the problem's giver can fund it" };
+      return { ok: false, reason: "OTHER", message: "Only the problem's giver can fund it" };
     }
     if (problem.status !== ProblemStatus.DRAFT) {
-      return { ok: false, reason: "Problem is not in DRAFT status" };
+      return { ok: false, reason: "OTHER", message: "Problem is not in DRAFT status" };
     }
     if (!problem.bountyAmount) {
-      return { ok: false, reason: "Problem has no bounty amount set" };
+      return { ok: false, reason: "OTHER", message: "Problem has no bounty amount set" };
     }
 
     const giver = await tx.user.findUnique({ where: { id: params.giverId } });
-    if (!giver) return { ok: false, reason: "Giver not found" };
+    if (!giver) return { ok: false, reason: "OTHER", message: "Giver not found" };
 
     const bountyAmount = Number(problem.bountyAmount);
     const required = creditsRequiredToFund(bountyAmount); // bountyAmount + 10%

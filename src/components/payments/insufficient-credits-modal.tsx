@@ -121,9 +121,9 @@ export function InsufficientCreditsModal({
 
   if (phase === "checkout" && planId) {
     return (
-      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
-        <div className="w-full max-w-md rounded-lg border border-border bg-surface p-6">
-          <div className="flex items-center justify-between mb-4">
+      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4 py-6">
+        <div className="w-full max-w-md max-h-full rounded-lg border border-border bg-surface flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
             <h2 className="text-sm font-medium text-foreground">Add ${amount.toFixed(2)}</h2>
             <button
               type="button"
@@ -136,15 +136,17 @@ export function InsufficientCreditsModal({
               Back
             </button>
           </div>
-          <WhopCheckoutEmbed
-            planId={planId}
-            theme="dark"
-            skipRedirect
-            fallback={
-              <div className="h-[420px] w-full animate-pulse rounded-md bg-surface-raised" />
-            }
-            onComplete={handleCheckoutComplete}
-          />
+          <div className="overflow-y-auto p-6">
+            <WhopCheckoutEmbed
+              planId={planId}
+              theme="dark"
+              skipRedirect
+              fallback={
+                <div className="h-[420px] w-full animate-pulse rounded-md bg-surface-raised" />
+              }
+              onComplete={handleCheckoutComplete}
+            />
+          </div>
         </div>
       </div>
     );

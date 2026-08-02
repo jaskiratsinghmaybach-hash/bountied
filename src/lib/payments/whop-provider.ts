@@ -8,7 +8,7 @@ function getClient() {
   return new Whop({ apiKey: process.env.WHOP_API_KEY });
 }
 
-function getCompanyId() {
+function getAccountId() {
   if (!process.env.WHOP_COMPANY_ID) {
     throw new Error(
       "WHOP_COMPANY_ID is not set in .env — copy it from your Whop dashboard URL (whop.com/dashboard/biz_XXXXXXXXX/)"
@@ -43,12 +43,14 @@ export class WhopPaymentProvider implements PaymentProvider {
   }): Promise<CheckoutSessionResult> {
     const client = getClient();
 
+    // Current Whop SDK typings expect the account identifier to be sent as
+    // `account_id` inside the inline plan payload, not `company_id`.
     const checkoutConfig = await client.checkoutConfigurations.create({
-      company_id: getCompanyId(),
-      currency: params.currency.toLowerCase(),
       plan: {
+        account_id: getAccountId(),
         initial_price: params.amount,
         plan_type: "one_time",
+        currency: params.currency.toLowerCase(),
       },
       metadata: {
         userId: params.userId,
