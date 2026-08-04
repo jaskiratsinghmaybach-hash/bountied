@@ -1,12 +1,13 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { Terminal, TriangleAlert } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
+import { Terminal, TriangleAlert } from "lucide-react";
 import {
   createSubmission,
   type CreateSubmissionResult,
 } from "@/lib/problems/submission-actions";
+import { ConnectGithubPrompt } from "@/components/auth/connect-github-prompt";
 
 const initialState: CreateSubmissionResult | undefined = undefined;
 
@@ -42,28 +43,12 @@ export function SubmissionForm({
     );
   }
 
-  // GitHub not connected — show a clear gate before the form
+  // GitHub not connected — reuse the shared prompt, which correctly uses
+  // linkIdentity (stays on the same account) and routes through
+  // /auth/callback (which is what actually captures and stores the token).
   if (!githubConnected) {
     return (
-      <div className="rounded-lg border border-border bg-surface p-6">
-        <div className="flex items-center gap-2 mb-3">
-          <FaGithub size={16} className="text-foreground-muted" />
-          <p className="text-sm font-medium text-foreground">
-            Connect GitHub to submit
-          </p>
-        </div>
-        <p className="text-xs text-foreground-muted mb-4">
-          Submissions run your code directly from a GitHub repo. Sign out
-          and sign back in with GitHub to connect your account — it only
-          takes a moment and you won&apos;t lose your progress.
-        </p>
-        <a
-          href="/login"
-          className="inline-block rounded-md bg-accent text-background font-medium px-5 py-2.5 text-sm hover:bg-accent-dim transition-colors"
-        >
-          Connect GitHub
-        </a>
-      </div>
+      <ConnectGithubPrompt reason="Submissions run your code directly from a GitHub repo. Connect your account to submit — it only takes a moment." />
     );
   }
 

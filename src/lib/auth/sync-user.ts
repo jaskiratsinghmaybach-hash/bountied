@@ -13,8 +13,21 @@ import type { User as SupabaseUser } from "@supabase/supabase-js";
  *
  * Uses upsert so it's safe to call on every login, not just the first one —
  * cheap no-op if the row already exists.
+ *
+ * githubAccessToken: only passed when this call is following a GitHub
+ * OAuth login/link AND Supabase actually returned a provider_token on this
+ * exchange (it doesn't always — repeat logins within an existing browser
+ * session sometimes skip re-issuing it). When present, it OVERWRITES any
+ * previously stored token, which is correct — a fresh token is always
+ * preferable to a possibly-stale one. When absent, the existing stored
+ * token (if any) is left untouched rather than wiped, so a solver's repo
+ * access doesn't silently break just because a later login didn't
+ * include a fresh token.
  */
-export async function syncUserFromSupabase(supabaseUser: SupabaseUser) {
+export async function syncUserFromSupabase(
+  supabaseUser: SupabaseUser,
+  githubAccessToken?: string
+) {
   const email = supabaseUser.email;
   if (!email) {
     throw new Error(
@@ -40,12 +53,18 @@ export async function syncUserFromSupabase(supabaseUser: SupabaseUser) {
       email,
       name,
       avatarUrl,
+      ...(githubAccessToken
+        ? { githubAccessToken, githubConnected: true }
+        : {}),
     },
     create: {
       id: supabaseUser.id,
       email,
       name,
       avatarUrl,
+      ...(githubAccessToken
+        ? { githubAccessToken, githubConnected: true }
+        : {}),
     },
   });
 }

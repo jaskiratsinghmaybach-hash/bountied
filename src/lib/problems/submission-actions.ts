@@ -39,7 +39,7 @@ export async function createSubmission(
   if (!profile.githubConnected || !profile.githubAccessToken) {
     return {
       error:
-        "Connect your GitHub account before submitting. Sign out and sign back in with GitHub to connect it.",
+        "Connect your GitHub account before submitting — you'll see a Connect GitHub option on this page.",
     };
   }
 

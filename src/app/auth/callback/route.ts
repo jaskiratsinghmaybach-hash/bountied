@@ -32,8 +32,28 @@ export async function GET(request: Request) {
         return NextResponse.redirect(`${origin}/reset-password`);
       }
 
+      // GitHub carries a provider_token here when the repo scope was
+      // granted — either from a fresh GitHub sign-in (oauth-buttons.tsx)
+      // or from linkIdentity() adding GitHub to an account that
+      // originally signed up a different way (connect-github-prompt.tsx).
+      // This is the only point in the whole auth flow where Supabase
+      // hands it to us; it is NOT persisted by Supabase itself and is
+      // lost on session refresh, so it must be captured and stored here.
+      //
+      // IMPORTANT: check app_metadata.providers (plural, an array of every
+      // linked provider), NOT app_metadata.provider (singular — the
+      // user's ORIGINAL sign-up method, which never changes after linking
+      // a second identity). Checking the singular field would silently
+      // fail to capture the token for anyone who links GitHub after
+      // signing up via email/password or Google — exactly the accounts
+      // that most need this to work.
+      const providers = (data.user.app_metadata?.providers as string[] | undefined) ?? [];
+      const githubToken = providers.includes("github")
+        ? data.session?.provider_token ?? undefined
+        : undefined;
+
       // Ensure a Prisma User row exists before sending them into the app.
-      await syncUserFromSupabase(data.user);
+      await syncUserFromSupabase(data.user, githubToken);
 
       const profile = await prisma.user.findUnique({ where: { id: data.user.id } });
       const destination = profile?.role

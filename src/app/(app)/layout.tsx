@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/db";
 import { DashboardSidebar } from "@/components/dashboard/sidebar";
+import { OAuthFragmentHandler } from "@/components/auth/oauth-fragment-handler";
 
 export default async function AppLayout({
   children,
@@ -22,13 +23,21 @@ export default async function AppLayout({
   }
 
   if (!role) {
-    return <div className="flex-1 min-h-0 flex overflow-y-auto">{children}</div>;
+    return (
+      <div className="flex-1 min-h-0 flex flex-col overflow-y-auto">
+        <OAuthFragmentHandler />
+        {children}
+      </div>
+    );
   }
 
   return (
     <div className="flex-1 min-h-0 flex">
       <DashboardSidebar role={role} />
-      <div className="flex-1 min-w-0 overflow-y-auto">{children}</div>
+      <div className="flex-1 min-w-0 overflow-y-auto flex flex-col">
+        <OAuthFragmentHandler />
+        {children}
+      </div>
     </div>
   );
 }
