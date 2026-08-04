@@ -55,7 +55,8 @@ export type ExistingProblem = {
   type: string;
   tags: string[];
   bountyAmount: number | null;
-  deadline: string | null; // yyyy-mm-dd, for the date input's defaultValue
+  deadline: string | null;
+  runCommand: string;
 };
 
 export function NewBountyForm({ existingProblem }: { existingProblem?: ExistingProblem }) {
@@ -188,6 +189,27 @@ export function NewBountyForm({ existingProblem }: { existingProblem?: ExistingP
             defaultValue={existingProblem?.deadline ?? undefined}
             className="w-full sm:w-64 rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent transition-colors"
           />
+        </div>
+
+        <div>
+          <label htmlFor="runCommand" className="block text-xs text-foreground-muted mb-1.5">
+            Run command
+          </label>
+          <input
+            id="runCommand"
+            name="runCommand"
+            required
+            defaultValue={existingProblem?.runCommand ?? "python main.py"}
+            placeholder="python main.py"
+            className="w-full rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent transition-colors font-mono"
+          />
+          <p className="text-[11px] text-foreground-muted mt-1">
+            The exact command your sandbox will run on every submitted repo.
+            Solvers see this before submitting so they know what to expect.
+            e.g. <span className="font-mono">python main.py</span>,{" "}
+            <span className="font-mono">python -m pytest</span>,{" "}
+            <span className="font-mono">python solve.py --input data.csv</span>
+          </p>
         </div>
 
         {selected.hasBounty && (

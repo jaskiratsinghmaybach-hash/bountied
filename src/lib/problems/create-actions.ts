@@ -36,6 +36,7 @@ type ParsedFields =
       bountyAmount: number | null;
       isFree: boolean;
       deadline: Date | null;
+      runCommand: string;
     };
 
 /** Shared validation for both create and update — no DB writes here. */
@@ -46,6 +47,7 @@ function parseFields(formData: FormData): ParsedFields {
   const tagsRaw = String(formData.get("tags") ?? "");
   const bountyAmountRaw = String(formData.get("bountyAmount") ?? "").trim();
   const deadlineRaw = String(formData.get("deadline") ?? "").trim();
+  const runCommand = String(formData.get("runCommand") ?? "").trim();
 
   if (!title || title.length < 5) {
     return { error: "Title must be at least 5 characters." };
@@ -78,12 +80,19 @@ function parseFields(formData: FormData): ParsedFields {
     bountyAmount = Math.round(parsed * 100) / 100;
   }
 
+  if (!runCommand) {
+    return { error: "Enter the run command (e.g. python main.py)." };
+  }
+  if (!runCommand.startsWith("python")) {
+    return { error: "Run command must start with python (this platform is Python-only)." };
+  }
+
   const deadline = deadlineRaw ? new Date(deadlineRaw) : null;
   if (deadline && Number.isNaN(deadline.getTime())) {
     return { error: "Invalid deadline." };
   }
 
-  return { title, description, type, tags, bountyAmount, isFree, deadline };
+  return { title, description, type, tags, bountyAmount, isFree, deadline, runCommand };
 }
 
 /**
@@ -129,6 +138,8 @@ export async function createProblem(
       type: parsed.type,
       tags: parsed.tags,
       bountyAmount: parsed.bountyAmount,
+      runCommand: parsed.runCommand,
+      runtime: "PYTHON",
       giverId: user.id,
       deadline: parsed.deadline,
       status: "DRAFT",
@@ -207,6 +218,7 @@ export async function updateProblem(
       type: parsed.type,
       tags: parsed.tags,
       bountyAmount: parsed.bountyAmount,
+      runCommand: parsed.runCommand,
       deadline: parsed.deadline,
     },
   });

@@ -5,6 +5,8 @@ import Link from "next/link";
 
 const statusLabel: Record<string, { label: string; color: string }> = {
   SUBMITTED: { label: "Submitted", color: "text-foreground-muted" },
+  RUNNING: { label: "Running in sandbox…", color: "text-accent" },
+  SANDBOX_FAILED: { label: "Sandbox failed — resubmit", color: "text-danger" },
   UNDER_REVIEW: { label: "Under review", color: "text-money" },
   ACCEPTED: { label: "Accepted", color: "text-accent" },
   REJECTED: { label: "Rejected", color: "text-danger" },

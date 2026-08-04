@@ -9,10 +9,11 @@ import { prisma } from "@/lib/db";
  *   of Escrow.state actually becoming RELEASED after funds are credited to
  *   the solver.
  *
- * Every place that serves submission code to a problem-giver (the API route
- * that streams codeBlobUrl, for example) must check isRevealed server-side
- * and refuse to serve the real code if false. Never trust a client-supplied
- * "I paid" flag. Never let a UI button flip isRevealed directly.
+ * Every place that serves submission code to a problem-giver (the repoUrl
+ * link on the giver detail page, for example) must check isRevealed
+ * server-side and refuse to serve real repo access if false. Never trust
+ * a client-supplied "I paid" flag. Never let a UI button flip isRevealed
+ * directly.
  *
  * This function is intentionally the ONLY writer of:
  *   - Escrow.state -> RELEASED
@@ -106,4 +107,3 @@ export async function acceptSubmissionAndRelease(params: {
     return { ok: true };
   });
 }
-

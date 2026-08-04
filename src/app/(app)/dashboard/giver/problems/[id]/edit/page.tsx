@@ -55,6 +55,7 @@ export default async function EditProblemPage({
           deadline: problem.deadline
             ? problem.deadline.toISOString().split("T")[0]
             : null,
+          runCommand: problem.runCommand,
         }}
       />
     </main>

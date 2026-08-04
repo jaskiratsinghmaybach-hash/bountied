@@ -21,6 +21,8 @@ const statusLabel: Record<string, { label: string; color: string }> = {
 const submissionStatusLabel: Record<string, { label: string; color: string }> =
   {
     SUBMITTED: { label: "Submitted", color: "text-foreground-muted" },
+    RUNNING: { label: "Running in sandbox…", color: "text-accent" },
+    SANDBOX_FAILED: { label: "Sandbox failed", color: "text-danger" },
     UNDER_REVIEW: { label: "Under review", color: "text-money" },
     ACCEPTED: { label: "Accepted", color: "text-accent" },
     REJECTED: { label: "Rejected", color: "text-danger" },
@@ -143,33 +145,54 @@ export default async function GiverProblemDetailPage({
                       {sStatus.label}
                     </span>
                   </div>
-                  <p className="text-xs text-foreground-muted mb-2">
+                  <p className="text-xs text-foreground-muted mb-3">
                     Submitted {s.submittedAt.toLocaleDateString()}
                   </p>
-                  <p className="text-sm text-foreground-muted leading-relaxed">
-                    {s.isRevealed ? (
-                      <a
-                        href={s.codeBlobUrl}
-                        className="text-accent hover:underline"
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        View full solution →
-                      </a>
-                    ) : (
-                      s.previewText
-                    )}
+
+                  <p className="text-sm text-foreground-muted leading-relaxed mb-3">
+                    {s.writeup}
                   </p>
+
+                  {s.status === "SANDBOX_FAILED" && s.sandboxError && (
+                    <div className="mb-3">
+                      <p className="text-[11px] text-danger mb-1">
+                        Sandbox failed to run this submission:
+                      </p>
+                      <pre className="text-[11px] font-mono text-foreground-muted bg-surface-raised rounded p-3 overflow-x-auto whitespace-pre-wrap border border-danger/20">
+                        {s.sandboxError}
+                      </pre>
+                    </div>
+                  )}
+
+                  {s.sandboxOutput && (
+                    <div className="mb-3">
+                      <p className="text-[11px] text-foreground-muted uppercase tracking-wide mb-1">
+                        Captured sandbox output
+                      </p>
+                      <pre className="text-xs font-mono text-foreground bg-surface-raised rounded-md p-3 overflow-x-auto whitespace-pre-wrap max-h-56 overflow-y-auto border border-border">
+                        {s.sandboxOutput}
+                      </pre>
+                    </div>
+                  )}
+
+                  {s.isRevealed && (
+                    <a
+                      href={s.repoUrl}
+                      className="text-sm text-accent hover:underline"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      View source repo →
+                    </a>
+                  )}
                 </div>
 
-                {canAccept &&
-                  s.status !== "ACCEPTED" &&
-                  s.status !== "REJECTED" && (
-                    <AcceptSubmissionButton
-                      problemId={problem.id}
-                      submissionId={s.id}
-                    />
-                  )}
+                {canAccept && s.status === "UNDER_REVIEW" && (
+                  <AcceptSubmissionButton
+                    problemId={problem.id}
+                    submissionId={s.id}
+                  />
+                )}
               </div>
             );
           })}

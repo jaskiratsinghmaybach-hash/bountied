@@ -33,6 +33,17 @@ model User {
   // Verification — kept lightweight per product decision (bank + basic identity only)
   identityVerified Boolean  @default(false)
 
+  // GitHub repo access (Solver side) — captured from the OAuth callback
+  // when a solver logs in via GitHub with repo-read scope (see
+  // src/app/auth/callback/route.ts). Used server-side ONLY, to clone a
+  // submission's repo into the E2B sandbox — never sent to the client,
+  // never exposed to the giver. A solver who signed up via email/Google
+  // has no token here until they connect GitHub separately (see
+  // githubConnected below). Same "real secret" handling as an API key —
+  // v1 has no encryption-at-rest layer yet, see README.
+  githubAccessToken String?
+  githubConnected   Boolean  @default(false)
+
   // Payout pipeline (Solver side) — v1 is manual: solver submits bank
   // details directly (no external verification API), platform admin
   // transfers manually via Wise. See PayoutRequest for the 7-day queue.
@@ -163,6 +174,14 @@ enum ProblemStatus {
   REFUNDED    // funded but cancelled/expired, escrow refunded
 }
 
+// v1 is Python-only by product decision (2026-08-03) — kept as a real enum
+// rather than a free-text string so it's a type-level guarantee, not a
+// convention. Adding a second language later is one enum value + one new
+// E2B template, not a schema migration.
+enum Runtime {
+  PYTHON
+}
+
 model Problem {
   id            String        @id @default(cuid())
   title         String
@@ -173,6 +192,14 @@ model Problem {
 
   bountyAmount  Decimal?      @db.Decimal(12, 2) // null for OPEN_FREE
   currency      String        @default("USD")
+
+  // Execution contract — the giver defines exactly how their bounty gets
+  // run in the sandbox. Solvers control only the code, never the command,
+  // which is what makes the captured output trustworthy as an
+  // anti-simulation guarantee (see lib/sandbox — a solver can't fake
+  // output for a command they don't control).
+  runtime       Runtime       @default(PYTHON)
+  runCommand    String        // e.g. "python main.py"
 
   giverId       String
   giver         User          @relation("ProblemGiver", fields: [giverId], references: [id])
@@ -233,7 +260,12 @@ model Escrow {
 
 enum SubmissionStatus {
   SUBMITTED
-  UNDER_REVIEW
+  RUNNING          // sandbox execution in progress
+  SANDBOX_FAILED   // code didn't run at all (missing deps, crash, timeout) —
+                   // distinct from a working solution the giver rejects,
+                   // so a good solver's setup issue is never confused with
+                   // a bad submission. Solver can resubmit.
+  UNDER_REVIEW     // ran successfully, output captured, awaiting giver review
   ACCEPTED
   REJECTED
 }
@@ -245,10 +277,28 @@ model Submission {
   solverId         String
   solver           User              @relation(fields: [solverId], references: [id])
 
-  // The actual code lives in object storage, never in the DB directly
-  codeBlobUrl      String
-  // A redacted/masked preview the giver can see BEFORE paying — enough to judge intent, not enough to steal
-  previewText      String            @db.Text
+  // GitHub repo URL only (product decision 2026-08-03) — no file/zip
+  // upload, which avoids storage costs and a whole malicious-upload
+  // surface area. The repo itself should be PRIVATE; access is granted
+  // to the giver programmatically only after escrow release, never
+  // shared manually by the solver. Your server clones it server-side
+  // into the E2B sandbox to run it — the giver never gets clone access
+  // pre-payment.
+  repoUrl          String
+
+  // Required "what I did" writeup — solver's own words, shown alongside
+  // the sandbox output as part of the pre-payment preview.
+  writeup          String            @db.Text
+
+  // Real, captured sandbox execution output — this IS the anti-simulation
+  // guarantee. Populated only by the server after E2B actually runs
+  // Problem.runCommand against this submission's code; a solver never has
+  // an opportunity to supply "logs" directly. Null until execution
+  // completes (see status: RUNNING in the meantime).
+  sandboxOutput    String?           @db.Text
+  sandboxExitCode  Int?
+  sandboxRanAt     DateTime?
+  sandboxError     String?           // populated only when status = SANDBOX_FAILED
 
   status           SubmissionStatus  @default(SUBMITTED)
   submittedAt      DateTime          @default(now())
