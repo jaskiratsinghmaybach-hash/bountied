@@ -67,7 +67,7 @@ export async function createSubmission(
   const repoUrl = String(formData.get("repoUrl") ?? "").trim();
   const writeup = String(formData.get("writeup") ?? "").trim();
 
-  if (!repoUrl) return { error: "Paste your GitHub repository URL." };
+  if (!repoUrl) return { error: "Select a repository from the dropdown." };
   if (!repoUrl.startsWith("https://github.com/")) {
     return { error: "Only GitHub repo URLs (https://github.com/...) are accepted." };
   }
