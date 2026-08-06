@@ -8,6 +8,7 @@ import {
   type CreateSubmissionResult,
 } from "@/lib/problems/submission-actions";
 import { ConnectGithubPrompt } from "@/components/auth/connect-github-prompt";
+import { RepoSelector } from "./repo-selector";
 
 const initialState: CreateSubmissionResult | undefined = undefined;
 
@@ -24,7 +25,7 @@ export function SubmissionForm({
 }) {
   const boundAction = createSubmission.bind(null, problemId);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
-  const [repoUrl, setRepoUrl] = useState("");
+  const [hasRepo, setHasRepo] = useState(false);
 
   // Success state — show a "you're in the queue" confirmation
   if (state && "ok" in state) {
@@ -88,22 +89,7 @@ export function SubmissionForm({
           >
             GitHub repo URL
           </label>
-          <div className="relative">
-            <FaGithub
-              size={14}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-foreground-muted"
-            />
-            <input
-              id="repoUrl"
-              name="repoUrl"
-              type="url"
-              required
-              value={repoUrl}
-              onChange={(e) => setRepoUrl(e.target.value)}
-              placeholder="https://github.com/your-username/your-repo"
-              className="w-full rounded-md border border-border bg-surface-raised pl-8 pr-3 py-2.5 text-sm text-foreground outline-none focus:border-accent transition-colors font-mono"
-            />
-          </div>
+          <RepoSelector onSelectionChange={setHasRepo} />
           <p className="text-[11px] text-foreground-muted mt-1">
             Public or private — your repo stays private from the giver until
             they release payment.
@@ -130,7 +116,7 @@ export function SubmissionForm({
 
         <button
           type="submit"
-          disabled={pending || !repoUrl}
+          disabled={pending || !hasRepo}
           className="self-start rounded-md bg-accent text-background font-medium px-6 py-2.5 text-sm hover:bg-accent-dim transition-colors disabled:opacity-60"
         >
           {pending ? "Submitting…" : "Submit solution"}

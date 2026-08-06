@@ -34,7 +34,7 @@ export const RUNTIME_REGISTRY: Record<Runtime, RuntimeConfig> = {
     label: "Python",
     // TODO: replace with the real template ID after running
     // `e2b template build` against sandbox-templates/python/e2b.Dockerfile
-    templateId: null,
+    templateId: "1z9fpclwmf3aeijmmv6s",
     dependencyFileName: "requirements.txt",
     installCommand: (depFile) => `pip install -r ${depFile}`,
     fileExtension: ".py",
