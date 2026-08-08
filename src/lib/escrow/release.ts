@@ -1,5 +1,6 @@
 import { EscrowState, SubmissionStatus, ProblemStatus } from "@prisma/client";
 import { amountCreditedOnRelease } from "@/lib/payments/fees";
+import { publishPlatformRepo } from "@/lib/github/platform-repo";
 import { prisma } from "@/lib/db";
 
 /**
@@ -9,16 +10,19 @@ import { prisma } from "@/lib/db";
  *   of Escrow.state actually becoming RELEASED after funds are credited to
  *   the solver.
  *
- * Every place that serves submission code to a problem-giver (the repoUrl
- * link on the giver detail page, for example) must check isRevealed
- * server-side and refuse to serve real repo access if false. Never trust
- * a client-supplied "I paid" flag. Never let a UI button flip isRevealed
- * directly.
+ * Every place that serves submission code to a problem-giver (the
+ * platformRepoUrl link on the giver detail page, for example) must check
+ * isRevealed server-side and refuse to serve real repo access if false. Never
+ * trust a client-supplied "I paid" flag. Never let a UI button flip
+ * isRevealed directly.
  *
  * This function is intentionally the ONLY writer of:
  *   - Escrow.state -> RELEASED
  *   - Submission.isRevealed -> true
  *   - Submission.status -> ACCEPTED / REJECTED
+ *   - Submission.platformRepoPublic -> true (the GitHub-side reveal, which
+ *     must stay in lockstep with isRevealed — a public mirror is
+ *     world-cloneable regardless of what the UI shows)
  *   - Problem.status -> COMPLETED
  * so there is exactly one code path to audit for the money-moves-code-unlocks
  * guarantee.
@@ -39,7 +43,8 @@ export async function acceptSubmissionAndRelease(params: {
 }): Promise<{ ok: true } | { ok: false; reason: string }> {
   const { problemId, submissionId, actingGiverId } = params;
 
-  return prisma.$transaction(async (tx) => {
+  const outcome: { ok: true; platformRepoFullName: string | null } | { ok: false; reason: string } =
+    await prisma.$transaction(async (tx) => {
     const problem = await tx.problem.findUnique({
       where: { id: problemId },
       include: { escrow: true },
@@ -104,6 +109,33 @@ export async function acceptSubmissionAndRelease(params: {
       },
     });
 
-    return { ok: true };
+    return { ok: true, platformRepoFullName: submission.platformRepoFullName };
   });
+
+  if (!outcome.ok) return outcome;
+
+  // Make the platform mirror public — the actual code reveal.
+  //
+  // Deliberately OUTSIDE the transaction: this is a network round-trip to
+  // GitHub, and holding a DB transaction open across it would pin a
+  // connection for seconds and risk a transaction timeout rolling back a
+  // payment that already succeeded.
+  //
+  // Ordering is money-first, reveal-second on purpose. If this call fails,
+  // the payment stands and isRevealed stays true — we never claw back a
+  // release. platformRepoPublic simply stays false and the giver's page
+  // surfaces that the repo is still being prepared, which is a recoverable
+  // state (retryable by an admin or a later accept attempt). The reverse
+  // order would risk publishing the code without the solver being paid.
+  if (outcome.platformRepoFullName) {
+    const published = await publishPlatformRepo(outcome.platformRepoFullName);
+    if (published.ok) {
+      await prisma.submission.update({
+        where: { id: submissionId },
+        data: { platformRepoPublic: true },
+      });
+    }
+  }
+
+  return { ok: true };
 }

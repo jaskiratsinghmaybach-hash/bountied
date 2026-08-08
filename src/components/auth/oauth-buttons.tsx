@@ -13,6 +13,12 @@ export function OAuthButtons() {
       provider,
       options: {
         redirectTo: `${origin}/auth/callback`,
+        // GitHub needs the "repo" scope here, not just in the separate
+        // connect-github-prompt flow: a solver who signs UP through GitHub
+        // never passes through that prompt, and without this their stored
+        // token can't read their private repos — so mirroring a private
+        // submission would 404 at clone time. Google ignores scopes.
+        ...(provider === "github" ? { scopes: "repo" } : {}),
         queryParams: {
           prompt: "select_account", // Forces Google to show the account picker every time
         },

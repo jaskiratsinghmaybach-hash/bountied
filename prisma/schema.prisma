@@ -279,12 +279,31 @@ model Submission {
 
   // GitHub repo URL only (product decision 2026-08-03) — no file/zip
   // upload, which avoids storage costs and a whole malicious-upload
-  // surface area. The repo itself should be PRIVATE; access is granted
-  // to the giver programmatically only after escrow release, never
-  // shared manually by the solver. Your server clones it server-side
-  // into the E2B sandbox to run it — the giver never gets clone access
-  // pre-payment.
+  // surface area. The giver never gets clone access to the solver's own
+  // repo at any point; they only ever receive the platform mirror below,
+  // and only after escrow release.
+  //
+  // The SOLVER's original repo. Server-side only from here on — it is the
+  // read source for the mirror below and is never shown to the giver, since
+  // it identifies the solver's own account and may stay private forever.
   repoUrl          String
+
+  // The platform's own copy of the submitted code, mirrored into
+  // github.com/bountied-repositories at submission time by
+  // src/lib/github/mirror.ts as a standalone repo (not a fork — a fork
+  // stays linked to the solver's repo and can't be made private).
+  //
+  // This is the URL everything downstream uses: the sandbox clones it, and
+  // it is the only repo URL the giver is ever shown. Null while the mirror
+  // is still running, or if it failed (see sandboxError).
+  platformRepoUrl      String?
+  platformRepoFullName String?   // "bountied-repositories/sub-<id>" — for the visibility flip / cleanup
+
+  // The mirror is created PRIVATE and flipped public only by the escrow
+  // release path, in lockstep with isRevealed — see src/lib/escrow/release.ts.
+  // Nothing else may ever set this true: a public repo is world-cloneable,
+  // so flipping it early gives away the solution before the solver is paid.
+  platformRepoPublic   Boolean   @default(false)
 
   // Required "what I did" writeup — solver's own words, shown alongside
   // the sandbox output as part of the pre-payment preview.

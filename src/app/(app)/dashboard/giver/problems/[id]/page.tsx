@@ -175,16 +175,25 @@ export default async function GiverProblemDetailPage({
                     </div>
                   )}
 
-                  {s.isRevealed && (
-                    <a
-                      href={s.repoUrl}
-                      className="text-sm text-accent hover:underline"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      View source repo →
-                    </a>
-                  )}
+                  {/* Only ever the platform's own mirror, never s.repoUrl —
+                      the solver's original repo is not the giver's to see.
+                      Still gated on isRevealed, which only escrow release
+                      sets. */}
+                  {s.isRevealed &&
+                    (s.platformRepoUrl ? (
+                      <a
+                        href={s.platformRepoUrl}
+                        className="text-sm text-accent hover:underline"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        View source repo →
+                      </a>
+                    ) : (
+                      <p className="text-xs text-foreground-muted">
+                        Preparing the source repository — refresh in a moment.
+                      </p>
+                    ))}
                 </div>
 
                 {canAccept && s.status === "UNDER_REVIEW" && (
