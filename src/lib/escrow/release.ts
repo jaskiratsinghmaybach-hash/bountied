@@ -1,6 +1,6 @@
 import { EscrowState, SubmissionStatus, ProblemStatus } from "@prisma/client";
 import { amountCreditedOnRelease } from "@/lib/payments/fees";
-import { publishPlatformRepo } from "@/lib/github/platform-repo";
+import { grantGiverRepoAccess } from "@/lib/github/grant-access";
 import { prisma } from "@/lib/db";
 
 /**
@@ -20,9 +20,12 @@ import { prisma } from "@/lib/db";
  *   - Escrow.state -> RELEASED
  *   - Submission.isRevealed -> true
  *   - Submission.status -> ACCEPTED / REJECTED
- *   - Submission.platformRepoPublic -> true (the GitHub-side reveal, which
- *     must stay in lockstep with isRevealed — a public mirror is
- *     world-cloneable regardless of what the UI shows)
+ *   - Submission.githubAccessGrantedAt -> set (the GitHub-side reveal — a
+ *     specific collaborator invite to the specific giver who paid, NOT a
+ *     public/private flip; see lib/github/grant-access.ts. A mirror repo
+ *     is never made public — its name is derivable from a visible
+ *     submission id, so "public" would mean world-readable, not
+ *     giver-readable.)
  *   - Problem.status -> COMPLETED
  * so there is exactly one code path to audit for the money-moves-code-unlocks
  * guarantee.
@@ -114,26 +117,44 @@ export async function acceptSubmissionAndRelease(params: {
 
   if (!outcome.ok) return outcome;
 
-  // Make the platform mirror public — the actual code reveal.
+  // Invite the giver as a collaborator on the platform mirror — the
+  // actual code reveal.
   //
   // Deliberately OUTSIDE the transaction: this is a network round-trip to
   // GitHub, and holding a DB transaction open across it would pin a
   // connection for seconds and risk a transaction timeout rolling back a
   // payment that already succeeded.
   //
-  // Ordering is money-first, reveal-second on purpose. If this call fails,
-  // the payment stands and isRevealed stays true — we never claw back a
-  // release. platformRepoPublic simply stays false and the giver's page
-  // surfaces that the repo is still being prepared, which is a recoverable
-  // state (retryable by an admin or a later accept attempt). The reverse
-  // order would risk publishing the code without the solver being paid.
+  // Ordering is money-first, reveal-second on purpose. If this call fails
+  // — most often because the giver hasn't connected GitHub yet, so there
+  // is no githubUsername to invite — the payment stands and isRevealed
+  // stays true; we never claw back a release. githubAccessGrantedAt
+  // simply stays null and the giver's page offers a retry once they've
+  // connected GitHub. The reverse order would risk granting access to
+  // code the giver never paid for.
   if (outcome.platformRepoFullName) {
-    const published = await publishPlatformRepo(outcome.platformRepoFullName);
-    if (published.ok) {
-      await prisma.submission.update({
-        where: { id: submissionId },
-        data: { platformRepoPublic: true },
+    const giver = await prisma.user.findUnique({
+      where: { id: actingGiverId },
+      select: { githubUsername: true },
+    });
+
+    if (giver?.githubUsername) {
+      const grant = await grantGiverRepoAccess({
+        platformRepoFullName: outcome.platformRepoFullName,
+        giverGithubUsername: giver.githubUsername,
       });
+      if (grant.ok) {
+        await prisma.submission.update({
+          where: { id: submissionId },
+          data: { githubAccessGrantedAt: new Date() },
+        });
+      } else {
+        console.error(`[github-access] submission ${submissionId}: ${grant.reason}`);
+      }
+    } else {
+      console.error(
+        `[github-access] submission ${submissionId}: giver ${actingGiverId} has no GitHub username on file yet — retry once they connect GitHub`
+      );
     }
   }
 

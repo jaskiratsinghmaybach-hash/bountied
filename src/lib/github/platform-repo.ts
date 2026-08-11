@@ -52,6 +52,10 @@ function headers(token: string): HeadersInit {
  * this is collision-free and gives every submission its own standalone
  * repo (no forks — a fork stays permanently linked to the solver's source
  * repo and cannot be made private when the parent is public).
+ *
+ * The name being derivable from a visible submission id is fine and
+ * intentional — see the note on createPlatformRepo below. The repo stays
+ * private forever regardless, so guessing the name grants nothing.
  */
 export function repoNameForSubmission(submissionId: string): string {
   return `sub-${submissionId}`;
@@ -60,9 +64,16 @@ export function repoNameForSubmission(submissionId: string): string {
 /**
  * Creates a new PRIVATE repo under the platform account.
  *
- * Private on purpose: the submission's code must not be world-readable
- * before the giver pays. It is flipped to public by publishPlatformRepo()
- * from the escrow release path only — see lib/escrow/release.ts.
+ * PRIVATE FOREVER (revised 2026-08-09) — not just until release. This repo
+ * previously became public via publishPlatformRepo() on escrow release,
+ * which was a real vulnerability: repoNameForSubmission() derives the name
+ * from the submission id, which is visible elsewhere in the app, so any
+ * public repo was enumerable by anyone who had used the platform, not just
+ * the giver who paid. That function has been removed. The only reveal
+ * mechanism now is a per-repo, per-giver collaborator invite — see
+ * lib/github/grant-access.ts, called only from lib/escrow/release.ts after
+ * escrow actually releases. Do not add a function that flips a mirror
+ * repo's visibility to public; there is no correct reason to.
  *
  * auto_init is false so the repo has zero commits, which is what an
  * initial `git push --all` into it requires (an auto-initialised repo has
@@ -163,34 +174,13 @@ export async function getPlatformRepo(name: string): Promise<PlatformRepoResult>
 }
 
 /**
- * Flips a mirrored repo from private to public.
- *
- * THIS IS THE REVEAL. Call it only from the escrow release path, after the
- * money has actually moved — making the repo public is exactly as
- * irreversible as handing the giver the source, because anyone can clone it
- * (and GitHub/third parties may index it) during any window it is public.
+ * REMOVED (2026-08-09): this file used to export publishPlatformRepo(),
+ * which PATCHed a mirror repo to private:false. That function granted
+ * access to EVERYONE, not just the giver who paid — see the note on
+ * createPlatformRepo above for why. It has been deleted, not deprecated,
+ * so nothing can accidentally call it again. The real reveal is
+ * grantGiverRepoAccess() in lib/github/grant-access.ts.
  */
-export async function publishPlatformRepo(
-  fullName: string
-): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const token = platformToken();
-  if (!token) return { ok: false, reason: "PLATFORM_GITHUB_TOKEN is not configured." };
-
-  const res = await fetch(`${GITHUB_API}/repos/${fullName}`, {
-    method: "PATCH",
-    headers: headers(token),
-    body: JSON.stringify({ private: false }),
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    return {
-      ok: false,
-      reason: `Could not make ${fullName} public (GitHub returned ${res.status}).`,
-    };
-  }
-  return { ok: true };
-}
 
 /**
  * Deletes a platform repo. Used to clean up after a mirror that failed
