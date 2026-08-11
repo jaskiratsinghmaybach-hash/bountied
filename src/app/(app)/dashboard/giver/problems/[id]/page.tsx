@@ -6,6 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import { AcceptSubmissionButton } from "@/components/dashboard/accept-submission-button";
 import { FundDraftButton } from "@/components/problems/fund-draft-button";
 import { DraftActions } from "@/components/problems/draft-actions";
+import { RepoAccessStatus } from "@/components/problems/repo-access-status";
 import { creditsRequiredToFund } from "@/lib/payments/fees";
 
 const statusLabel: Record<string, { label: string; color: string }> = {
@@ -175,25 +176,18 @@ export default async function GiverProblemDetailPage({
                     </div>
                   )}
 
-                  {/* Only ever the platform's own mirror, never s.repoUrl —
-                      the solver's original repo is not the giver's to see.
-                      Still gated on isRevealed, which only escrow release
-                      sets. */}
-                  {s.isRevealed &&
-                    (s.platformRepoUrl ? (
-                      <a
-                        href={s.platformRepoUrl}
-                        className="text-sm text-accent hover:underline"
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        View source repo →
-                      </a>
-                    ) : (
-                      <p className="text-xs text-foreground-muted">
-                        Preparing the source repository — refresh in a moment.
-                      </p>
-                    ))}
+                  {/* Payment released -> show connect/retry/link status.
+                      Never shows the solver's own repoUrl — only ever the
+                      platform mirror, and only once a collaborator invite
+                      has actually gone through. */}
+                  {s.isRevealed && (
+                    <RepoAccessStatus
+                      submissionId={s.id}
+                      platformRepoUrl={s.platformRepoUrl}
+                      accessGranted={!!s.githubAccessGrantedAt}
+                      giverGithubUsername={profile.githubUsername}
+                    />
+                  )}
                 </div>
 
                 {canAccept && s.status === "UNDER_REVIEW" && (

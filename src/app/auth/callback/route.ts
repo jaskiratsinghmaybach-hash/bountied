@@ -48,12 +48,25 @@ export async function GET(request: Request) {
       // signing up via email/password or Google — exactly the accounts
       // that most need this to work.
       const providers = (data.user.app_metadata?.providers as string[] | undefined) ?? [];
-      const githubToken = providers.includes("github")
-        ? data.session?.provider_token ?? undefined
+      const isGithub = providers.includes("github");
+      const githubToken = isGithub ? data.session?.provider_token ?? undefined : undefined;
+
+      // GitHub's real login (distinct from display name) — Supabase
+      // surfaces it as user_name on a GitHub identity. Needed for givers:
+      // the collaborator-invite API that grants repo access after payment
+      // (see lib/github/grant-access.ts) takes a username, not a token.
+      // Captured whenever this exchange was a GitHub sign-in/link,
+      // independent of whether a fresh provider_token also came back —
+      // the username is stable account metadata, not a rotating
+      // credential, so there's no reason to gate it behind githubToken
+      // being present.
+      const githubUsername = isGithub
+        ? ((data.user.user_metadata?.user_name as string | undefined) ??
+           (data.user.user_metadata?.preferred_username as string | undefined))
         : undefined;
 
       // Ensure a Prisma User row exists before sending them into the app.
-      await syncUserFromSupabase(data.user, githubToken);
+      await syncUserFromSupabase(data.user, githubToken, githubUsername);
 
       const profile = await prisma.user.findUnique({ where: { id: data.user.id } });
       const destination = profile?.role
