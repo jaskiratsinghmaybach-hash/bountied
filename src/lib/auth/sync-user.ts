@@ -23,10 +23,18 @@ import type { User as SupabaseUser } from "@supabase/supabase-js";
  * token (if any) is left untouched rather than wiped, so a solver's repo
  * access doesn't silently break just because a later login didn't
  * include a fresh token.
+ *
+ * githubUsername: same "only overwrite when present" treatment as the
+ * token above. Used by GIVERS — the collaborator-invite API that grants
+ * post-payment repo access (see lib/github/grant-access.ts) needs a
+ * GitHub login, not a token. A giver only ever needs to connect once;
+ * after this is set, the "Connect GitHub" prompt never shows again for
+ * them on any future accepted submission.
  */
 export async function syncUserFromSupabase(
   supabaseUser: SupabaseUser,
-  githubAccessToken?: string
+  githubAccessToken?: string,
+  githubUsername?: string
 ) {
   const email = supabaseUser.email;
   if (!email) {
@@ -56,6 +64,7 @@ export async function syncUserFromSupabase(
       ...(githubAccessToken
         ? { githubAccessToken, githubConnected: true }
         : {}),
+      ...(githubUsername ? { githubUsername } : {}),
     },
     create: {
       id: supabaseUser.id,
@@ -65,6 +74,7 @@ export async function syncUserFromSupabase(
       ...(githubAccessToken
         ? { githubAccessToken, githubConnected: true }
         : {}),
+      ...(githubUsername ? { githubUsername } : {}),
     },
   });
 }

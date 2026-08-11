@@ -43,6 +43,15 @@ model User {
   // v1 has no encryption-at-rest layer yet, see README.
   githubAccessToken String?
   githubConnected   Boolean  @default(false)
+  githubUsername    String?  // GitHub login captured when a GIVER connects
+                              // GitHub post-payment (see connect-github-prompt
+                              // usage on the giver accept flow) OR when a
+                              // solver connects (same field, either role).
+                              // Needed because the collaborator-invite API
+                              // takes a username, not a token — see
+                              // lib/github/grant-access.ts. Once set, the
+                              // giver never sees the "Connect GitHub" button
+                              // again on any future accepted submission.
 
   // Payout pipeline (Solver side) — v1 is manual: solver submits bank
   // details directly (no external verification API), platform admin
@@ -299,10 +308,15 @@ model Submission {
   platformRepoUrl      String?
   platformRepoFullName String?   // "bountied-repositories/sub-<id>" — for the visibility flip / cleanup
 
-  // The mirror is created PRIVATE and flipped public only by the escrow
-  // release path, in lockstep with isRevealed — see src/lib/escrow/release.ts.
-  // Nothing else may ever set this true: a public repo is world-cloneable,
-  // so flipping it early gives away the solution before the solver is paid.
+  // UNUSED as of 2026-08-09 — kept only so existing rows keep a value,
+  // not read or written by any code path anymore. The mirror repo is now
+  // PRIVATE FOREVER; access is granted per-giver via a collaborator invite
+  // (see lib/github/grant-access.ts, called from lib/escrow/release.ts),
+  // never by making the repo public. A public repo was a real
+  // vulnerability: platformRepoFullName is derived from this submission's
+  // own id, which is visible elsewhere in the app, so "public" meant
+  // world-readable, not giver-readable. Safe to drop in a later migration
+  // once confirmed nothing references it.
   platformRepoPublic   Boolean   @default(false)
 
   // Required "what I did" writeup — solver's own words, shown alongside
@@ -325,6 +339,14 @@ model Submission {
   // Reveal gate — this MUST only ever be set true by the server-side escrow release handler,
   // never set directly from client input. See src/lib/escrow/release.ts
   isRevealed       Boolean           @default(false)
+
+  // Set once the giver has actually accepted a GitHub collaborator invite
+  // to the platform mirror (see lib/github/grant-access.ts). Null means
+  // either the invite hasn't been attempted yet, or it failed — most
+  // commonly because the giver hadn't connected GitHub (no githubUsername
+  // on their User row) at the moment they clicked Accept & pay. The giver
+  // detail page offers a retry in that case.
+  githubAccessGrantedAt DateTime?
 
   // Socket for future automated evaluation (LLM first-pass or sandbox judge).
   // v1: always null. v2: populated by src/lib/evaluation service.
