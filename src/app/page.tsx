@@ -1,4 +1,4 @@
-import { BountyTicket } from "@/components/marketing/bounty-ticket";
+//import { BountyTicket } from "@/components/marketing/bounty-ticket";
 import { Hero } from "@/components/marketing/hero";
 import { ChallengeTypes } from "@/components/marketing/challenge-types";
 
