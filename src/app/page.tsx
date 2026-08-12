@@ -4,7 +4,7 @@ import { ChallengeTypes } from "@/components/marketing/challenge-types";
 
 export default function Home() {
   return (
-    <main className="flex-1">
+    <main className="flex-1 min-h-0 overflow-y-auto">
       <Hero />
       <ChallengeTypes />
     </main>

@@ -5,7 +5,7 @@ import { BountyTicket } from "./bounty-ticket";
 
 export function Hero() {
   return (
-    <section className="relative overflow-hidden border-b border-border">
+    <section className="relative border-b border-border">
       {/* Ambient grid texture — quiet, not a scroll-triggered gimmick */}
       <div
         className="absolute inset-0 opacity-[0.03] pointer-events-none"
@@ -24,7 +24,7 @@ export function Hero() {
             transition={{ duration: 0.4 }}
             className="font-mono text-xs text-accent tracking-widest uppercase mb-5"
           >
-            Escrow-backed &middot; No connects &middot; No proposals
+            Escrow-backed &middot; No bidding &middot; No proposals
           </motion.p>
 
           <motion.h1
@@ -33,11 +33,11 @@ export function Hero() {
             transition={{ duration: 0.5, delay: 0.1 }}
             className="text-4xl md:text-5xl font-semibold tracking-tight leading-[1.1] mb-6"
           >
-            Post a problem.
+            Ship code faster.
             <br />
             Fund the bounty.
             <br />
-            <span className="text-foreground-muted">Pay who you accept.</span>
+            <span className="text-foreground-muted">Pay on approval.</span>
           </motion.h1>
 
           <motion.p
@@ -46,9 +46,9 @@ export function Hero() {
             transition={{ duration: 0.5, delay: 0.2 }}
             className="text-foreground-muted text-lg leading-relaxed mb-8 max-w-md"
           >
-            Real programming problems, solved by real people, for real money
-            held in escrow before anyone writes a line of code. No formal
-            hiring process — just the fastest or best accepted solution wins.
+            Escrow-backed code bounties solved by verified developers. No
+            resumes, no long hiring calls, no upfront risk — money is released
+            only when a working solution passes your review.
           </motion.p>
 
           <motion.div
@@ -58,10 +58,10 @@ export function Hero() {
             className="flex flex-wrap gap-3"
           >
             <button className="rounded-md bg-accent text-background font-medium px-5 py-2.5 text-sm hover:bg-accent-dim transition-colors">
-              Post a challenge
+              Launch a Bounty
             </button>
             <button className="rounded-md border border-border text-foreground font-medium px-5 py-2.5 text-sm hover:bg-surface transition-colors">
-              Browse open bounties
+              Solve & Earn
             </button>
           </motion.div>
         </div>
@@ -69,8 +69,8 @@ export function Hero() {
         {/* Signature element: stacked, slightly offset bounty tickets — a live problem feed, not a stock hero image */}
         <div className="relative flex flex-col gap-4 md:pl-8">
           <BountyTicket
-            title="Fix race condition in WebSocket reconnect logic"
-            tags={["typescript", "websockets"]}
+            title="Fix WebSocket reconnect race condition in Next.js backend"
+            tags={["typescript", "next.js", "websockets"]}
             bounty="$85"
             solverCount={7}
             status="open"
@@ -78,8 +78,8 @@ export function Hero() {
           />
           <div className="md:pl-6">
             <BountyTicket
-              title="Optimize N+1 query in Django ORM order pipeline"
-              tags={["python", "django", "postgres"]}
+              title="Optimize Django ORM N+1 query for 100k+ order records"
+              tags={["python", "django", "postgresql"]}
               bounty="$120"
               solverCount={12}
               status="in_review"
@@ -88,8 +88,8 @@ export function Hero() {
           </div>
           <div className="md:pl-2">
             <BountyTicket
-              title="Parametric Blender script for cultivator model"
-              tags={["python", "blender"]}
+              title="Automate 3D mesh generation via Blender Python API"
+              tags={["python", "blender-3d", "cad"]}
               bounty="$60"
               solverCount={3}
               status="open"

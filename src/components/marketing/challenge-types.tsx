@@ -5,30 +5,30 @@ import { motion } from "framer-motion";
 const types = [
   {
     name: "Open Challenges",
-    price: "Free or bountied",
+    price: "Open Bounties",
     description:
-      "Anyone can attempt these. Post for practice with no money attached, or add a bounty to attract serious solvers.",
+      "Open to all developers. Post free issues for community support, or attach an escrow bounty to get instant priority submissions.",
     live: true,
   },
   {
     name: "First to Solve",
-    price: "Bountied only",
+    price: "Sprint Format",
     description:
-      "The race format. Every submission is funded before it's posted — the giver picks the fastest accurate solution.",
+      "High-velocity bounty race. Solvers submit fast, verified fixes — funds are released to the first solution that passes review.",
     live: true,
   },
   {
     name: "Invite Only",
-    price: "Bountied",
+    price: "Vetted Solvers",
     description:
-      "Bring your rated, badge-holding solvers directly onto your project. Built for ongoing work with people you trust.",
+      "Target top-rated engineers directly. Restrict access to top-tier solvers based on reputation score and verified badge history.",
     live: true,
   },
   {
     name: "Fixed Price",
     price: "Enterprise",
     description:
-      "Traditional scoped engagements with premium tooling. Built for teams that need more than a single bounty.",
+      "Scoped milestone contracts for complex features or entire repositories. Designed for teams needing dedicated engineering bandwidth.",
     live: false,
   },
 ];
@@ -44,11 +44,10 @@ export function ChallengeTypes() {
         className="mb-12 max-w-xl"
       >
         <h2 className="text-2xl md:text-3xl font-semibold tracking-tight mb-3">
-          Four ways to get a problem solved
+          Built for Every Engineering Task
         </h2>
         <p className="text-foreground-muted leading-relaxed">
-          Every paid format is escrow-funded before it goes live — solvers
-          never race for money that might not exist.
+          Every bounty is 100% funded in escrow before going live — solvers code with guaranteed payouts, givers pay only for results.
         </p>
       </motion.div>
 

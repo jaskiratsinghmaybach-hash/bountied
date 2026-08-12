@@ -26,11 +26,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${inter.variable} ${plexMono.variable} h-full antialiased`}
-    >
-      <body className="h-full flex flex-col overflow-hidden bg-background text-foreground">
+    <html lang="en" className={`${inter.variable} ${plexMono.variable} antialiased`}>
+      <body className="flex flex-col min-h-screen bg-background text-foreground">
         <Header />
         {children}
       </body>

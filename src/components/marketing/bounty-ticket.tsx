@@ -42,7 +42,7 @@ export function BountyTicket({
           </span>
         </div>
         <span className="text-xs text-foreground-muted font-mono">
-          {solverCount} solving
+          {solverCount} active solvers
         </span>
       </div>
 
@@ -63,7 +63,7 @@ export function BountyTicket({
 
       <div className="flex items-end justify-between pt-3 border-t border-border">
         <span className="text-[11px] text-foreground-muted uppercase tracking-wide">
-          Bounty
+          Reward
         </span>
         <span className="font-mono text-lg font-semibold text-money">
           {bounty}
