@@ -96,6 +96,7 @@ model User {
 enum CreditTransactionType {
   PURCHASE
   BOUNTY_FUNDING
+  SUBMISSION_REVIEW  // Added for $0.04 review charges
   REFUND
 }
 
@@ -125,6 +126,8 @@ model CreditTransaction {
   amount        Decimal                 @db.Decimal(12, 2)
   balanceAfter  Decimal                 @db.Decimal(12, 2)
   problemId     String?
+  submissionId  String?                 // Relates transaction to a specific submission
+  submission    Submission?             @relation(fields: [submissionId], references: [id])
   whopChargeRef String?
   createdAt     DateTime                @default(now())
 
@@ -223,6 +226,9 @@ model Problem {
   // INVITE_ONLY targeting — list of invited solver user ids
   inviteeIds    String[]      @default([])
 
+  // Tracks free tier review allowance per-problem
+  freeReviewsUsed Int         @default(0)
+
   submissions   Submission[]
 
   @@index([status, type])
@@ -270,6 +276,7 @@ model Escrow {
 enum SubmissionStatus {
   SUBMITTED
   RUNNING          // sandbox execution in progress
+  AWAITING_REVIEW  // Mirrored & ready, awaiting giver action to execute sandbox
   SANDBOX_FAILED   // code didn't run at all (missing deps, crash, timeout) —
                    // distinct from a working solution the giver rejects,
                    // so a good solver's setup issue is never confused with
@@ -354,6 +361,7 @@ model Submission {
 
   escrowRelease    Escrow?           @relation("EscrowRelease")
   review           Review?
+  creditTransactions CreditTransaction[]
 
   @@index([problemId, status])
   @@index([solverId])
@@ -362,14 +370,14 @@ model Submission {
 // ─── Reputation ──────────────────────────────────────────────────────────
 
 model Badge {
-  id        String      @id @default(cuid())
-  name      String      @unique
+  id          String      @id @default(cuid())
+  name        String      @unique
   description String
   // e.g. { "type": "completions", "threshold": 100 } or { "type": "earned", "threshold": 1000 }
-  criteria  Json
-  iconUrl   String?
+  criteria    Json
+  iconUrl     String?
 
-  users     UserBadge[]
+  users       UserBadge[]
 }
 
 model UserBadge {

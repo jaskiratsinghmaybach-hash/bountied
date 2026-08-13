@@ -1,56 +1,16 @@
-import { prisma } from "@/lib/db";
-import { createClient } from "@/lib/supabase/server";
-import { redirect, notFound } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-import { AcceptSubmissionButton } from "@/components/dashboard/accept-submission-button";
-import { FundDraftButton } from "@/components/problems/fund-draft-button";
-import { DraftActions } from "@/components/problems/draft-actions";
-import { RepoAccessStatus } from "@/components/problems/repo-access-status";
-import { creditsRequiredToFund } from "@/lib/payments/fees";
+import { prisma } from "@/lib/prisma";
+import { ReviewButton } from "@/components/problems/review-button";
+import { FREE_REVIEWS_PER_PROBLEM } from "@/lib/reviews/pricing";
+import { notFound } from "next/navigation";
 
-const statusLabel: Record<string, { label: string; color: string }> = {
-  DRAFT: { label: "Draft", color: "text-foreground-muted" },
-  FUNDED: { label: "Funded", color: "text-money" },
-  OPEN: { label: "Open", color: "text-accent" },
-  IN_REVIEW: { label: "In review", color: "text-money" },
-  COMPLETED: { label: "Completed", color: "text-foreground-muted" },
-  CANCELLED: { label: "Cancelled", color: "text-danger" },
-  REFUNDED: { label: "Refunded", color: "text-foreground-muted" },
-};
-
-const submissionStatusLabel: Record<string, { label: string; color: string }> =
-  {
-    SUBMITTED: { label: "Submitted", color: "text-foreground-muted" },
-    RUNNING: { label: "Running in sandbox…", color: "text-accent" },
-    SANDBOX_FAILED: { label: "Sandbox failed", color: "text-danger" },
-    UNDER_REVIEW: { label: "Under review", color: "text-money" },
-    ACCEPTED: { label: "Accepted", color: "text-accent" },
-    REJECTED: { label: "Rejected", color: "text-danger" },
-  };
-
-export default async function GiverProblemDetailPage({
+export default async function GiverProblemPage({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: { id: string };
 }) {
-  const { id } = await params;
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const profile = await prisma.user.findUnique({ where: { id: user.id } });
-  if (!profile) redirect("/login");
-  if (profile.role === "SOLVER") redirect("/dashboard/solver");
-  if (!profile.role) redirect("/onboarding");
-
   const problem = await prisma.problem.findUnique({
-    where: { id },
+    where: { id: params.id },
     include: {
-      escrow: true,
       submissions: {
         include: { solver: true },
         orderBy: { submittedAt: "desc" },
@@ -59,148 +19,49 @@ export default async function GiverProblemDetailPage({
   });
 
   if (!problem) notFound();
-  // Ownership check — a giver can only manage their own problems.
-  if (problem.giverId !== user.id) notFound();
 
-  const status = statusLabel[problem.status] ?? statusLabel.DRAFT;
-  const canAccept =
-    problem.escrow?.state === "HELD" &&
-    (problem.status === "OPEN" || problem.status === "IN_REVIEW");
+  const freeReviewsLeft = Math.max(0, FREE_REVIEWS_PER_PROBLEM - problem.freeReviewsUsed);
 
   return (
-    <main className="px-8 py-10 max-w-4xl">
-      <Link
-        href="/dashboard/giver/problems"
-        className="inline-flex items-center gap-1.5 text-sm text-foreground-muted hover:text-foreground transition-colors mb-6"
-      >
-        <ArrowLeft size={14} />
-        Back to my problems
-      </Link>
-
-      <div className="flex items-start justify-between mb-4">
+    <div className="p-6 space-y-6 max-w-5xl mx-auto">
+      <div className="flex justify-between items-center border-b pb-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight mb-1">
-            {problem.title}
-          </h1>
-          <p className={`text-xs font-mono ${status.color}`}>{status.label}</p>
-        </div>
-        <div className="flex flex-col items-end gap-1.5 shrink-0 pl-4">
-          {problem.status === "DRAFT" && <DraftActions problemId={problem.id} />}
-          <span className="font-mono text-xl font-semibold text-money">
-            {problem.bountyAmount ? `$${problem.bountyAmount}` : "Free"}
-          </span>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-1.5 mb-6">
-        {problem.tags.map((tag) => (
-          <span
-            key={tag}
-            className="text-[11px] font-mono text-foreground-muted bg-surface-raised px-2 py-0.5 rounded border border-border"
-          >
-            {tag}
-          </span>
-        ))}
-      </div>
-
-      {problem.status === "DRAFT" && problem.bountyAmount && (
-        <FundDraftButton
-          problemId={problem.id}
-          requiredTotal={creditsRequiredToFund(Number(problem.bountyAmount))}
-        />
-      )}
-
-      <div className="rounded-lg border border-border bg-surface p-6 mb-10">
-        <p className="text-sm text-foreground-muted leading-relaxed whitespace-pre-wrap">
-          {problem.description}
-        </p>
-      </div>
-
-      <h2 className="text-sm font-medium text-foreground-muted uppercase tracking-wide mb-4">
-        Submissions ({problem.submissions.length})
-      </h2>
-
-      {problem.submissions.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border p-10 text-center">
-          <p className="text-sm text-foreground-muted">
-            No submissions yet — solvers will show up here once they submit.
+          <h1 className="text-2xl font-bold">{problem.title}</h1>
+          <p className="text-sm text-gray-500">
+            Free Sandbox Reviews Remaining: <span className="font-semibold">{freeReviewsLeft} / {FREE_REVIEWS_PER_PROBLEM}</span>
           </p>
         </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {problem.submissions.map((s) => {
-            const sStatus =
-              submissionStatusLabel[s.status] ??
-              submissionStatusLabel.SUBMITTED;
-            return (
-              <div
-                key={s.id}
-                className="rounded-lg border border-border bg-surface p-5 flex items-start justify-between gap-4"
-              >
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <p className="text-sm font-medium text-foreground">
-                      {s.solver.name}
-                    </p>
-                    <span className={`text-xs font-mono ${sStatus.color}`}>
-                      {sStatus.label}
-                    </span>
-                  </div>
-                  <p className="text-xs text-foreground-muted mb-3">
-                    Submitted {s.submittedAt.toLocaleDateString()}
-                  </p>
+      </div>
 
-                  <p className="text-sm text-foreground-muted leading-relaxed mb-3">
-                    {s.writeup}
-                  </p>
+      <div className="space-y-4">
+        <h2 className="text-xl font-semibold">Submissions ({problem.submissions.length})</h2>
 
-                  {s.status === "SANDBOX_FAILED" && s.sandboxError && (
-                    <div className="mb-3">
-                      <p className="text-[11px] text-danger mb-1">
-                        Sandbox failed to run this submission:
-                      </p>
-                      <pre className="text-[11px] font-mono text-foreground-muted bg-surface-raised rounded p-3 overflow-x-auto whitespace-pre-wrap border border-danger/20">
-                        {s.sandboxError}
-                      </pre>
-                    </div>
-                  )}
+        {problem.submissions.map((sub) => (
+          <div key={sub.id} className="p-4 border rounded-xl flex justify-between items-center bg-white shadow-sm">
+            <div>
+              <p className="font-semibold">{sub.solver.name} ({sub.solver.email})</p>
+              <p className="text-sm text-gray-600 line-clamp-1">{sub.writeup}</p>
+              <span className="inline-block mt-2 px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-700">
+                Status: {sub.status}
+              </span>
+            </div>
 
-                  {s.sandboxOutput && (
-                    <div className="mb-3">
-                      <p className="text-[11px] text-foreground-muted uppercase tracking-wide mb-1">
-                        Captured sandbox output
-                      </p>
-                      <pre className="text-xs font-mono text-foreground bg-surface-raised rounded-md p-3 overflow-x-auto whitespace-pre-wrap max-h-56 overflow-y-auto border border-border">
-                        {s.sandboxOutput}
-                      </pre>
-                    </div>
-                  )}
-
-                  {/* Payment released -> show connect/retry/link status.
-                      Never shows the solver's own repoUrl — only ever the
-                      platform mirror, and only once a collaborator invite
-                      has actually gone through. */}
-                  {s.isRevealed && (
-                    <RepoAccessStatus
-                      submissionId={s.id}
-                      platformRepoUrl={s.platformRepoUrl}
-                      accessGranted={!!s.githubAccessGrantedAt}
-                      giverGithubUsername={profile.githubUsername}
-                    />
-                  )}
-                </div>
-
-                {canAccept && s.status === "UNDER_REVIEW" && (
-                  <AcceptSubmissionButton
-                    problemId={problem.id}
-                    submissionId={s.id}
-                  />
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </main>
+            <div>
+              {sub.status === "AWAITING_REVIEW" && (
+                <ReviewButton
+                  submissionId={sub.id}
+                  giverId={problem.giverId}
+                  freeReviewsLeft={freeReviewsLeft}
+                  status={sub.status}
+                />
+              )}
+              {sub.status === "UNDER_REVIEW" && (
+                <span className="text-sm text-green-600 font-semibold">Sandbox Execution Complete</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
