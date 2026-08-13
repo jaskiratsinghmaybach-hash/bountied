@@ -1,6 +1,6 @@
 "use server";
 
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { REVIEW_COST_USD, FREE_REVIEWS_PER_PROBLEM } from "./pricing";
 
@@ -60,7 +60,7 @@ export async function triggerSubmissionReview(submissionId: string, giverId: str
     }
 
     // Call sandbox execution API route internally or directly
-    revalidatePath(/dashboard/giver/problems/ + problem.id);
+    revalidatePath(`/dashboard/giver/problems/${problem.id}`);
     return { success: true, charged: !isFree };
   });
 }

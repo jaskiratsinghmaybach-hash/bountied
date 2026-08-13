@@ -147,7 +147,8 @@ export async function createProblem(
   });
 
   if (intent === "draft") {
-    redirect(`/dashboard/giver/problems/${problem.id}`);
+    revalidatePath("/dashboard/giver/problems");
+    redirect("/dashboard/giver/problems");
   }
 
   // Free challenges have nothing to fund — publish immediately.
@@ -224,7 +225,8 @@ export async function updateProblem(
   });
 
   if (intent === "draft") {
-    redirect(`/dashboard/giver/problems/${problemId}`);
+    revalidatePath("/dashboard/giver/problems");
+    redirect("/dashboard/giver/problems");
   }
 
   if (parsed.isFree) {

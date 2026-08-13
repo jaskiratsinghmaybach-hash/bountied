@@ -65,9 +65,13 @@ export function ReviewButton({
     <button
       onClick={handleReview}
       disabled={loading}
-      className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+      className="rounded-md bg-accent text-background font-medium px-4 py-2 text-sm hover:bg-accent-dim transition-colors disabled:opacity-60"
     >
-      {loading ? "Running Sandbox..." : isFree ? "Run Sandbox Review (Free)" : "Run Sandbox Review (.04)"}
+      {loading
+        ? "Running sandbox…"
+        : isFree
+          ? "Run sandbox review (free)"
+          : "Run sandbox review ($0.04)"}
     </button>
   );
 }

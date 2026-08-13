@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/db";
 import { mirrorRepository } from "@/lib/github/mirror";
 
 export async function POST(req: Request) {

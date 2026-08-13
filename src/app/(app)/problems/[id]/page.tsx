@@ -51,7 +51,7 @@ export default async function ProblemDetailPage({
         </span>
       </div>
 
-      <div className="flex flex-wrap gap-1.5 mb-2">
+      <div className="flex flex-wrap gap-1.5 mb-5">
         {problem.tags.map((tag) => (
           <span
             key={tag}
@@ -62,11 +62,16 @@ export default async function ProblemDetailPage({
         ))}
       </div>
 
-      <div className="flex items-center gap-3 mb-6 text-xs text-foreground-muted font-mono">
-        <span className="bg-surface-raised px-2 py-0.5 rounded border border-border">
-          {problem.runtime.toLowerCase()}
-        </span>
-        <span>{problem.runCommand}</span>
+      <div className="mb-6">
+        <p className="text-xs text-foreground-muted uppercase tracking-wide mb-2">
+          Sandbox run command
+        </p>
+        <code className="block rounded-md border border-accent/25 bg-accent/5 px-3 py-2.5 text-sm font-mono text-foreground">
+          {problem.runCommand}
+        </code>
+        <p className="text-[11px] text-foreground-muted mt-1.5">
+          Your repo must pass when the sandbox runs this command.
+        </p>
       </div>
 
       <div className="rounded-lg border border-border bg-surface p-6 mb-6">

@@ -1,6 +1,6 @@
 "use server";
 
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 
 export async function createSubmission(data: {
