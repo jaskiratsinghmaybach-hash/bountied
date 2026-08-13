@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/lib/auth/actions";
+import { FixedHeader } from "./fixed-header";
 
 export async function Header() {
   const supabase = await createClient();
@@ -9,13 +10,12 @@ export async function Header() {
   } = await supabase.auth.getUser();
 
   return (
-    <header className="border-b border-border">
-      <div className="mx-auto max-w-6xl px-6 h-16 flex items-center justify-between">
-        <Link href="/" className="font-mono font-semibold text-foreground tracking-tight">
-          bountied<span className="text-accent">.</span>
-        </Link>
+    <FixedHeader>
+      <Link href="/" className="font-mono font-semibold text-foreground tracking-tight">
+        bountied<span className="text-accent">.</span>
+      </Link>
 
-        <nav className="flex items-center gap-3">
+      <nav className="flex items-center gap-3">
           {user ? (
             <>
               <Link
@@ -50,7 +50,6 @@ export async function Header() {
             </>
           )}
         </nav>
-      </div>
-    </header>
+    </FixedHeader>
   );
 }

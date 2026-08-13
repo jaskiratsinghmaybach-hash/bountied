@@ -29,7 +29,7 @@ export default function RootLayout({
     <html lang="en" className={`${inter.variable} ${plexMono.variable} antialiased`}>
       <body className="flex flex-col min-h-screen bg-background text-foreground">
         <Header />
-        {children}
+        <div className="flex flex-1 flex-col min-h-0 pt-16">{children}</div>
       </body>
     </html>
   );

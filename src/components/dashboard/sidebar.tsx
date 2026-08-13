@@ -34,7 +34,10 @@ export function DashboardSidebar({ role }: { role: Role }) {
   const links = role === "GIVER" ? giverLinks : solverLinks;
 
   return (
-    <aside className="w-56 h-full shrink-0 overflow-y-auto border-r border-border px-3 py-6 flex flex-col gap-1">
+    <aside
+      data-dashboard-sidebar
+      className="fixed top-16 left-0 bottom-0 z-40 w-56 shrink-0 border-r border-border bg-background px-3 py-6 flex flex-col gap-1"
+    >
       {links.map((link) => {
         const Icon = link.icon;
         return (
