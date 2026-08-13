@@ -40,7 +40,7 @@ export default async function GiverWalletPage() {
                   <p className="font-semibold text-gray-800">{tx.type.replace("_", " ")}</p>
                   <p className="text-xs text-gray-400">{new Date(tx.createdAt).toLocaleString()}</p>
                 </div>
-                <span className={ont-bold }>
+                <span className="font-bold">
                   {tx.amount.toNumber() < 0 ? "" : "+"}${tx.amount.toFixed(2)}
                 </span>
               </div>
