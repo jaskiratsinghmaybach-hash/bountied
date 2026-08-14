@@ -347,3 +347,105 @@ export async function getDraftShortfall(draftProblemId: string) {
     required: creditsRequiredToFund(Number(problem.bountyAmount)),
   };
 }
+
+/**
+ * Background draft upsert — called by bounty-flow.tsx's debounce timer, NOT
+ * by a form submit. Key differences from createProblem/updateProblem:
+ *
+ *  - Never calls redirect() — background server actions that call redirect()
+ *    throw a Next.js NEXT_REDIRECT which the try/catch in the caller swallows
+ *    silently, losing the draftProblemId on first save. Don't add redirect here.
+ *  - Lenient validation — partial drafts are allowed (title can be short, etc.).
+ *    The full validation only runs at publish time via createProblem/updateProblem.
+ *  - Always returns { draftProblemId } so the caller can persist a newly
+ *    created ID across the lifetime of the BountyFlow component.
+ */
+export async function autoSaveProblem(
+  draftProblemId: string | null,
+  formData: FormData
+): Promise<{ draftProblemId: string } | { error: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated." };
+
+  const title = String(formData.get("title") ?? "").trim() || "Untitled draft";
+  const description = String(formData.get("description") ?? "").trim();
+  const type = String(formData.get("type") ?? "") as ProblemType;
+  const tagsRaw = String(formData.get("tags") ?? "");
+  const bountyAmountRaw = String(formData.get("bountyAmount") ?? "").trim();
+  const deadlineRaw = String(formData.get("deadline") ?? "").trim();
+  const runCommand = String(formData.get("runCommand") ?? "").trim();
+  const repoUrlsRaw = String(formData.get("referenceRepoUrls") ?? "[]");
+  const screenshotUrlsRaw = String(formData.get("screenshotUrls") ?? "[]");
+  const addonsRaw = String(formData.get("addons") ?? "[]");
+  const language = String(formData.get("language") ?? "").trim() || null;
+  const scope = String(formData.get("scope") ?? "").trim() || null;
+
+  const typeValid = CREATABLE_TYPES.includes(type);
+  const bountyAmount = (() => {
+    const n = Number(bountyAmountRaw);
+    return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null;
+  })();
+  const deadline = (() => {
+    if (!deadlineRaw) return null;
+    const d = new Date(deadlineRaw);
+    return Number.isNaN(d.getTime()) ? null : d;
+  })();
+  const tags = tagsRaw.split(",").map((t) => t.trim()).filter(Boolean).slice(0, 10);
+  const referenceRepoUrls = (() => { try { return JSON.parse(repoUrlsRaw) as string[]; } catch { return []; } })();
+  const screenshotUrls = (() => { try { return JSON.parse(screenshotUrlsRaw) as string[]; } catch { return []; } })();
+  const addons = (() => { try { return JSON.parse(addonsRaw) as string[]; } catch { return []; } })();
+
+  try {
+    if (draftProblemId) {
+      // Guard: only update rows the user owns and that are still DRAFTs.
+      const existing = await prisma.problem.findUnique({ where: { id: draftProblemId } });
+      if (!existing || existing.giverId !== user.id || existing.status !== "DRAFT") {
+        return { error: "Draft not found or not editable." };
+      }
+      await prisma.problem.update({
+        where: { id: draftProblemId },
+        data: {
+          title,
+          description,
+          ...(typeValid ? { type } : {}),
+          tags,
+          bountyAmount,
+          runCommand: runCommand || existing.runCommand,
+          deadline,
+          language,
+          scope,
+          addons,
+          referenceRepoUrls,
+          screenshotUrls,
+        },
+      });
+      return { draftProblemId };
+    } else {
+      const problem = await prisma.problem.create({
+        data: {
+          title,
+          description,
+          type: typeValid ? type : ProblemType.OPEN_FREE,
+          tags,
+          bountyAmount,
+          runCommand: runCommand || "python main.py",
+          runtime: "PYTHON",
+          giverId: user.id,
+          deadline,
+          status: "DRAFT",
+          language,
+          scope,
+          addons,
+          referenceRepoUrls,
+          screenshotUrls,
+        },
+      });
+      return { draftProblemId: problem.id };
+    }
+  } catch (e) {
+    return { error: String(e) };
+  }
+}

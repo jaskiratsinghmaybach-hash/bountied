@@ -20,10 +20,16 @@ import type { GithubRepoOption } from "@/app/api/github/repos/route";
 export function RepoSelector({
   defaultValue,
   onSelectionChange,
+  excludeUrls,
+  onSelect,
 }: {
   defaultValue?: string;
   /** Called with true/false whenever a repo becomes selected/deselected — lets the parent form gate its submit button without needing to read the hidden input's value directly. */
   onSelectionChange?: (hasSelection: boolean) => void;
+  /** URLs already chosen upstream — hide them from the dropdown so the giver can't pick the same repo twice. */
+  excludeUrls?: string[];
+  /** When provided, called with the chosen GithubRepoOption instead of (or in addition to) writing to the hidden input. Used by FieldRepos for multi-repo picking. */
+  onSelect?: (repo: GithubRepoOption) => void;
 }) {
   const [repos, setRepos] = useState<GithubRepoOption[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -81,10 +87,13 @@ export function RepoSelector({
 
   const filtered = useMemo(() => {
     if (!repos) return [];
-    if (!query.trim()) return repos;
+    const base = excludeUrls?.length
+      ? repos.filter((r) => !excludeUrls.includes(r.htmlUrl))
+      : repos;
+    if (!query.trim()) return base;
     const q = query.toLowerCase();
-    return repos.filter((r) => r.fullName.toLowerCase().includes(q));
-  }, [repos, query]);
+    return base.filter((r) => r.fullName.toLowerCase().includes(q));
+  }, [repos, query, excludeUrls]);
 
   if (loading) {
     return (
@@ -148,6 +157,7 @@ export function RepoSelector({
                   setSelected(repo);
                   setOpen(false);
                   setQuery("");
+                  onSelect?.(repo);
                 }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-raised transition-colors"
               >
