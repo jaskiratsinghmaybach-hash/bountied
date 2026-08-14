@@ -7,10 +7,10 @@ export function FieldBountyAmount({ value, onChange }: FieldBountyAmountProps) {
   const totalCharge = Number(value) > 0 ? Number(value) + platformFee : 0;
   return (
     <div className="rounded-lg border border-money/30 bg-money/5 p-5">
-      <label htmlFor="bountyAmount" className="block text-xs text-foreground-muted mb-1.5">
+      <label htmlFor="bountyAmount" className="block text-xs font-medium uppercase tracking-wide text-foreground-muted mb-3">
         Bounty amount (USD)
       </label>
-      <div className="relative w-full sm:w-56">
+      <div className="relative w-full">
         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-foreground-muted">$</span>
         <input
           id="bountyAmount"
@@ -22,7 +22,7 @@ export function FieldBountyAmount({ value, onChange }: FieldBountyAmountProps) {
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="100.00"
-          className="w-full rounded-md border border-border bg-surface pl-6 pr-3 py-2.5 text-sm text-foreground outline-none focus:border-accent transition-colors font-mono"
+          className="w-full rounded-md border border-border bg-surface pl-6 pr-3 py-2.5 text-sm text-foreground outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all font-mono"
         />
       </div>
       {Number(value) > 0 && (

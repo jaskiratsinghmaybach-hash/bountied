@@ -71,7 +71,7 @@ export function BountyFlow({ existingProblem, githubConnected = true }: BountyFl
   const [scope, setScope] = useState<string | null>(existingProblem?.scope ?? null);
   const [customScope, setCustomScope] = useState("");
   const [addons, setAddons] = useState<string[]>(existingProblem?.addons ?? []);
-  
+
   const [title, setTitle] = useState(existingProblem?.title ?? "");
   const [desc, setDesc] = useState<DescriptionSections>(initialDesc);
   const [repos, setRepos] = useState<string[]>(existingProblem?.referenceRepoUrls ?? []);
@@ -85,22 +85,24 @@ export function BountyFlow({ existingProblem, githubConnected = true }: BountyFl
 
   const [layoutMode, setLayoutMode] = useState<"pills" | "workspace">(isEditing ? "workspace" : "pills");
   const [saveStatus, setSaveStatus] = useState<"saving" | "saved" | null>(null);
-  
+
   const isWorkspace = layoutMode === "workspace";
-  
+
   const stateRef = useRef({ type, language, scope, customScope, addons, title, desc, repos, screenshots, logs, tags, deadlineCustom, runCommand, bountyAmount });
   useEffect(() => {
     stateRef.current = { type, language, scope, customScope, addons, title, desc, repos, screenshots, logs, tags, deadlineCustom, runCommand, bountyAmount };
   }, [type, language, scope, customScope, addons, title, desc, repos, screenshots, logs, tags, deadlineCustom, runCommand, bountyAmount]);
 
   const saveTimer = useRef<NodeJS.Timeout>(null);
-  
+
   const triggerAutoSave = useCallback(() => {
     if (!isWorkspace) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    
-    setSaveStatus("saving");
+
     saveTimer.current = setTimeout(async () => {
+      // Deferred setSaveStatus inside the timer so it doesn't run synchronously in useEffect
+      setSaveStatus("saving");
+
       const s = stateRef.current;
       const formData = new FormData();
       formData.append("intent", "draft");
@@ -125,7 +127,7 @@ export function BountyFlow({ existingProblem, githubConnected = true }: BountyFl
           setDraftProblemId(res.draftProblemId);
         }
         setSaveStatus("saved");
-      } catch (e) {
+      } catch {
         setSaveStatus(null);
       }
     }, 2500);
@@ -135,6 +137,10 @@ export function BountyFlow({ existingProblem, githubConnected = true }: BountyFl
     if (isWorkspace && !isEditing) {
       triggerAutoSave();
     }
+
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
   }, [type, language, scope, customScope, addons, title, desc, repos, screenshots, logs, tags, deadlineCustom, runCommand, bountyAmount, isWorkspace, isEditing, triggerAutoSave]);
 
   const resolvedScopeLabel = scope === "custom" ? customScope : (language && scope ? getScopeDef(language, scope)?.label ?? scope : "");
@@ -163,7 +169,7 @@ export function BountyFlow({ existingProblem, githubConnected = true }: BountyFl
               >
                 <StepBountyType value={type} onSelect={setType} />
               </FlowStep>
-              
+
               <FlowStep
                 stepId="language"
                 visible={type !== null}
@@ -175,7 +181,7 @@ export function BountyFlow({ existingProblem, githubConnected = true }: BountyFl
               >
                 <StepLanguage value={language} onSelect={setLanguage} />
               </FlowStep>
-              
+
               <FlowStep
                 stepId="scope"
                 visible={language !== null}
@@ -203,15 +209,27 @@ export function BountyFlow({ existingProblem, githubConnected = true }: BountyFl
           }
           summaryStrip={
             <>
-              <button type="button" onClick={() => setLayoutMode("pills")} className="hover:opacity-80 transition-opacity">
-                <Pill mode="single" selected label={type?.replace(/_/g, " ") ?? ""} />
-              </button>
-              <button type="button" onClick={() => setLayoutMode("pills")} className="hover:opacity-80 transition-opacity">
-                <Pill mode="single" selected label={language ? getLanguageLabel(language) : ""} />
-              </button>
-              <button type="button" onClick={() => setLayoutMode("pills")} className="hover:opacity-80 transition-opacity">
-                <Pill mode="single" selected label={resolvedScopeLabel} />
-              </button>
+              <Pill
+                mode="single"
+                selected
+                label={type?.replace(/_/g, " ") ?? ""}
+                onClick={() => setLayoutMode("pills")}
+                className="hover:opacity-80 transition-opacity"
+              />
+              <Pill
+                mode="single"
+                selected
+                label={language ? getLanguageLabel(language) : ""}
+                onClick={() => setLayoutMode("pills")}
+                className="hover:opacity-80 transition-opacity"
+              />
+              <Pill
+                mode="single"
+                selected
+                label={resolvedScopeLabel}
+                onClick={() => setLayoutMode("pills")}
+                className="hover:opacity-80 transition-opacity"
+              />
             </>
           }
           saveStatus={<SaveStatusIndicator status={saveStatus} />}
@@ -228,23 +246,25 @@ export function BountyFlow({ existingProblem, githubConnected = true }: BountyFl
           tier3={
             <>
               <div>
-                <label className="block text-xs text-foreground-muted mb-1.5">Addons</label>
+                <label className="block text-xs font-medium uppercase tracking-wide text-foreground-muted mb-2">Addons</label>
                 <AddonsSection languageId={language} value={addons} onChange={setAddons} />
               </div>
               <FieldTags value={tags} onChange={setTags} />
               <FieldDeadline preset={deadlinePreset} onPresetChange={setDeadlinePreset} customDate={deadlineCustom} onCustomDateChange={setDeadlineCustom} />
               <FieldRunCommand value={runCommand} onChange={setRunCommand} />
-              {type !== "OPEN_FREE" && <FieldBountyAmount value={bountyAmount} onChange={setBountyAmount} />}
             </>
           }
+          rightPanel={
+            type !== "OPEN_FREE" && <FieldBountyAmount value={bountyAmount} onChange={setBountyAmount} />
+          }
           footer={
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col gap-3">
               <button
                 type="submit"
                 name="intent"
                 value="publish"
                 disabled={pending}
-                className="rounded-md bg-accent text-background font-medium px-6 py-3 text-sm hover:bg-accent-dim transition-colors disabled:opacity-60"
+                className="w-full rounded-md bg-accent text-background font-medium px-6 py-3.5 text-sm hover:bg-accent-dim transition-colors disabled:opacity-60 shadow-sm"
               >
                 {pending ? "Posting…" : (type === "OPEN_FREE" ? "Post bounty" : "Fund & post bounty")}
               </button>
@@ -253,7 +273,7 @@ export function BountyFlow({ existingProblem, githubConnected = true }: BountyFl
                 name="intent"
                 value="draft"
                 disabled={pending}
-                className="rounded-md border border-border text-foreground font-medium px-6 py-3 text-sm hover:bg-surface-raised transition-colors disabled:opacity-60"
+                className="w-full rounded-md border border-border text-foreground font-medium px-6 py-3 text-sm hover:bg-surface-raised transition-colors disabled:opacity-60"
               >
                 Save as draft
               </button>

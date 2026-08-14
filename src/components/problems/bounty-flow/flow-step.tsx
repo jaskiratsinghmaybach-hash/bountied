@@ -48,13 +48,20 @@ export function FlowStep({
     <div className={cn("w-full", className)} data-step={stepId}>
       <AnimatePresence mode="wait" initial={false}>
         {showCollapsed ? (
-          <motion.button
+          <motion.div
             key={`${stepId}-collapsed`}
-            type="button"
+            role="button"
+            tabIndex={0}
             onClick={onExpand}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onExpand();
+              }
+            }}
             {...flowEnter}
             className={cn(
-              "group w-full text-left rounded-lg border border-border bg-surface-raised px-4 py-3",
+              "group w-full cursor-pointer text-left rounded-lg border border-border bg-surface-raised px-4 py-3",
               "flex items-center justify-between gap-3 transition-colors",
               "hover:border-foreground-muted hover:bg-surface focus-visible:outline-none",
               "focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
@@ -73,7 +80,7 @@ export function FlowStep({
               className="shrink-0 text-foreground-muted opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
               aria-hidden
             />
-          </motion.button>
+          </motion.div>
         ) : (
           <motion.div
             key={`${stepId}-expanded`}

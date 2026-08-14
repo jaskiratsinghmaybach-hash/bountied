@@ -1,7 +1,10 @@
 "use client";
 
-import { Sparkles, Trophy, Users, Zap, type LucideIcon } from "lucide-react";
-import { Pill } from "./pill";
+import { useState } from "react";
+import { Info, Sparkles, Trophy, Users, Zap, type LucideIcon } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { cn } from "@/lib/utils";
+import { flowEase, flowTransition } from "./motion";
 
 export type BountyTypeValue =
   | "OPEN_BOUNTY"
@@ -71,21 +74,65 @@ type StepBountyTypeProps = {
 };
 
 export function StepBountyType({ value, onSelect }: StepBountyTypeProps) {
+  const [hoveredInfoId, setHoveredInfoId] = useState<string | null>(null);
+
   return (
-    <div className="flex flex-col gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
       {BOUNTY_TYPE_OPTIONS.map((option) => {
         const selected = value === option.value;
+        const Icon = option.icon;
+        
+        // Is this card's info showing?
+        const infoVisible = hoveredInfoId === option.value;
+        
         return (
-          <div key={option.value} className="space-y-1.5">
-            <Pill
-              label={option.title}
-              selected={selected}
-              mode="single"
-              onClick={() => onSelect(option.value)}
-            />
-            <p className="text-xs leading-relaxed text-foreground-muted pl-0.5">
-              {option.description}
-            </p>
+          <div 
+            key={option.value}
+            onClick={() => onSelect(option.value)}
+            className={cn(
+              "relative flex flex-col justify-center items-start gap-3 rounded-xl border p-5 text-left cursor-pointer transition-colors h-28",
+              selected 
+                ? "border-accent bg-accent/5" 
+                : "border-border bg-surface hover:border-foreground-muted"
+            )}
+          >
+            <div className="absolute top-2.5 right-2.5">
+              <button
+                type="button"
+                onClick={(e) => e.stopPropagation()}
+                onMouseEnter={() => setHoveredInfoId(option.value)}
+                onMouseLeave={() => setHoveredInfoId(null)}
+                className="text-foreground-muted hover:text-foreground transition-colors p-1.5"
+                aria-label="More info"
+              >
+                <Info size={14} />
+              </button>
+              
+              <AnimatePresence>
+                {infoVisible && (
+                  <motion.div
+                    initial={{ opacity: 0, x: -4, scale: 0.95 }}
+                    animate={{ opacity: 1, x: 0, scale: 1 }}
+                    exit={{ opacity: 0, x: -4, scale: 0.95 }}
+                    transition={{ ...flowTransition, ease: flowEase, duration: 0.15 }}
+                    className="absolute z-50 top-0 left-full ml-2 w-60 p-3 rounded-lg border border-border bg-surface shadow-xl cursor-default"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <p className="text-xs leading-relaxed text-foreground-muted">
+                      {option.description}
+                    </p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            <Icon size={22} className={selected ? "text-accent" : "text-foreground-muted"} />
+            <span className={cn(
+              "font-medium text-sm",
+              selected ? "text-accent" : "text-foreground"
+            )}>
+              {option.title}
+            </span>
           </div>
         );
       })}

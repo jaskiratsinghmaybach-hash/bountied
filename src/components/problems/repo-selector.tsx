@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FaGithub, FaLock } from "react-icons/fa";
 import { ChevronDown, TriangleAlert } from "lucide-react";
+import Link from "next/link";
 import type { GithubRepoOption } from "@/app/api/github/repos/route";
 
 /**
@@ -107,7 +108,12 @@ export function RepoSelector({
     return (
       <div className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2.5 flex items-start gap-2 text-xs text-danger">
         <TriangleAlert size={13} className="shrink-0 mt-0.5" />
-        <span>{error}</span>
+        <div className="flex flex-col gap-1">
+          <span>{error}</span>
+          <Link href="/integrations" className="underline hover:text-danger/80">
+            Go to Integrations to setup the GitHub for accessing your repo
+          </Link>
+        </div>
       </div>
     );
   }

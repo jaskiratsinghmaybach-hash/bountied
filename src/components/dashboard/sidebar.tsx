@@ -7,6 +7,7 @@ import {
   Settings,
   PlusCircle,
   Inbox,
+  Plug,
 } from "lucide-react";
 
 type Role = "SOLVER" | "GIVER" | "BOTH";
@@ -53,6 +54,13 @@ export function DashboardSidebar({ role }: { role: Role }) {
       })}
 
       <div className="mt-auto pt-4 border-t border-border">
+        <Link
+          href="/integrations"
+          className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-foreground-muted hover:text-foreground hover:bg-surface transition-colors"
+        >
+          <Plug size={16} />
+          Integrations
+        </Link>
         <Link
           href="/settings"
           className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-foreground-muted hover:text-foreground hover:bg-surface transition-colors"

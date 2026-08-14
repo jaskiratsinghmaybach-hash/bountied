@@ -32,6 +32,9 @@ export function ConnectGithubPrompt({ reason }: { reason?: string }) {
       options: {
         scopes: "repo",
         redirectTo: `${window.location.origin}/auth/callback?redirectedFrom=${encodeURIComponent(window.location.pathname)}`,
+        queryParams: {
+          prompt: "select_account",
+        },
       },
     });
 

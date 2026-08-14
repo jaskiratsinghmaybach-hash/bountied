@@ -18,6 +18,7 @@ export type WorkspaceLayoutProps = {
   tier1: ReactNode;
   tier2: ReactNode;
   tier3: ReactNode;
+  rightPanel?: ReactNode;
   footer?: ReactNode;
   className?: string;
 };
@@ -30,6 +31,7 @@ export function WorkspaceLayout({
   tier1,
   tier2,
   tier3,
+  rightPanel,
   footer,
   className,
 }: WorkspaceLayoutProps) {
@@ -45,10 +47,11 @@ export function WorkspaceLayout({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -12 }}
             transition={{ ...flowTransition, ease: flowEase }}
-            className="flex flex-col gap-8"
+            className="flex flex-col gap-0"
           >
+            {/* ── Sticky summary strip ─────────────────────────────────── */}
             {(summaryStrip || saveStatus) && (
-              <div className="sticky top-0 z-10 -mx-1 px-1 py-3 bg-background/95 backdrop-blur-sm border-b border-border flex items-center justify-between gap-4">
+              <div className="sticky top-0 z-20 px-6 sm:px-10 py-3 bg-background/95 backdrop-blur-sm border-b border-border flex items-center justify-between gap-4">
                 <div className="min-w-0 flex-1 flex flex-wrap items-center gap-2">
                   {summaryStrip}
                 </div>
@@ -56,29 +59,39 @@ export function WorkspaceLayout({
               </div>
             )}
 
-            <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,340px)] lg:gap-12 lg:items-start">
-              <section aria-label="Primary spec" className="flex flex-col gap-6">
-                {tier1}
-              </section>
+            <div className="px-6 sm:px-10 py-8 grid grid-cols-1 xl:grid-cols-[3fr_1fr] gap-10 xl:gap-12">
 
-              <div className="flex flex-col gap-10">
-                <section aria-label="Reference material" className="flex flex-col gap-6">
-                  <WorkspaceSectionHeading>Reference material</WorkspaceSectionHeading>
-                  {tier2}
+              {/* ── Main Scrollable Content ────────────────────────────── */}
+              <div className="min-w-0 flex flex-col gap-10">
+                {/* ── Tier 1: Title + Description — full width ─────────────── */}
+                <section aria-label="Primary spec">
+                  {tier1}
                 </section>
 
-                <section aria-label="Metadata" className="flex flex-col gap-6">
-                  <WorkspaceSectionHeading>Details</WorkspaceSectionHeading>
-                  {tier3}
-                </section>
+                {/* ── Tier 2 + 3: Balanced side-by-side grid ───────────────── */}
+                <div className="grid gap-10 md:grid-cols-2 md:gap-12 items-start pt-8 border-t border-border">
+                  <section aria-label="Reference material" className="flex flex-col gap-6">
+                    <WorkspaceSectionHeading>Reference material</WorkspaceSectionHeading>
+                    {tier2}
+                  </section>
+
+                  <section aria-label="Metadata" className="flex flex-col gap-6">
+                    <WorkspaceSectionHeading>Details</WorkspaceSectionHeading>
+                    {tier3}
+                  </section>
+                </div>
+              </div>
+
+              {/* ── Sticky Right Panel — grid handles width via 1fr ──────── */}
+              <div className="xl:sticky xl:top-14 self-start flex flex-col gap-8">
+                {rightPanel}
+                {footer && (
+                  <div className="pt-6 border-t border-border flex flex-col gap-4">
+                    {footer}
+                  </div>
+                )}
               </div>
             </div>
-
-            {footer && (
-              <div className="pt-4 border-t border-border sticky bottom-0 bg-background/95 backdrop-blur-sm -mx-1 px-1 py-4">
-                {footer}
-              </div>
-            )}
           </motion.div>
         ) : (
           <motion.div
@@ -87,7 +100,7 @@ export function WorkspaceLayout({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={flowTransition}
-            className="flex flex-col gap-6 max-w-2xl"
+            className="px-6 sm:px-10 py-8 flex flex-col gap-6 w-full"
           >
             {pillPhase}
           </motion.div>

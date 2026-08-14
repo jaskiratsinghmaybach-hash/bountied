@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { NewBountyForm } from "@/components/problems/new-bounty-form";
+import { BountyFlow } from "@/components/problems/bounty-flow/bounty-flow";
 
 export default async function EditProblemPage({
   params,
@@ -29,7 +29,7 @@ export default async function EditProblemPage({
   }
 
   return (
-    <main className="px-8 py-10 max-w-2xl">
+    <main className="px-8 py-10 max-w-4xl">
       <Link
         href={`/dashboard/giver/problems/${problem.id}`}
         className="inline-flex items-center gap-1.5 text-sm text-foreground-muted hover:text-foreground transition-colors mb-6"
@@ -44,7 +44,7 @@ export default async function EditProblemPage({
         bounty amount, before you post.
       </p>
 
-      <NewBountyForm
+      <BountyFlow
         existingProblem={{
           id: problem.id,
           title: problem.title,
@@ -56,6 +56,13 @@ export default async function EditProblemPage({
             ? problem.deadline.toISOString().split("T")[0]
             : null,
           runCommand: problem.runCommand,
+          // Fields not yet in DB schema — default to empty until migration
+          language: null,
+          scope: null,
+          addons: [],
+          referenceRepoUrls: [],
+          screenshotUrls: [],
+          logs: null,
         }}
       />
     </main>

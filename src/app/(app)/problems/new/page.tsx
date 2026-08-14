@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Wallet } from "lucide-react";
-import { NewBountyForm } from "@/components/problems/new-bounty-form";
+import { BountyFlow } from "@/components/problems/bounty-flow/bounty-flow";
 
 export default async function NewProblemPage() {
   const supabase = await createClient();
@@ -18,8 +18,8 @@ export default async function NewProblemPage() {
   if (!profile.role) redirect("/onboarding");
 
   return (
-    <main className="px-8 py-10 max-w-2xl">
-      <div className="mb-8 flex items-start justify-between gap-4">
+    <main className="py-8 w-full">
+      <div className="mb-8 px-6 sm:px-10 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight mb-1">Post a bounty</h1>
           <p className="text-sm text-foreground-muted">
@@ -38,7 +38,7 @@ export default async function NewProblemPage() {
         </Link>
       </div>
 
-      <NewBountyForm />
+      <BountyFlow />
     </main>
   );
 }

@@ -2,8 +2,8 @@
 
 import type { DescriptionSections } from "@/lib/problems/description-sections";
 
-const fieldClass =
-  "w-full rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent transition-colors resize-y";
+const textareaClass =
+  "w-full rounded-lg border border-border bg-surface px-4 py-3 text-sm leading-relaxed text-foreground outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all resize-y placeholder:text-foreground-muted/60";
 
 type FieldDescriptionProps = {
   value: DescriptionSections;
@@ -23,9 +23,10 @@ export function FieldDescription({
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <label htmlFor="bounty-title" className="block text-xs text-foreground-muted mb-1.5">
+    <div className="flex flex-col gap-8">
+      {/* Title — large, prominent, full-width */}
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="bounty-title" className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
           Title
         </label>
         <input
@@ -38,63 +39,60 @@ export function FieldDescription({
           value={title}
           onChange={(e) => onTitleChange(e.target.value)}
           placeholder="Fix race condition in our WebSocket reconnect logic"
-          className={`${fieldClass} resize-none`}
+          className="w-full rounded-lg border border-border bg-surface px-4 py-3 text-base font-medium text-foreground outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all placeholder:text-foreground-muted/50"
         />
       </div>
 
-      <div>
-        <label
-          htmlFor="bounty-description"
-          className="block text-xs text-foreground-muted mb-1.5"
-        >
-          Description
-        </label>
-        <textarea
-          id="bounty-description"
-          name="descriptionProblem"
-          rows={5}
-          value={value.description}
-          onChange={(e) => patch("description", e.target.value)}
-          placeholder="What's the general context? How does this fit into your product or codebase?"
-          className={fieldClass}
-        />
-      </div>
+      {/* Description — 3 sub-fields in a clean column */}
+      <div className="grid gap-6 sm:grid-cols-1">
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="bounty-description" className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+            Description
+          </label>
+          <textarea
+            id="bounty-description"
+            name="descriptionProblem"
+            rows={5}
+            value={value.description}
+            onChange={(e) => patch("description", e.target.value)}
+            placeholder="What's the general context? How does this fit into your product or codebase?"
+            className={textareaClass}
+          />
+        </div>
 
-      <div>
-        <label
-          htmlFor="bounty-whats-broken"
-          className="block text-xs text-foreground-muted mb-1.5"
-        >
-          What&apos;s broken / needs fixing
-        </label>
-        <textarea
-          id="bounty-whats-broken"
-          name="descriptionWhatsBroken"
-          rows={4}
-          value={value.whatsBroken}
-          onChange={(e) => patch("whatsBroken", e.target.value)}
-          placeholder="Describe the symptom or bug — what's happening now that's wrong?"
-          className={fieldClass}
-        />
-      </div>
+        <div className="grid gap-6 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="bounty-whats-broken" className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+              What&apos;s broken / needs fixing
+            </label>
+            <textarea
+              id="bounty-whats-broken"
+              name="descriptionWhatsBroken"
+              rows={5}
+              value={value.whatsBroken}
+              onChange={(e) => patch("whatsBroken", e.target.value)}
+              placeholder="Describe the symptom or bug — what's happening now that's wrong?"
+              className={textareaClass}
+            />
+          </div>
 
-      <div>
-        <label
-          htmlFor="bounty-desired-output"
-          className="block text-xs text-foreground-muted mb-1.5"
-        >
-          Desired output / what a correct solution looks like
-        </label>
-        <textarea
-          id="bounty-desired-output"
-          name="descriptionDesiredOutput"
-          rows={4}
-          value={value.desiredOutput}
-          onChange={(e) => patch("desiredOutput", e.target.value)}
-          placeholder="What should a correct fix produce or behave like once done?"
-          className={fieldClass}
-        />
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="bounty-desired-output" className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+              Desired output / what a correct solution looks like
+            </label>
+            <textarea
+              id="bounty-desired-output"
+              name="descriptionDesiredOutput"
+              rows={5}
+              value={value.desiredOutput}
+              onChange={(e) => patch("desiredOutput", e.target.value)}
+              placeholder="What should a correct fix produce or behave like once done?"
+              className={textareaClass}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
 }
+

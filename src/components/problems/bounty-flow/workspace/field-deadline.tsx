@@ -32,7 +32,7 @@ export function FieldDeadline({
 
   return (
     <div className="flex flex-col gap-3">
-      <label className="block text-xs text-foreground-muted mb-1.5">Deadline</label>
+      <label className="block text-xs font-medium uppercase tracking-wide text-foreground-muted mb-2">Deadline</label>
       <div className="flex flex-wrap gap-2">
         <Pill mode="single" selected={preset === "none"} onClick={() => handlePreset("none")} disabled={false} label="No deadline" />
         <Pill mode="single" selected={preset === "1w"} onClick={() => handlePreset("1w")} disabled={false} label="1 week" />

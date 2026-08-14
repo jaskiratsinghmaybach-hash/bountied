@@ -18,6 +18,11 @@ export type PillProps = {
   className?: string;
   /** Optional id for aria wiring from parent step components. */
   id?: string;
+  /**
+   * Render element type: defaults to 'button' for interactive usage,
+   * or 'span' when used inside another clickable container or purely presentational.
+   */
+  as?: "button" | "span";
 };
 
 /**
@@ -34,41 +39,58 @@ export function Pill({
   onClick,
   className,
   id,
+  as: Component = "button",
 }: PillProps) {
   const isMulti = mode === "multi";
+  const isInteractive = Component === "button";
+
+  const styleClasses = cn(
+    "inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors",
+    isInteractive &&
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+    disabled &&
+      "cursor-not-allowed border-border/60 bg-surface/50 text-foreground-muted opacity-60",
+    !disabled &&
+      !selected &&
+      "border-border bg-surface text-foreground hover:border-foreground-muted hover:bg-surface-raised",
+    !disabled &&
+      selected &&
+      isMulti &&
+      "border-accent bg-accent/15 text-accent",
+    !disabled &&
+      selected &&
+      !isMulti &&
+      "border-accent bg-accent text-background"
+  );
+
+  const content = (
+    <>
+      {isMulti && selected && !disabled && (
+        <Check size={14} className="shrink-0" aria-hidden />
+      )}
+      <span>{label}</span>
+    </>
+  );
 
   return (
     <span className={cn("relative inline-flex group/pill", className)}>
-      <button
-        id={id}
-        type="button"
-        disabled={disabled}
-        aria-pressed={selected}
-        aria-disabled={disabled}
-        onClick={disabled ? undefined : onClick}
-        className={cn(
-          "inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-          disabled &&
-            "cursor-not-allowed border-border/60 bg-surface/50 text-foreground-muted opacity-60",
-          !disabled &&
-            !selected &&
-            "border-border bg-surface text-foreground hover:border-foreground-muted hover:bg-surface-raised",
-          !disabled &&
-            selected &&
-            isMulti &&
-            "border-accent bg-accent/15 text-accent",
-          !disabled &&
-            selected &&
-            !isMulti &&
-            "border-accent bg-accent text-background"
-        )}
-      >
-        {isMulti && selected && !disabled && (
-          <Check size={14} className="shrink-0" aria-hidden />
-        )}
-        <span>{label}</span>
-      </button>
+      {Component === "button" ? (
+        <button
+          id={id}
+          type="button"
+          disabled={disabled}
+          aria-pressed={selected}
+          aria-disabled={disabled}
+          onClick={disabled ? undefined : onClick}
+          className={styleClasses}
+        >
+          {content}
+        </button>
+      ) : (
+        <span id={id} className={styleClasses}>
+          {content}
+        </span>
+      )}
 
       {disabled && disabledTooltip && (
         <span
