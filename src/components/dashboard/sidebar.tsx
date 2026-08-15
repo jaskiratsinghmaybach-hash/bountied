@@ -65,7 +65,10 @@ function SidebarInner({ role }: { role: Role }) {
         <SidebarMenu>
           {links.map((link) => {
             const Icon = link.icon;
-            const isActive = pathname === link.href || pathname.startsWith(link.href + "/");
+            const isDashboardHome = link.href === "/dashboard/giver" || link.href === "/dashboard/solver";
+            const isActive = isDashboardHome
+              ? pathname === link.href
+              : pathname === link.href || pathname.startsWith(link.href + "/");
             return (
               <SidebarMenuItem key={link.href}>
                 <SidebarMenuButton
@@ -93,7 +96,7 @@ function SidebarInner({ role }: { role: Role }) {
         <SidebarMenu>
           {bottomLinks.map((link) => {
             const Icon = link.icon;
-            const isActive = pathname === link.href;
+            const isActive = pathname === link.href || pathname.startsWith(link.href + "/");
             return (
               <SidebarMenuItem key={link.href}>
                 <SidebarMenuButton
