@@ -4,15 +4,17 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { PlusCircle } from "lucide-react";
 import type { ProblemStatus } from "@prisma/client";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
-const statusLabel: Record<string, { label: string; color: string }> = {
-  DRAFT: { label: "Draft", color: "text-foreground-muted" },
-  FUNDED: { label: "Funded", color: "text-money" },
-  OPEN: { label: "Open", color: "text-accent" },
-  IN_REVIEW: { label: "In review", color: "text-money" },
-  COMPLETED: { label: "Completed", color: "text-foreground-muted" },
-  CANCELLED: { label: "Cancelled", color: "text-danger" },
-  REFUNDED: { label: "Refunded", color: "text-foreground-muted" },
+const statusLabel: Record<string, { label: string; dot: string }> = {
+  DRAFT: { label: "Draft", dot: "bg-foreground-muted" },
+  FUNDED: { label: "Funded", dot: "bg-success" },
+  OPEN: { label: "Open", dot: "bg-success" },
+  IN_REVIEW: { label: "In review", dot: "bg-foreground-muted" },
+  COMPLETED: { label: "Completed", dot: "bg-success" },
+  CANCELLED: { label: "Cancelled", dot: "bg-danger" },
+  REFUNDED: { label: "Refunded", dot: "bg-foreground-muted" },
 };
 
 const filterTabs: { value: ProblemStatus | "ALL"; label: string }[] = [
@@ -64,13 +66,12 @@ export default async function GiverProblemsPage({
             Every problem you&apos;ve posted, and where it stands.
           </p>
         </div>
-        <Link
-          href="/problems/new"
-          className="flex items-center gap-2 rounded-md bg-accent text-background font-medium px-4 py-2.5 text-sm hover:bg-accent-dim transition-colors shrink-0"
-        >
-          <PlusCircle size={16} />
-          Post a problem
-        </Link>
+        <Button asChild>
+          <Link href="/problems/new" className="gap-2 shrink-0">
+            <PlusCircle size={16} />
+            Post a problem
+          </Link>
+        </Button>
       </div>
 
       <div className="flex flex-wrap gap-2 mb-6">
@@ -80,11 +81,12 @@ export default async function GiverProblemsPage({
             <Link
               key={tab.value}
               href={tab.value === "ALL" ? "/dashboard/giver/problems" : `/dashboard/giver/problems?status=${tab.value}`}
-              className={`text-xs font-mono px-3 py-1.5 rounded-md border transition-colors ${
+              className={cn(
+                "text-xs font-mono px-3 py-1.5 rounded-md border transition-colors",
                 isActive
-                  ? "border-accent text-accent bg-surface-raised"
-                  : "border-border text-foreground-muted hover:text-foreground"
-              }`}
+                  ? "border-2 border-border-strong bg-foreground text-background font-medium"
+                  : "border-border text-foreground-muted hover:text-foreground hover:bg-surface"
+              )}
             >
               {tab.label}
             </Link>
@@ -99,12 +101,9 @@ export default async function GiverProblemsPage({
               ? "No problems match this filter."
               : "You haven't posted a problem yet. Fund a bounty and get it in front of solvers today."}
           </p>
-          <Link
-            href="/problems/new"
-            className="inline-block rounded-md bg-accent text-background font-medium px-5 py-2.5 text-sm hover:bg-accent-dim transition-colors"
-          >
-            Post your first problem
-          </Link>
+          <Button asChild>
+            <Link href="/problems/new">Post your first problem</Link>
+          </Button>
         </div>
       ) : (
         <div className="flex flex-col gap-2">
@@ -118,12 +117,14 @@ export default async function GiverProblemsPage({
               >
                 <div>
                   <p className="text-sm font-medium text-foreground">{p.title}</p>
-                  <p className={`text-xs mt-1 font-mono ${s.color}`}>
-                    {s.label} · {p._count.submissions} submission
-                    {p._count.submissions === 1 ? "" : "s"}
-                  </p>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <div className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+                    <p className="text-xs font-mono text-foreground-muted">
+                      {s.label} · {p._count.submissions} submission{p._count.submissions === 1 ? "" : "s"}
+                    </p>
+                  </div>
                 </div>
-                <span className="text-xs font-mono text-money">
+                <span className="text-sm font-mono font-medium text-foreground">
                   {p.bountyAmount ? `$${p.bountyAmount}` : "Free"}
                 </span>
               </Link>

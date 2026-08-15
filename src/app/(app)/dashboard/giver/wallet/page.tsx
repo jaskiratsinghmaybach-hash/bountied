@@ -65,7 +65,6 @@ export default async function GiverWalletPage() {
           label="Credit balance"
           value={`$${creditBalance.toFixed(2)}`}
           icon={Wallet}
-          accent
         />
         <StatCard
           label="Money spent"
@@ -92,7 +91,6 @@ export default async function GiverWalletPage() {
           <div className="flex flex-col gap-2">
             {transactions.map((tx) => {
               const amount = Number(tx.amount);
-              const isCredit = amount > 0;
 
               return (
                 <div
@@ -107,11 +105,7 @@ export default async function GiverWalletPage() {
                       {new Date(tx.createdAt).toLocaleString()}
                     </p>
                   </div>
-                  <span
-                    className={`text-xs font-mono ${
-                      isCredit ? "text-money" : "text-foreground"
-                    }`}
-                  >
+                  <span className="text-sm font-mono font-medium text-foreground">
                     {formatAmount(amount)}
                   </span>
                 </div>

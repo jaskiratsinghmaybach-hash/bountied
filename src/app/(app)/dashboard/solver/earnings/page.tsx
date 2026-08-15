@@ -30,7 +30,6 @@ export default async function SolverEarningsPage() {
           label="Total earned"
           value={`$${Number(profile.totalEarned).toFixed(2)}`}
           icon={Wallet}
-          accent
         />
         <StatCard label="Bounties won" value={String(profile.completionCount)} icon={Trophy} />
       </div>
@@ -58,7 +57,7 @@ export default async function SolverEarningsPage() {
               className="rounded-lg border border-border bg-surface p-4 flex items-center justify-between"
             >
               <p className="text-sm font-medium text-foreground">{s.problem.title}</p>
-              <span className="text-xs font-mono text-money">
+              <span className="text-sm font-mono font-medium text-foreground">
                 {s.problem.bountyAmount ? `$${s.problem.bountyAmount}` : "Free"}
               </span>
             </div>

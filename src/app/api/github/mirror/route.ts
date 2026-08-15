@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-// @ts-ignore
-import { mirrorRepository } from "@/lib/github/mirror";
+import { mirrorSubmissionRepo } from "@/lib/github/mirror";
 
 export async function POST(req: Request) {
   try {
@@ -13,26 +12,36 @@ export async function POST(req: Request) {
 
     const submission = await prisma.submission.findUnique({
       where: { id: submissionId },
-      include: { problem: true },
+      include: { problem: true, solver: true },
     });
 
     if (!submission) {
       return NextResponse.json({ error: "Submission not found" }, { status: 404 });
     }
 
+    if (!submission.solver.githubAccessToken) {
+      return NextResponse.json({ error: "Solver has not connected GitHub" }, { status: 400 });
+    }
+
     // Mirror the repository asynchronously or inline
-    // @ts-ignore
-    const mirrorResult = await mirrorRepository({
+    const mirrorResult = await mirrorSubmissionRepo({
       submissionId: submission.id,
       sourceRepoUrl: submission.repoUrl,
+      solverToken: submission.solver.githubAccessToken,
+      runtime: submission.problem.runtime,
+      problemTitle: submission.problem.title,
     });
+
+    if (!mirrorResult.ok) {
+       return NextResponse.json({ error: mirrorResult.reason }, { status: 500 });
+    }
 
     // Update submission state to AWAITING_REVIEW for lazy execution strategy
     await prisma.submission.update({
       where: { id: submission.id },
       data: {
-        platformRepoUrl: mirrorResult.url,
-        platformRepoFullName: mirrorResult.fullName,
+        platformRepoUrl: mirrorResult.repo.cloneUrl,
+        platformRepoFullName: mirrorResult.repo.fullName,
         status: "AWAITING_REVIEW",
       },
     });

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-// @ts-ignore
-import { runSandboxExecution } from "@/lib/sandbox/runner";
+import { executeSubmission } from "@/lib/sandbox/execute";
 
 export async function POST(req: Request) {
   try {
@@ -16,7 +15,7 @@ export async function POST(req: Request) {
       include: { problem: true },
     });
 
-    if (!submission || !submission.platformRepoFullName) {
+    if (!submission || !submission.platformRepoFullName || !submission.platformRepoUrl) {
       return NextResponse.json(
         { error: "Submission or mirrored repo not ready" },
         { status: 400 }
@@ -30,21 +29,21 @@ export async function POST(req: Request) {
     });
 
     // Execute code in E2B sandbox
-    // @ts-ignore
-    const result = await runSandboxExecution({
-      repoFullName: submission.platformRepoFullName,
+    const result = await executeSubmission({
+      repoUrl: submission.platformRepoUrl,
+      githubToken: process.env.PLATFORM_GITHUB_TOKEN || "",
       runCommand: submission.problem.runCommand,
       runtime: submission.problem.runtime,
     });
 
     // Save logs and exit code
-    const isSuccess = result.exitCode === 0;
+    const isSuccess = result.ok && result.exitCode === 0;
     const updatedSubmission = await prisma.submission.update({
       where: { id: submission.id },
       data: {
-        sandboxOutput: result.output,
-        sandboxExitCode: result.exitCode,
-        sandboxError: result.error ?? null,
+        sandboxOutput: result.ok ? result.stdout + (result.stderr ? '\n' + result.stderr : '') : null,
+        sandboxExitCode: result.ok ? result.exitCode : null,
+        sandboxError: result.ok ? null : result.reason,
         sandboxRanAt: new Date(),
         status: isSuccess ? "UNDER_REVIEW" : "SANDBOX_FAILED",
       },

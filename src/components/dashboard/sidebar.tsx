@@ -120,10 +120,4 @@ function SidebarInner({ role }: { role: Role }) {
   );
 }
 
-export function DashboardSidebar({ role }: { role: Role }) {
-  return (
-    <SidebarProvider>
-      <SidebarInner role={role} />
-    </SidebarProvider>
-  );
-}
+export { SidebarInner as DashboardSidebar };

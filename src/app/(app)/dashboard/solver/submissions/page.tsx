@@ -2,14 +2,15 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
-const statusLabel: Record<string, { label: string; color: string }> = {
-  SUBMITTED: { label: "Submitted", color: "text-foreground-muted" },
-  RUNNING: { label: "Running in sandbox…", color: "text-accent" },
-  SANDBOX_FAILED: { label: "Sandbox failed — resubmit", color: "text-danger" },
-  UNDER_REVIEW: { label: "Under review", color: "text-money" },
-  ACCEPTED: { label: "Accepted", color: "text-accent" },
-  REJECTED: { label: "Rejected", color: "text-danger" },
+const statusLabel: Record<string, { label: string; dot: string }> = {
+  SUBMITTED: { label: "Submitted", dot: "bg-foreground-muted" },
+  RUNNING: { label: "Running in sandbox…", dot: "bg-foreground-muted" },
+  SANDBOX_FAILED: { label: "Sandbox failed — resubmit", dot: "bg-danger" },
+  UNDER_REVIEW: { label: "Under review", dot: "bg-foreground-muted" },
+  ACCEPTED: { label: "Accepted", dot: "bg-success" },
+  REJECTED: { label: "Rejected", dot: "bg-danger" },
 };
 
 export default async function SolverSubmissionsPage() {
@@ -37,12 +38,11 @@ export default async function SolverSubmissionsPage() {
           <p className="text-sm text-foreground-muted mb-4">
             You haven&apos;t submitted anything yet.
           </p>
-          <Link
-            href="/problems"
-            className="inline-block rounded-md bg-accent text-background font-medium px-5 py-2.5 text-sm hover:bg-accent-dim transition-colors"
-          >
-            Browse open bounties
-          </Link>
+          <Button asChild>
+            <Link href="/problems">
+              Browse open bounties
+            </Link>
+          </Button>
         </div>
       ) : (
         <div className="flex flex-col gap-2">
@@ -56,9 +56,12 @@ export default async function SolverSubmissionsPage() {
               >
                 <div>
                   <p className="text-sm font-medium text-foreground">{s.problem.title}</p>
-                  <p className={`text-xs mt-1 font-mono ${status.color}`}>{status.label}</p>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <div className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
+                    <p className="text-xs font-mono text-foreground-muted">{status.label}</p>
+                  </div>
                 </div>
-                <span className="text-xs font-mono text-money">
+                <span className="text-sm font-mono font-medium text-foreground">
                   {s.problem.bountyAmount ? `$${s.problem.bountyAmount}` : "Free"}
                 </span>
               </Link>

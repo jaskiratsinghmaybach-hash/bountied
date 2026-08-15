@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Trophy, Wallet, Target, TrendingUp } from "lucide-react";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { PayoutWarningBanner } from "@/components/payments/payout-warning-banner";
+import { Button } from "@/components/ui/button";
 
 export default async function SolverDashboardPage() {
   const supabase = await createClient();
@@ -53,7 +54,6 @@ export default async function SolverDashboardPage() {
           label="Available balance"
           value={`$${Number(profile.availableBalance).toFixed(2)}`}
           icon={Wallet}
-          accent
         />
         <StatCard
           label="Total earned"
@@ -77,7 +77,7 @@ export default async function SolverDashboardPage() {
           <h2 className="text-sm font-medium text-foreground-muted uppercase tracking-wide">
             Active submissions
           </h2>
-          <Link href="/problems" className="text-sm text-accent hover:underline">
+          <Link href="/problems" className="text-sm text-foreground-muted hover:text-foreground hover:underline">
             Browse open bounties →
           </Link>
         </div>
@@ -88,12 +88,11 @@ export default async function SolverDashboardPage() {
               You haven&apos;t submitted to anything yet. Find a bounty that
               matches your skills and give it a shot.
             </p>
-            <Link
-              href="/problems"
-              className="inline-block rounded-md bg-accent text-background font-medium px-5 py-2.5 text-sm hover:bg-accent-dim transition-colors"
-            >
-              Browse open bounties
-            </Link>
+            <Button asChild>
+              <Link href="/problems">
+                Browse open bounties
+              </Link>
+            </Button>
           </div>
         ) : (
           <div className="flex flex-col gap-2">
@@ -109,7 +108,7 @@ export default async function SolverDashboardPage() {
                     Submitted {s.submittedAt.toLocaleDateString()}
                   </p>
                 </div>
-                <span className="text-xs font-mono text-money">
+                <span className="text-sm font-mono font-medium text-foreground">
                   {s.problem.bountyAmount ? `$${s.problem.bountyAmount}` : "Free"}
                 </span>
               </Link>
