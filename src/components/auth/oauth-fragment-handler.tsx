@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { Toast } from "@/components/ui/toast";
+import { X } from "lucide-react";
 
 /**
  * Supabase's linkIdentity() (and some other OAuth flows) can return the
@@ -38,6 +40,8 @@ export function OAuthFragmentHandler() {
 
     if (!errorDescription && !accessToken) return; // nothing relevant in the fragment
 
+    let timerId: NodeJS.Timeout;
+
     // Wrapped in an async IIFE (even the error branch, which has no real
     // await) so React never sees setState called synchronously within the
     // effect's initial pass — that's what triggers React 19's "calling
@@ -50,11 +54,19 @@ export function OAuthFragmentHandler() {
         // identity_already_exists is expected/benign — the identity
         // really is already linked, nothing to fix, just don't show it
         // as scary.
+        let msg = "";
         if (errorCode === "identity_already_exists") {
-          setError("This GitHub account is already connected.");
+          msg = "This GitHub account is already connected.";
         } else {
-          setError(errorDescription.replace(/\+/g, " "));
+          msg = errorDescription.replace(/\+/g, " ");
         }
+        setError(msg);
+
+        // Auto-dismiss after 8 seconds
+        timerId = setTimeout(() => {
+          setError(null);
+        }, 8000);
+
         // Clean the fragment so a page refresh doesn't re-show the same error.
         window.history.replaceState(null, "", window.location.pathname + window.location.search);
         return;
@@ -80,13 +92,19 @@ export function OAuthFragmentHandler() {
       // Clean the fragment out of the URL now that we're done with it.
       window.history.replaceState(null, "", window.location.pathname + window.location.search);
     })();
+
+    return () => {
+      if (timerId) clearTimeout(timerId);
+    };
   }, []);
 
   if (!error) return null;
 
   return (
-    <div className="rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger mb-4">
-      {error}
-    </div>
+    <Toast
+      message={error}
+      onDismiss={() => setError(null)}
+      duration={8000}
+    />
   );
 }

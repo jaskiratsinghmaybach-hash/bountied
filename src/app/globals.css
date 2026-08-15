@@ -141,3 +141,41 @@ body {
   width: 0;
   height: 0;
 }
+
+textarea {
+  resize: none;
+  height: 8rem;
+  overflow: auto;
+}
+
+/* Disable text selection and image dragging app-wide */
+body {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+img, svg, video, a {
+  -webkit-user-drag: none;
+  -khtml-user-drag: none;
+  -moz-user-drag: none;
+  -o-user-drag: none;
+}
+
+/* Re-enable selection for inputs and editable areas */
+input,
+textarea,
+[contenteditable="true"],
+.selectable {
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  user-select: text !important;
+}
+
+/* Fix textareas height and disable resizing */
+textarea {
+  resize: none;
+  overflow-y: auto;
+}
