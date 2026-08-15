@@ -12,7 +12,7 @@ export function PayoutRowActions({ payoutRequestId }: { payoutRequestId: string 
         type="button"
         disabled={isPending}
         onClick={() => startTransition(() => markPayoutSucceeded(payoutRequestId))}
-        className="rounded-md bg-accent text-background text-xs font-medium px-3 py-1.5 hover:bg-accent-dim transition-colors disabled:opacity-60"
+        className="rounded-md bg-primary text-background text-xs font-medium px-3 py-1.5 hover:bg-primary/80 transition-colors disabled:opacity-60"
       >
         Mark sent
       </button>

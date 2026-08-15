@@ -28,19 +28,6 @@
   --muted: var(--surface);
   --muted-foreground: var(--foreground-muted);
 
-  /* IMPORTANT: --accent must stay legible as TEXT (old code uses
-     text-accent extensively) — it is NOT a background-only token here.
-     Bright, near-white, so every existing text-accent usage stays
-     readable while we migrate call sites off it over time. */
-  --accent: var(--foreground);
-  --accent-foreground: var(--background);
-  --accent-dim: var(--foreground-muted);
-
-  /* Legacy --money token — same legibility fix, kept alive until every
-     text-money/bg-money call site is migrated in the component sweep. */
-  --money: var(--foreground);
-  --money-dim: var(--foreground-muted);
-
   --input: var(--surface);
   --ring: rgba(255, 255, 255, 0.25);
 
@@ -80,12 +67,6 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
-
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent-dim: var(--accent-dim);
-  --color-money: var(--money);
-  --color-money-dim: var(--money-dim);
 
   --color-input: var(--input);
   --color-ring: var(--ring);

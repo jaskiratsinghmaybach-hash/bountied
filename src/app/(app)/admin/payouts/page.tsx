@@ -58,12 +58,12 @@ export default async function AdminPayoutsPage() {
                       Requested {p.createdAt.toLocaleDateString()} · Eligible{" "}
                       {p.eligibleAt.toLocaleDateString()}{" "}
                       {!eligible && (
-                        <span className="text-money">(not yet due)</span>
+                        <span className="text-emerald-500">(not yet due)</span>
                       )}
                     </p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="font-mono text-lg font-semibold text-money">
+                    <p className="font-mono text-lg font-semibold text-emerald-500">
                       ${Number(p.payoutAmount).toFixed(2)}
                     </p>
                     <p className="text-[11px] text-foreground-muted">
@@ -116,7 +116,7 @@ export default async function AdminPayoutsPage() {
                 </span>
                 <span
                   className={`text-xs font-medium ${
-                    p.status === "SUCCEEDED" ? "text-money" : "text-danger"
+                    p.status === "SUCCEEDED" ? "text-emerald-500" : "text-danger"
                   }`}
                 >
                   {p.status === "SUCCEEDED" ? "Sent" : "Failed"}

@@ -17,12 +17,12 @@ export function PayoutWarningBanner({ bankDetailsAdded }: { bankDetailsAdded: bo
   if (bankDetailsAdded || dismissed) return null;
 
   return (
-    <div className="rounded-md border border-money/30 bg-money/10 px-4 py-3 flex items-start gap-3 mb-6">
-      <AlertTriangle size={16} className="text-money shrink-0 mt-0.5" />
+    <div className="rounded-md border border-money/30 bg-emerald-500/10 px-4 py-3 flex items-start gap-3 mb-6">
+      <AlertTriangle size={16} className="text-emerald-500 shrink-0 mt-0.5" />
       <div className="flex-1 min-w-0">
         <p className="text-sm text-foreground">
           Add your bank details to start requesting payouts. {" "}
-          <Link href="/settings" className="text-accent hover:underline">
+          <Link href="/settings" className="text-primary hover:underline">
             Add now
           </Link>
         </p>

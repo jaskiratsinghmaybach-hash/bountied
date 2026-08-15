@@ -46,7 +46,7 @@ export default async function ProblemDetailPage({
     <main className="px-8 py-10 max-w-3xl">
       <div className="flex items-start justify-between mb-4">
         <h1 className="text-2xl font-semibold tracking-tight">{problem.title}</h1>
-        <span className="font-mono text-xl font-semibold text-money shrink-0 pl-4">
+        <span className="font-mono text-xl font-semibold text-emerald-500 shrink-0 pl-4">
           {problem.bountyAmount ? `$${problem.bountyAmount}` : "Free"}
         </span>
       </div>
@@ -66,7 +66,7 @@ export default async function ProblemDetailPage({
         <p className="text-xs text-foreground-muted uppercase tracking-wide mb-2">
           Sandbox run command
         </p>
-        <code className="block rounded-md border border-accent/25 bg-accent/5 px-3 py-2.5 text-sm font-mono text-foreground">
+        <code className="block rounded-md border border-accent/25 bg-primary/5 px-3 py-2.5 text-sm font-mono text-foreground">
           {problem.runCommand}
         </code>
         <p className="text-[11px] text-foreground-muted mt-1.5">
@@ -93,7 +93,7 @@ export default async function ProblemDetailPage({
         <div className="rounded-lg border border-dashed border-border p-5 text-center">
           <p className="text-sm text-foreground-muted">
             You posted this bounty. View submissions from your{" "}
-            <a href={`/dashboard/giver/problems/${problem.id}`} className="text-accent hover:underline">
+            <a href={`/dashboard/giver/problems/${problem.id}`} className="text-primary hover:underline">
               dashboard
             </a>.
           </p>
@@ -108,7 +108,7 @@ export default async function ProblemDetailPage({
           </p>
           <a
             href="/login"
-            className="inline-block rounded-md bg-accent text-background font-medium px-5 py-2.5 text-sm hover:bg-accent-dim transition-colors"
+            className="inline-block rounded-md bg-primary text-background font-medium px-5 py-2.5 text-sm hover:bg-primary/80 transition-colors"
           >
             Sign in
           </a>
@@ -131,9 +131,9 @@ export default async function ProblemDetailPage({
             <p className="text-sm font-medium text-foreground">Your submission</p>
             <span className={`text-xs font-mono px-2 py-0.5 rounded border ${
               existingSubmission.status === "UNDER_REVIEW"
-                ? "text-money border-money/30 bg-money/10"
+                ? "text-emerald-500 border-money/30 bg-emerald-500/10"
                 : existingSubmission.status === "RUNNING"
-                  ? "text-accent border-accent/30 bg-accent/10"
+                  ? "text-primary border-accent/30 bg-primary/10"
                   : existingSubmission.status === "SANDBOX_FAILED"
                     ? "text-danger border-danger/30 bg-danger/10"
                     : "text-foreground-muted border-border"

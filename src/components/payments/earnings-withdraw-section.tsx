@@ -20,10 +20,10 @@ export function EarningsWithdrawSection({
     return (
       <>
         <div className="rounded-lg border border-border bg-surface p-6 flex flex-col items-center text-center">
-          <Landmark size={20} className="text-money mb-3" />
+          <Landmark size={20} className="text-emerald-500 mb-3" />
           <p className="text-sm text-foreground mb-1">
             Available balance:{" "}
-            <span className="font-mono text-money">${availableBalance.toFixed(2)}</span>
+            <span className="font-mono text-emerald-500">${availableBalance.toFixed(2)}</span>
           </p>
           <p className="text-xs text-foreground-muted mb-4 max-w-xs">
             Add your bank details to request a payout. Payouts arrive within 7
@@ -32,7 +32,7 @@ export function EarningsWithdrawSection({
           <button
             type="button"
             onClick={() => setShowModal(true)}
-            className="rounded-md bg-accent text-background font-medium px-5 py-2.5 text-sm hover:bg-accent-dim transition-colors"
+            className="rounded-md bg-primary text-background font-medium px-5 py-2.5 text-sm hover:bg-primary/80 transition-colors"
           >
             Add bank details
           </button>

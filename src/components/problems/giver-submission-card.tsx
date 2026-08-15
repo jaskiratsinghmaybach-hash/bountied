@@ -8,11 +8,11 @@ const submissionStatusLabel: Record<
   { label: string; color: string }
 > = {
   SUBMITTED: { label: "Submitted", color: "text-foreground-muted" },
-  RUNNING: { label: "Running sandbox", color: "text-money" },
-  AWAITING_REVIEW: { label: "Ready to review", color: "text-accent" },
+  RUNNING: { label: "Running sandbox", color: "text-emerald-500" },
+  AWAITING_REVIEW: { label: "Ready to review", color: "text-primary" },
   SANDBOX_FAILED: { label: "Sandbox failed", color: "text-danger" },
-  UNDER_REVIEW: { label: "Review output", color: "text-money" },
-  ACCEPTED: { label: "Accepted", color: "text-accent" },
+  UNDER_REVIEW: { label: "Review output", color: "text-emerald-500" },
+  ACCEPTED: { label: "Accepted", color: "text-primary" },
   REJECTED: { label: "Rejected", color: "text-foreground-muted" },
 };
 
@@ -70,7 +70,7 @@ export function GiverSubmissionCard({
       </div>
 
       {submission.status === "RUNNING" && (
-        <p className="text-sm text-money font-mono mb-4">Sandbox is running…</p>
+        <p className="text-sm text-emerald-500 font-mono mb-4">Sandbox is running…</p>
       )}
 
       {submission.sandboxError && (

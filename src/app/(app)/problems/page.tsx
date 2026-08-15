@@ -43,7 +43,7 @@ export default async function ProblemsPage() {
                 </div>
               </div>
               <div className="text-right shrink-0 pl-4">
-                <span className="font-mono text-lg font-semibold text-money block">
+                <span className="font-mono text-lg font-semibold text-emerald-500 block">
                   {p.bountyAmount ? `$${p.bountyAmount}` : "Free"}
                 </span>
                 <span className="text-xs text-foreground-muted">

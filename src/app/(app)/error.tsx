@@ -42,7 +42,7 @@ export default function AppError({
           <button
             type="button"
             onClick={reset}
-            className="rounded-md bg-accent text-background font-medium px-5 py-2.5 text-sm hover:bg-accent-dim transition-colors"
+            className="rounded-md bg-primary text-background font-medium px-5 py-2.5 text-sm hover:bg-primary/80 transition-colors"
           >
             Try again
           </button>

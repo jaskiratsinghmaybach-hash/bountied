@@ -20,9 +20,9 @@ export function WithdrawWidget({ availableBalance }: { availableBalance: number 
       day: "numeric",
     });
     return (
-      <div className="rounded-lg border border-money/30 bg-money/10 p-6 text-center">
+      <div className="rounded-lg border border-money/30 bg-emerald-500/10 p-6 text-center">
         <p className="text-sm text-foreground mb-1">Payout requested</p>
-        <p className="font-mono text-2xl font-semibold text-money mb-1">
+        <p className="font-mono text-2xl font-semibold text-emerald-500 mb-1">
           ${state.payoutAmount.toFixed(2)}
         </p>
         <p className="text-xs text-foreground-muted">
@@ -36,7 +36,7 @@ export function WithdrawWidget({ availableBalance }: { availableBalance: number 
     <form action={formAction} className="rounded-lg border border-border bg-surface p-6">
       <div className="flex items-center justify-between mb-1">
         <h2 className="text-sm font-medium text-foreground">Available balance</h2>
-        <span className="font-mono text-lg font-semibold text-money">
+        <span className="font-mono text-lg font-semibold text-emerald-500">
           ${availableBalance.toFixed(2)}
         </span>
       </div>
@@ -82,7 +82,7 @@ export function WithdrawWidget({ availableBalance }: { availableBalance: number 
           </div>
           <div className="flex justify-between text-foreground font-semibold pt-1.5 border-t border-border">
             <span>You&apos;ll receive</span>
-            <span className="text-money">${payout.toFixed(2)}</span>
+            <span className="text-emerald-500">${payout.toFixed(2)}</span>
           </div>
         </div>
       )}
@@ -90,7 +90,7 @@ export function WithdrawWidget({ availableBalance }: { availableBalance: number 
       <button
         type="submit"
         disabled={pending || !isValid || availableBalance <= 0}
-        className="w-full rounded-md bg-accent text-background font-medium px-5 py-2.5 text-sm hover:bg-accent-dim transition-colors disabled:opacity-60"
+        className="w-full rounded-md bg-primary text-background font-medium px-5 py-2.5 text-sm hover:bg-primary/80 transition-colors disabled:opacity-60"
       >
         {pending ? "Requesting…" : "Request payout"}
       </button>

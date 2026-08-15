@@ -31,7 +31,7 @@ export function FundDraftButton({
   }
 
   return (
-    <div className="rounded-lg border border-money/30 bg-money/5 p-5 mb-6">
+    <div className="rounded-lg border border-money/30 bg-emerald-500/5 p-5 mb-6">
       <div className="flex items-center justify-between gap-4">
         <div>
           <p className="text-sm text-foreground mb-0.5">This bounty isn&apos;t funded yet</p>
@@ -43,7 +43,7 @@ export function FundDraftButton({
           type="button"
           onClick={handleFund}
           disabled={isPending}
-          className="rounded-md bg-accent text-background font-medium px-5 py-2.5 text-sm hover:bg-accent-dim transition-colors disabled:opacity-60 shrink-0"
+          className="rounded-md bg-primary text-background font-medium px-5 py-2.5 text-sm hover:bg-primary/80 transition-colors disabled:opacity-60 shrink-0"
         >
           {isPending ? "Funding…" : `Fund $${requiredTotal.toFixed(2)}`}
         </button>

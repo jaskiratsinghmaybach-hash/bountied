@@ -25,7 +25,7 @@ export function AcceptSubmissionButton({
       <button
         type="submit"
         disabled={pending}
-        className="rounded-md bg-accent text-background font-medium px-4 py-2 text-xs hover:bg-accent-dim transition-colors disabled:opacity-60"
+        className="rounded-md bg-primary text-background font-medium px-4 py-2 text-xs hover:bg-primary/80 transition-colors disabled:opacity-60"
       >
         {pending ? "Processing…" : "Accept & pay"}
       </button>

@@ -155,7 +155,7 @@ export function InsufficientCreditsModal({
   if (phase === "confirming") {
     return (
       <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
-        <div className="w-full max-w-sm rounded-lg border border-money/30 bg-money/10 p-6 text-center">
+        <div className="w-full max-w-sm rounded-lg border border-money/30 bg-emerald-500/10 p-6 text-center">
           <p className="text-sm text-foreground mb-1">Payment received</p>
           <p className="text-xs text-foreground-muted">Funding your bounty…</p>
         </div>
@@ -171,7 +171,7 @@ export function InsufficientCreditsModal({
         </h2>
         <p className="text-sm text-foreground-muted mb-6 text-center">
           You need at least{" "}
-          <span className="font-mono text-money">${exactShortfall.toFixed(2)}</span> more to
+          <span className="font-mono text-emerald-500">${exactShortfall.toFixed(2)}</span> more to
           post this bounty.
         </p>
 
@@ -250,7 +250,7 @@ export function InsufficientCreditsModal({
             type="button"
             onClick={handleStartCheckout}
             disabled={!isValid || phase === "checkout"}
-            className="rounded-md bg-accent text-background font-medium px-5 py-2.5 text-sm hover:bg-accent-dim transition-colors disabled:opacity-60"
+            className="rounded-md bg-primary text-background font-medium px-5 py-2.5 text-sm hover:bg-primary/80 transition-colors disabled:opacity-60"
           >
             {phase === "checkout" && !planId
               ? "Loading…"

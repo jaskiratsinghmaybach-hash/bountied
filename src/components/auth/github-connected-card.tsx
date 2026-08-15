@@ -98,7 +98,7 @@ export function GithubConnectedCard() {
           </div>
         )}
 
-        <div className="flex items-center gap-1.5 text-xs text-money">
+        <div className="flex items-center gap-1.5 text-xs text-emerald-500">
           <CheckCircle2 size={14} />
           <span>Connected</span>
           {pending && <span className="text-foreground-muted ml-2 animate-pulse">Working...</span>}

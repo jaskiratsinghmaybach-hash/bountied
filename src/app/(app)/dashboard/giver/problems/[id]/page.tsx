@@ -12,9 +12,9 @@ import type { ProblemStatus, ProblemType } from "@prisma/client";
 
 const statusLabel: Record<ProblemStatus, { label: string; color: string }> = {
   DRAFT: { label: "Draft", color: "text-foreground-muted" },
-  FUNDED: { label: "Funded", color: "text-money" },
-  OPEN: { label: "Open", color: "text-accent" },
-  IN_REVIEW: { label: "In review", color: "text-money" },
+  FUNDED: { label: "Funded", color: "text-emerald-500" },
+  OPEN: { label: "Open", color: "text-primary" },
+  IN_REVIEW: { label: "In review", color: "text-emerald-500" },
   COMPLETED: { label: "Completed", color: "text-foreground-muted" },
   CANCELLED: { label: "Cancelled", color: "text-danger" },
   REFUNDED: { label: "Refunded", color: "text-foreground-muted" },
@@ -100,7 +100,7 @@ export default async function GiverProblemPage({
         </div>
 
         <div className="flex flex-col items-end gap-2 shrink-0">
-          <span className="font-mono text-xl font-semibold text-money">
+          <span className="font-mono text-xl font-semibold text-emerald-500">
             {bountyAmount ? `$${bountyAmount.toFixed(2)}` : "Free"}
           </span>
           {isDraft && <DraftActions problemId={problem.id} />}
@@ -120,7 +120,7 @@ export default async function GiverProblemPage({
             This bounty is still a draft.{" "}
             <Link
               href={`/dashboard/giver/problems/${problem.id}/edit`}
-              className="text-accent hover:underline"
+              className="text-primary hover:underline"
             >
               Edit it
             </Link>{" "}
@@ -151,7 +151,7 @@ export default async function GiverProblemPage({
           <p className="text-xs text-foreground-muted uppercase tracking-wide mb-2">
             Sandbox run command
           </p>
-          <code className="block rounded-md border border-accent/25 bg-accent/5 px-3 py-2.5 text-sm font-mono text-foreground">
+          <code className="block rounded-md border border-accent/25 bg-primary/5 px-3 py-2.5 text-sm font-mono text-foreground">
             {problem.runCommand}
           </code>
           <p className="text-[11px] text-foreground-muted mt-1.5">

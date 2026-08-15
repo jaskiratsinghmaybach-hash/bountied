@@ -55,7 +55,7 @@ export function RoleSelector({ name }: { name: string }) {
         transition={{ duration: 0.4 }}
         className="mb-10 text-center"
       >
-        <p className="font-mono text-xs text-accent tracking-widest uppercase mb-3">
+        <p className="font-mono text-xs text-primary tracking-widest uppercase mb-3">
           One quick thing, {name}
         </p>
         <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
@@ -83,7 +83,7 @@ export function RoleSelector({ name }: { name: string }) {
             >
               <div
                 className={`rounded-md p-2 shrink-0 ${
-                  isSelected ? "bg-accent text-background" : "bg-surface-raised text-foreground-muted"
+                  isSelected ? "bg-primary text-background" : "bg-surface-raised text-foreground-muted"
                 }`}
               >
                 <Icon size={18} />
@@ -112,7 +112,7 @@ export function RoleSelector({ name }: { name: string }) {
               type="button"
               onClick={handleConfirm}
               disabled={isPending}
-              className="rounded-md bg-accent text-background font-medium px-6 py-2.5 text-sm hover:bg-accent-dim transition-colors disabled:opacity-60"
+              className="rounded-md bg-primary text-background font-medium px-6 py-2.5 text-sm hover:bg-primary/80 transition-colors disabled:opacity-60"
             >
               {isPending ? "Setting up…" : "Continue"}
             </button>

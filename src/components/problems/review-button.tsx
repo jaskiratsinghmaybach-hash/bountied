@@ -65,7 +65,7 @@ export function ReviewButton({
     <button
       onClick={handleReview}
       disabled={loading}
-      className="rounded-md bg-accent text-background font-medium px-4 py-2 text-sm hover:bg-accent-dim transition-colors disabled:opacity-60"
+      className="rounded-md bg-primary text-background font-medium px-4 py-2 text-sm hover:bg-primary/80 transition-colors disabled:opacity-60"
     >
       {loading
         ? "Running sandbox…"

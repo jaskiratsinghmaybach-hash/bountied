@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { BountyTicket } from "./bounty-ticket";
+import { Button } from "@/components/ui/button";
 
 export function Hero() {
   return (
@@ -22,7 +23,7 @@ export function Hero() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
-            className="font-mono text-xs text-accent tracking-widest uppercase mb-5"
+            className="font-mono text-xs text-primary tracking-widest uppercase mb-5"
           >
             Escrow-backed &middot; No bidding &middot; No proposals
           </motion.p>
@@ -57,12 +58,12 @@ export function Hero() {
             transition={{ duration: 0.5, delay: 0.3 }}
             className="flex flex-wrap gap-3"
           >
-            <button className="rounded-md bg-accent text-background font-medium px-5 py-2.5 text-sm hover:bg-accent-dim transition-colors">
+            <Button size="lg" className="px-5 py-2.5 h-auto text-sm">
               Launch a Bounty
-            </button>
-            <button className="rounded-md border border-border text-foreground font-medium px-5 py-2.5 text-sm hover:bg-surface transition-colors">
+            </Button>
+            <Button variant="outline" size="lg" className="px-5 py-2.5 h-auto text-sm">
               Solve & Earn
-            </button>
+            </Button>
           </motion.div>
         </div>
 

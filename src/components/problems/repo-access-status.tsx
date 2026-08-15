@@ -40,10 +40,10 @@ export function RepoAccessStatus({
   if (accessGranted && platformRepoUrl) {
     return (
       <div className="flex items-center gap-2">
-        <CircleCheck size={14} className="text-accent shrink-0" />
+        <CircleCheck size={14} className="text-primary shrink-0" />
         <a
           href={platformRepoUrl}
-          className="text-sm text-accent hover:underline"
+          className="text-sm text-primary hover:underline"
           target="_blank"
           rel="noreferrer"
         >
@@ -74,7 +74,7 @@ export function RepoAccessStatus({
   return (
     <div>
       <div className="flex items-start gap-2 mb-2">
-        <TriangleAlert size={14} className="text-money shrink-0 mt-0.5" />
+        <TriangleAlert size={14} className="text-emerald-500 shrink-0 mt-0.5" />
         <p className="text-sm text-foreground-muted">
           Payment released, but the repo invite hasn&apos;t gone through yet.
         </p>

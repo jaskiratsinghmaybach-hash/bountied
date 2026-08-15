@@ -33,9 +33,9 @@ export function SubmissionForm({
   // Success state — show a "you're in the queue" confirmation
   if (state && "ok" in state) {
     return (
-      <div className="rounded-lg border border-accent/30 bg-accent/5 p-6">
+      <div className="rounded-lg border border-accent/30 bg-primary/5 p-6">
         <div className="flex items-center gap-2 mb-2">
-          <Terminal size={16} className="text-accent" />
+          <Terminal size={16} className="text-primary" />
           <p className="text-sm font-medium text-foreground">Submission received</p>
         </div>
         <p className="text-xs text-foreground-muted">
@@ -120,7 +120,7 @@ export function SubmissionForm({
         <button
           type="submit"
           disabled={pending || !hasRepo}
-          className="self-start rounded-md bg-accent text-background font-medium px-6 py-2.5 text-sm hover:bg-accent-dim transition-colors disabled:opacity-60"
+          className="self-start rounded-md bg-primary text-background font-medium px-6 py-2.5 text-sm hover:bg-primary/80 transition-colors disabled:opacity-60"
         >
           {pending ? "Submitting…" : "Submit solution"}
         </button>

@@ -37,7 +37,7 @@ export default function TempUnlinkGithubPage() {
         type="button"
         onClick={handleClick}
         disabled={pending}
-        className="rounded-md bg-accent text-background font-medium px-5 py-2.5 text-sm hover:bg-accent-dim transition-colors disabled:opacity-60"
+        className="rounded-md bg-primary text-background font-medium px-5 py-2.5 text-sm hover:bg-primary/80 transition-colors disabled:opacity-60"
       >
         {pending ? "Working…" : "Unlink GitHub from this account"}
       </button>

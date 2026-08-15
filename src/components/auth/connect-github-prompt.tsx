@@ -47,7 +47,7 @@ export function ConnectGithubPrompt({ reason }: { reason?: string }) {
   }
 
   return (
-    <div className="rounded-lg border border-money/30 bg-money/5 p-5 flex items-start gap-4">
+    <div className="rounded-lg border border-money/30 bg-emerald-500/5 p-5 flex items-start gap-4">
       <FaGithub size={20} className="text-foreground shrink-0 mt-0.5" />
       <div className="flex-1">
         <p className="text-sm text-foreground mb-1">Connect GitHub to submit</p>
@@ -67,7 +67,7 @@ export function ConnectGithubPrompt({ reason }: { reason?: string }) {
           type="button"
           onClick={handleConnect}
           disabled={pending}
-          className="flex items-center gap-2 rounded-md bg-accent text-background font-medium px-4 py-2 text-sm hover:bg-accent-dim transition-colors disabled:opacity-60"
+          className="flex items-center gap-2 rounded-md bg-primary text-background font-medium px-4 py-2 text-sm hover:bg-primary/80 transition-colors disabled:opacity-60"
         >
           <FaGithub size={14} />
           {pending ? "Redirecting…" : "Connect GitHub"}

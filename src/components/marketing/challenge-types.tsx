@@ -1,6 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
 const types = [
   {
@@ -59,24 +61,25 @@ export function ChallengeTypes() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-40px" }}
             transition={{ duration: 0.4, delay: i * 0.06 }}
-            className={`rounded-lg border border-border p-6 ${
-              type.live ? "bg-surface" : "bg-surface/50"
-            }`}
           >
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-medium text-foreground">{type.name}</h3>
-              {!type.live && (
-                <span className="text-[10px] font-mono uppercase tracking-wide text-foreground-muted border border-border rounded px-1.5 py-0.5">
-                  Coming soon
-                </span>
-              )}
-            </div>
-            <p className="text-xs font-mono text-accent-dim mb-3">
-              {type.price}
-            </p>
-            <p className="text-sm text-foreground-muted leading-relaxed">
-              {type.description}
-            </p>
+            <Card className={`p-6 border-border ${
+              type.live ? "bg-surface" : "bg-surface/50"
+            }`}>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-medium text-foreground">{type.name}</h3>
+                {!type.live && (
+                  <Badge variant="outline" className="text-[10px] font-mono uppercase tracking-wide text-foreground-muted px-1.5 py-0.5 rounded">
+                    Coming soon
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs font-mono text-muted-foreground mb-3">
+                {type.price}
+              </p>
+              <p className="text-sm text-foreground-muted leading-relaxed">
+                {type.description}
+              </p>
+            </Card>
           </motion.div>
         ))}
       </div>

@@ -31,7 +31,7 @@ export default async function NewProblemPage() {
           href="/settings"
           className="flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-xs text-foreground-muted hover:text-foreground hover:border-foreground-muted transition-colors shrink-0"
         >
-          <Wallet size={14} className="text-money" />
+          <Wallet size={14} className="text-emerald-500" />
           <span className="font-mono text-foreground">
             ${Number(profile.creditBalance).toFixed(2)}
           </span>
