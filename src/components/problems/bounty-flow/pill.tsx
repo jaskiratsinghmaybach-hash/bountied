@@ -46,7 +46,7 @@ export function Pill({
   const isInteractive = Component === "button";
 
   const styleClasses = cn(
-    "inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors",
+    "inline-flex items-center gap-1.5 rounded-full border-2 px-5 py-2 text-sm font-medium transition-colors box-border",
     isInteractive &&
       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20 focus-visible:border-border-strong",
     disabled &&
@@ -56,7 +56,7 @@ export function Pill({
       "border-border bg-surface text-foreground hover:border-foreground-muted hover:bg-surface-raised",
     !disabled &&
       selected &&
-      "bg-foreground text-background border-2 border-border-strong"
+      "bg-foreground text-background border-border-strong"
   );
 
   const content = (
