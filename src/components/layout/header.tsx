@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/lib/auth/actions";
 import { FixedHeader } from "./fixed-header";
+import { Button } from "@/components/ui/button";
 
 export async function Header() {
   const supabase = await createClient();
@@ -12,7 +13,7 @@ export async function Header() {
   return (
     <FixedHeader>
       <Link href="/" className="font-mono font-semibold text-foreground tracking-tight">
-        bountied<span className="text-accent">.</span>
+        bountied<span className="text-foreground">.</span>
       </Link>
 
       <nav className="flex items-center gap-3">
@@ -25,12 +26,14 @@ export async function Header() {
                 Dashboard
               </Link>
               <form action={signOut}>
-                <button
+                <Button
                   type="submit"
-                  className="rounded-md border border-border text-foreground text-sm font-medium px-4 py-2 hover:bg-surface transition-colors"
+                  variant="outline"
+                  size="sm"
+                  className="border-border text-foreground hover:bg-surface"
                 >
                   Sign out
-                </button>
+                </Button>
               </form>
             </>
           ) : (
@@ -41,12 +44,11 @@ export async function Header() {
               >
                 Log in
               </Link>
-              <Link
-                href="/signup"
-                className="rounded-md bg-accent text-background text-sm font-medium px-4 py-2 hover:bg-accent-dim transition-colors"
-              >
-                Sign up
-              </Link>
+              <Button asChild size="sm">
+                <Link href="/signup">
+                  Sign up
+                </Link>
+              </Button>
             </>
           )}
         </nav>

@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Search,
@@ -9,6 +12,18 @@ import {
   Inbox,
   Plug,
 } from "lucide-react";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
+import { cn } from "@/lib/utils";
 
 type Role = "SOLVER" | "GIVER" | "BOTH";
 
@@ -26,49 +41,89 @@ const giverLinks = [
   { href: "/dashboard/giver/wallet", label: "Wallet", icon: Wallet },
 ];
 
+const bottomLinks = [
+  { href: "/integrations", label: "Integrations", icon: Plug },
+  { href: "/settings", label: "Settings", icon: Settings },
+];
+
 /**
  * Role-aware sidebar. For BOTH, this will eventually merge/toggle between
  * the two link sets (product decision made 2026-07-29: build Solver and
  * Giver dashboards first, compose BOTH from their pieces afterward).
  */
-export function DashboardSidebar({ role }: { role: Role }) {
+function SidebarInner({ role }: { role: Role }) {
   const links = role === "GIVER" ? giverLinks : solverLinks;
+  const pathname = usePathname();
 
   return (
-    <aside
+    <Sidebar
       data-dashboard-sidebar
-      className="fixed top-16 left-0 bottom-0 z-40 w-56 shrink-0 border-r border-border bg-background px-3 py-6 flex flex-col gap-1"
+      className="top-16 h-[calc(100vh-4rem)] border-r border-border bg-background"
+      collapsible="none"
     >
-      {links.map((link) => {
-        const Icon = link.icon;
-        return (
-          <Link
-            key={link.href}
-            href={link.href}
-            className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-foreground-muted hover:text-foreground hover:bg-surface transition-colors"
-          >
-            <Icon size={16} />
-            {link.label}
-          </Link>
-        );
-      })}
+      <SidebarContent className="px-3 py-6">
+        <SidebarMenu>
+          {links.map((link) => {
+            const Icon = link.icon;
+            const isActive = pathname === link.href || pathname.startsWith(link.href + "/");
+            return (
+              <SidebarMenuItem key={link.href}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={isActive}
+                  className={cn(
+                    "gap-2.5 rounded-md px-3 py-2 text-sm transition-colors w-full",
+                    isActive
+                      ? "bg-foreground text-background font-medium"
+                      : "text-foreground-muted hover:text-foreground hover:bg-surface"
+                  )}
+                >
+                  <Link href={link.href}>
+                    <Icon size={16} />
+                    <span>{link.label}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            );
+          })}
+        </SidebarMenu>
+      </SidebarContent>
 
-      <div className="mt-auto pt-4 border-t border-border">
-        <Link
-          href="/integrations"
-          className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-foreground-muted hover:text-foreground hover:bg-surface transition-colors"
-        >
-          <Plug size={16} />
-          Integrations
-        </Link>
-        <Link
-          href="/settings"
-          className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-foreground-muted hover:text-foreground hover:bg-surface transition-colors"
-        >
-          <Settings size={16} />
-          Settings
-        </Link>
-      </div>
-    </aside>
+      <SidebarFooter className="px-3 pb-6 pt-4 border-t border-border">
+        <SidebarMenu>
+          {bottomLinks.map((link) => {
+            const Icon = link.icon;
+            const isActive = pathname === link.href;
+            return (
+              <SidebarMenuItem key={link.href}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={isActive}
+                  className={cn(
+                    "gap-2.5 rounded-md px-3 py-2 text-sm transition-colors w-full",
+                    isActive
+                      ? "bg-foreground text-background font-medium"
+                      : "text-foreground-muted hover:text-foreground hover:bg-surface"
+                  )}
+                >
+                  <Link href={link.href}>
+                    <Icon size={16} />
+                    <span>{link.label}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            );
+          })}
+        </SidebarMenu>
+      </SidebarFooter>
+    </Sidebar>
+  );
+}
+
+export function DashboardSidebar({ role }: { role: Role }) {
+  return (
+    <SidebarProvider>
+      <SidebarInner role={role} />
+    </SidebarProvider>
   );
 }
