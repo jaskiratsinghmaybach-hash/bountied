@@ -8,7 +8,9 @@ import {
   // @ts-ignore
   type CreateSubmissionResult,
 } from "@/lib/problems/submission-actions";
-import { ConnectGithubPrompt } from "@/components/auth/connect-github-prompt";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
 import { RepoSelector } from "./repo-selector";
 
 // @ts-ignore
@@ -47,12 +49,22 @@ export function SubmissionForm({
     );
   }
 
-  // GitHub not connected — reuse the shared prompt, which correctly uses
-  // linkIdentity (stays on the same account) and routes through
-  // /auth/callback (which is what actually captures and stores the token).
+  // GitHub not connected — show an alert instructing the solver to connect
+  // their account on the integrations page before they can submit.
   if (!githubConnected) {
     return (
-      <ConnectGithubPrompt reason="Submissions run your code directly from a GitHub repo. Connect your account to submit — it only takes a moment." />
+      <Alert className="border-border bg-surface">
+        <FaGithub className="h-4 w-4 text-foreground" />
+        <AlertTitle className="text-foreground font-medium">GitHub not connected</AlertTitle>
+        <AlertDescription className="mt-2 flex flex-col gap-3">
+          <p className="text-xs text-foreground-muted">
+            Your GitHub isn&apos;t connected. Go to Integrations to connect it before submitting.
+          </p>
+          <Button asChild variant="outline" size="sm" className="w-fit border-border bg-surface hover:bg-surface-raised hover:text-foreground">
+            <Link href="/integrations">Go to Integrations</Link>
+          </Button>
+        </AlertDescription>
+      </Alert>
     );
   }
 
