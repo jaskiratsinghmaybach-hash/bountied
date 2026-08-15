@@ -2,6 +2,9 @@
 
 import { useActionState } from "react";
 import { updatePassword, type AuthActionResult } from "@/lib/auth/actions";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export function ResetPasswordForm() {
   const [state, formAction, pending] = useActionState<AuthActionResult, FormData>(
@@ -12,22 +15,22 @@ export function ResetPasswordForm() {
   return (
     <form action={formAction} className="flex flex-col gap-3">
       {state?.error && (
-        <p className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
-          {state.error}
-        </p>
+        <Alert variant="destructive">
+          <AlertDescription className="text-sm">{state.error}</AlertDescription>
+        </Alert>
       )}
 
       <div>
         <label htmlFor="password" className="block text-xs text-foreground-muted mb-1.5">
           New password
         </label>
-        <input
+        <Input
           id="password"
           name="password"
           type="password"
           required
           minLength={8}
-          className="w-full rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent transition-colors"
+          className="w-full bg-surface border-border focus-visible:ring-2 focus-visible:ring-white/20 focus-visible:border-border-strong focus-visible:outline-none transition-colors"
           placeholder="At least 8 characters"
         />
       </div>
@@ -35,23 +38,23 @@ export function ResetPasswordForm() {
         <label htmlFor="confirmPassword" className="block text-xs text-foreground-muted mb-1.5">
           Confirm new password
         </label>
-        <input
+        <Input
           id="confirmPassword"
           name="confirmPassword"
           type="password"
           required
           minLength={8}
-          className="w-full rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent transition-colors"
+          className="w-full bg-surface border-border focus-visible:ring-2 focus-visible:ring-white/20 focus-visible:border-border-strong focus-visible:outline-none transition-colors"
           placeholder="Type it again"
         />
       </div>
-      <button
+      <Button
         type="submit"
         disabled={pending}
-        className="mt-2 rounded-md bg-accent text-background font-medium px-4 py-2.5 text-sm hover:bg-accent-dim transition-colors disabled:opacity-60"
+        className="mt-2 w-full"
       >
         {pending ? "Saving…" : "Save password"}
-      </button>
+      </Button>
     </form>
   );
 }

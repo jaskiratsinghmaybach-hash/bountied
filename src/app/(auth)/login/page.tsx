@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { OAuthButtons } from "@/components/auth/oauth-buttons";
 import { LoginForm } from "@/components/auth/login-form";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default async function LoginPage({
   searchParams,
@@ -18,9 +19,11 @@ export default async function LoginPage({
         </p>
 
         {params.error && (
-          <p className="mb-4 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
-            Something went wrong signing you in. Please try again.
-          </p>
+          <Alert variant="destructive" className="mb-4">
+            <AlertDescription className="text-sm">
+              Something went wrong signing you in. Please try again.
+            </AlertDescription>
+          </Alert>
         )}
 
         <OAuthButtons />
@@ -34,14 +37,14 @@ export default async function LoginPage({
         <LoginForm redirectedFrom={params.redirectedFrom ?? ""} />
 
         <p className="mt-3 text-sm text-center">
-          <Link href="/forgot-password" className="text-foreground-muted hover:text-accent transition-colors">
+          <Link href="/forgot-password" className="text-foreground-muted hover:text-foreground hover:underline transition-colors">
             Forgot password, or want to set one?
           </Link>
         </p>
 
         <p className="mt-6 text-sm text-foreground-muted text-center">
           Don&apos;t have an account?{" "}
-          <Link href="/signup" className="text-accent hover:underline">
+          <Link href="/signup" className="text-foreground font-medium hover:underline">
             Sign up
           </Link>
         </p>

@@ -20,7 +20,7 @@ export default async function SignupPage({
           </p>
           <Link
             href="/login"
-            className="mt-6 inline-block text-accent hover:underline text-sm"
+            className="mt-6 inline-block text-foreground font-medium hover:underline text-sm"
           >
             Back to login
           </Link>
@@ -49,7 +49,7 @@ export default async function SignupPage({
 
         <p className="mt-6 text-sm text-foreground-muted text-center">
           Already have an account?{" "}
-          <Link href="/login" className="text-accent hover:underline">
+          <Link href="/login" className="text-foreground font-medium hover:underline">
             Log in
           </Link>
         </p>

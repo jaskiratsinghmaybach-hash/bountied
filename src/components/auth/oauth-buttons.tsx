@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { FaGithub } from "react-icons/fa";
+import { Button } from "@/components/ui/button";
 
 export function OAuthButtons() {
   const supabase = createClient();
@@ -29,20 +30,22 @@ export function OAuthButtons() {
   return (
     <div className="flex flex-col gap-2.5">
       {/* GitHub Button */}
-      <button
+      <Button
         type="button"
+        variant="outline"
         onClick={() => handleOAuth("github")}
-        className="flex items-center justify-center gap-2 rounded-md border border-border bg-surface px-4 py-2.5 text-sm font-medium text-foreground hover:bg-surface-raised transition-colors"
+        className="w-full justify-center gap-2 border-border bg-surface text-foreground hover:bg-surface-raised"
       >
         <FaGithub size={16} />
         Continue with GitHub
-      </button>
+      </Button>
 
       {/* Google Button */}
-      <button
+      <Button
         type="button"
+        variant="outline"
         onClick={() => handleOAuth("google")}
-        className="flex items-center justify-center gap-2 rounded-md border border-border bg-surface px-4 py-2.5 text-sm font-medium text-foreground hover:bg-surface-raised transition-colors"
+        className="w-full justify-center gap-2 border-border bg-surface text-foreground hover:bg-surface-raised"
       >
         <svg width="16" height="16" viewBox="0 0 24 24">
           <path
@@ -63,7 +66,7 @@ export function OAuthButtons() {
           />
         </svg>
         Continue with Google
-      </button>
+      </Button>
     </div>
   );
 }

@@ -2,6 +2,9 @@
 
 import { useActionState } from "react";
 import { signInWithEmail, type AuthActionResult } from "@/lib/auth/actions";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export function LoginForm({ redirectedFrom }: { redirectedFrom: string }) {
   const [state, formAction, pending] = useActionState<AuthActionResult, FormData>(
@@ -14,21 +17,21 @@ export function LoginForm({ redirectedFrom }: { redirectedFrom: string }) {
       <input type="hidden" name="redirectedFrom" value={redirectedFrom} />
 
       {state?.error && (
-        <p className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
-          {state.error}
-        </p>
+        <Alert variant="destructive">
+          <AlertDescription className="text-sm">{state.error}</AlertDescription>
+        </Alert>
       )}
 
       <div>
         <label htmlFor="email" className="block text-xs text-foreground-muted mb-1.5">
           Email
         </label>
-        <input
+        <Input
           id="email"
           name="email"
           type="email"
           required
-          className="w-full rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent transition-colors"
+          className="w-full bg-surface border-border focus-visible:ring-2 focus-visible:ring-white/20 focus-visible:border-border-strong focus-visible:outline-none transition-colors"
           placeholder="you@example.com"
         />
       </div>
@@ -36,22 +39,22 @@ export function LoginForm({ redirectedFrom }: { redirectedFrom: string }) {
         <label htmlFor="password" className="block text-xs text-foreground-muted mb-1.5">
           Password
         </label>
-        <input
+        <Input
           id="password"
           name="password"
           type="password"
           required
-          className="w-full rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent transition-colors"
+          className="w-full bg-surface border-border focus-visible:ring-2 focus-visible:ring-white/20 focus-visible:border-border-strong focus-visible:outline-none transition-colors"
           placeholder="••••••••"
         />
       </div>
-      <button
+      <Button
         type="submit"
         disabled={pending}
-        className="mt-2 rounded-md bg-accent text-background font-medium px-4 py-2.5 text-sm hover:bg-accent-dim transition-colors disabled:opacity-60"
+        className="mt-2 w-full"
       >
         {pending ? "Logging in…" : "Log in"}
-      </button>
+      </Button>
     </form>
   );
 }

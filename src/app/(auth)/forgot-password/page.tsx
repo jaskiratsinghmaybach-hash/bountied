@@ -21,7 +21,7 @@ export default async function ForgotPasswordPage({
             Signed up with Google or GitHub? This also works to add a
             password so you can log in with email on any device.
           </p>
-          <Link href="/login" className="mt-6 inline-block text-accent hover:underline text-sm">
+          <Link href="/login" className="mt-6 inline-block text-foreground font-medium hover:underline text-sm">
             Back to login
           </Link>
         </div>
@@ -41,7 +41,7 @@ export default async function ForgotPasswordPage({
         <ForgotPasswordForm />
 
         <p className="mt-6 text-sm text-foreground-muted text-center">
-          <Link href="/login" className="text-accent hover:underline">
+          <Link href="/login" className="text-foreground font-medium hover:underline">
             Back to login
           </Link>
         </p>
