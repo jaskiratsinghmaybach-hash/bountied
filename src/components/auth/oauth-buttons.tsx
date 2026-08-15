@@ -34,7 +34,7 @@ export function OAuthButtons() {
         type="button"
         variant="outline"
         onClick={() => handleOAuth("github")}
-        className="w-full justify-center gap-2 border-border bg-surface text-foreground hover:bg-surface-raised"
+        className="w-full justify-center gap-2 border-border bg-surface text-foreground hover:bg-surface-raised hover:text-foreground"
       >
         <FaGithub size={16} />
         Continue with GitHub
@@ -45,7 +45,7 @@ export function OAuthButtons() {
         type="button"
         variant="outline"
         onClick={() => handleOAuth("google")}
-        className="w-full justify-center gap-2 border-border bg-surface text-foreground hover:bg-surface-raised"
+        className="w-full justify-center gap-2 border-border bg-surface text-foreground hover:bg-surface-raised hover:text-foreground"
       >
         <svg width="16" height="16" viewBox="0 0 24 24">
           <path
