@@ -2,6 +2,7 @@
 
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Toggle } from "@/components/ui/toggle";
 
 const DEFAULT_DISABLED_TOOLTIP = "Coming soon — join the waitlist";
 
@@ -47,7 +48,7 @@ export function Pill({
   const styleClasses = cn(
     "inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors",
     isInteractive &&
-      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20 focus-visible:border-border-strong",
     disabled &&
       "cursor-not-allowed border-border/60 bg-surface/50 text-foreground-muted opacity-60",
     !disabled &&
@@ -55,12 +56,7 @@ export function Pill({
       "border-border bg-surface text-foreground hover:border-foreground-muted hover:bg-surface-raised",
     !disabled &&
       selected &&
-      isMulti &&
-      "border-accent bg-accent/15 text-accent",
-    !disabled &&
-      selected &&
-      !isMulti &&
-      "border-accent bg-accent text-background"
+      "bg-foreground text-background border-2 border-border-strong"
   );
 
   const content = (
@@ -74,18 +70,16 @@ export function Pill({
 
   return (
     <span className={cn("relative inline-flex group/pill", className)}>
-      {Component === "button" ? (
-        <button
+      {isInteractive ? (
+        <Toggle
           id={id}
-          type="button"
           disabled={disabled}
-          aria-pressed={selected}
-          aria-disabled={disabled}
+          pressed={selected}
           onClick={disabled ? undefined : onClick}
-          className={styleClasses}
+          className={cn(styleClasses, "h-auto p-0 min-w-0 font-medium hover:bg-none hover:text-inherit data-[state=on]:bg-foreground data-[state=on]:text-background")}
         >
           {content}
-        </button>
+        </Toggle>
       ) : (
         <span id={id} className={styleClasses}>
           {content}

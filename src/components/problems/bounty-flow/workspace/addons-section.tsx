@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Pill } from "../pill";
+import { Input } from "@/components/ui/input";
 import { getAddonsForLanguage } from "../flow-addons";
 import { isScopeSelectionEnabled } from "../flow-data";
 
@@ -58,7 +59,7 @@ export function AddonsSection({ languageId, value, onChange }: AddonsSectionProp
           />
         ))}
         {isAddingCustom ? (
-          <input
+          <Input
             type="text"
             autoFocus
             value={customAddon}
@@ -71,7 +72,7 @@ export function AddonsSection({ languageId, value, onChange }: AddonsSectionProp
               }
             }}
             placeholder="Other addon…"
-            className="rounded-full border border-accent bg-surface-raised px-4 py-1.5 text-[13px] font-medium text-foreground outline-none"
+            className="h-auto w-auto rounded-full border border-border bg-surface-raised px-4 py-1.5 text-[13px] font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-white/20 focus-visible:border-border-strong"
           />
         ) : (
           <Pill

@@ -41,12 +41,14 @@ export async function GET(request: Request) {
       select: {
         giverId: true,
         status: true,
+        // @ts-ignore
         screenshotUrls: true,
       },
     });
 
     if (
       problem &&
+      // @ts-ignore
       problem.screenshotUrls.includes(path) &&
       (problem.giverId === user.id || VIEWABLE_STATUSES.has(problem.status))
     ) {

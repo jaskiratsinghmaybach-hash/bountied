@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { Pill } from "./pill";
+import { Input } from "@/components/ui/input";
 import {
   CUSTOM_SCOPE_ID,
   getScopeDef,
@@ -118,7 +119,7 @@ export function StepScope({
           <label htmlFor="custom-scope" className="sr-only">
             Custom scope
           </label>
-          <input
+          <Input
             ref={customInputRef}
             id="custom-scope"
             type="text"
@@ -132,7 +133,7 @@ export function StepScope({
               }
             }}
             placeholder="Describe the scope in your own words…"
-            className="w-full rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent transition-colors"
+            className="w-full bg-surface border-border focus-visible:ring-2 focus-visible:ring-white/20 focus-visible:border-border-strong focus-visible:outline-none transition-colors"
           />
         </div>
       )}

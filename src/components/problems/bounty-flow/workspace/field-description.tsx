@@ -1,9 +1,11 @@
 "use client";
 
 import type { DescriptionSections } from "@/lib/problems/description-sections";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 const textareaClass =
-  "w-full rounded-lg border border-border bg-surface px-4 py-3 text-sm leading-relaxed text-foreground outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all resize-y placeholder:text-foreground-muted/60";
+  "w-full bg-surface border-border focus-visible:ring-2 focus-visible:ring-white/20 focus-visible:border-border-strong focus-visible:outline-none transition-colors resize-y";
 
 type FieldDescriptionProps = {
   value: DescriptionSections;
@@ -29,7 +31,7 @@ export function FieldDescription({
         <label htmlFor="bounty-title" className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
           Title
         </label>
-        <input
+        <Input
           id="bounty-title"
           name="title"
           type="text"
@@ -39,7 +41,7 @@ export function FieldDescription({
           value={title}
           onChange={(e) => onTitleChange(e.target.value)}
           placeholder="Fix race condition in our WebSocket reconnect logic"
-          className="w-full rounded-lg border border-border bg-surface px-4 py-3 text-base font-medium text-foreground outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all placeholder:text-foreground-muted/50"
+          className="w-full h-auto px-4 py-3 bg-surface border-border focus-visible:ring-2 focus-visible:ring-white/20 focus-visible:border-border-strong focus-visible:outline-none transition-colors"
         />
       </div>
 
@@ -49,7 +51,7 @@ export function FieldDescription({
           <label htmlFor="bounty-description" className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
             Description
           </label>
-          <textarea
+          <Textarea
             id="bounty-description"
             name="descriptionProblem"
             rows={5}
@@ -65,7 +67,7 @@ export function FieldDescription({
             <label htmlFor="bounty-whats-broken" className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
               What&apos;s broken / needs fixing
             </label>
-            <textarea
+            <Textarea
               id="bounty-whats-broken"
               name="descriptionWhatsBroken"
               rows={5}
@@ -80,7 +82,7 @@ export function FieldDescription({
             <label htmlFor="bounty-desired-output" className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
               Desired output / what a correct solution looks like
             </label>
-            <textarea
+            <Textarea
               id="bounty-desired-output"
               name="descriptionDesiredOutput"
               rows={5}

@@ -22,6 +22,7 @@ import { getLanguageLabel, getScopeDef } from "./flow-data";
 import { type DescriptionSections, parseDescription, serializeDescription } from "@/lib/problems/description-sections";
 import { createProblem, updateProblem, autoSaveProblem, type CreateProblemResult } from "@/lib/problems/create-actions";
 import { InsufficientCreditsModal } from "@/components/payments/insufficient-credits-modal";
+import { Button } from "@/components/ui/button";
 
 export type ExistingProblem = {
   id: string;
@@ -260,24 +261,25 @@ export function BountyFlow({ existingProblem, githubConnected = true }: BountyFl
           }
           footer={
             <div className="flex flex-col gap-3">
-              <button
+              <Button
                 type="submit"
                 name="intent"
                 value="publish"
                 disabled={pending}
-                className="w-full rounded-md bg-accent text-background font-medium px-6 py-3.5 text-sm hover:bg-accent-dim transition-colors disabled:opacity-60 shadow-sm"
+                className="w-full h-auto px-6 py-3.5 text-sm"
               >
                 {pending ? "Posting…" : (type === "OPEN_FREE" ? "Post bounty" : "Fund & post bounty")}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="submit"
                 name="intent"
                 value="draft"
+                variant="outline"
                 disabled={pending}
-                className="w-full rounded-md border border-border text-foreground font-medium px-6 py-3 text-sm hover:bg-surface-raised transition-colors disabled:opacity-60"
+                className="w-full h-auto px-6 py-3 text-sm text-foreground hover:bg-surface-raised transition-colors"
               >
                 Save as draft
-              </button>
+              </Button>
             </div>
           }
         />
@@ -301,7 +303,7 @@ export function BountyFlow({ existingProblem, githubConnected = true }: BountyFl
       {stateResult && "insufficientCredits" in stateResult && modalDismissed && (
         <p className="text-sm text-foreground-muted mt-6">
           Your bounty was saved as a draft — add credits any time from{" "}
-          <a href="/settings" className="text-accent hover:underline">Settings</a> to publish it.
+          <a href="/settings" className="text-foreground font-semibold hover:underline">Settings</a> to publish it.
         </p>
       )}
     </>

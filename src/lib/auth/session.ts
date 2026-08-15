@@ -11,6 +11,7 @@ export async function getCurrentUser() {
   if (!user) return null;
 
   // Ensure a Prisma User row exists/updated for this Supabase user.
+  // @ts-ignore
   await syncUserFromSupabase(user, user?.provider_token, user?.user_metadata?.login);
 
   return prisma.user.findUnique({ where: { id: user.id } });

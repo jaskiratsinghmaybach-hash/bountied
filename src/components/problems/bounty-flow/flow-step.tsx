@@ -64,7 +64,7 @@ export function FlowStep({
               "group w-full cursor-pointer text-left rounded-lg border border-border bg-surface-raised px-4 py-3",
               "flex items-center justify-between gap-3 transition-colors",
               "hover:border-foreground-muted hover:bg-surface focus-visible:outline-none",
-              "focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              "focus-visible:ring-2 focus-visible:ring-white/20 focus-visible:border-border-strong focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             )}
             aria-expanded={false}
             aria-label={`Edit ${question}`}

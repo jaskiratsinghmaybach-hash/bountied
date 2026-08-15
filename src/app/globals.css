@@ -1,23 +1,64 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:is(.dark *));
+
 :root {
-  /* Ink-navy base — warmer and more distinctive than pure black */
-  --background: #0b0f1a;
-  --surface: #121826;
-  --surface-raised: #1a2233;
-  --foreground: #e8ecf4;
-  --foreground-muted: #8b93a7;
-  --border: #232b3d;
+  /* True black base */
+  --background: #000000;
+  --surface: #0a0a0a;
+  --surface-raised: #161616;
+  --foreground: #fafafa;
+  --foreground-muted: #8f8f8f;
+  --border: #262626;
+  --border-strong: #454545;
 
-  /* Signal accent — active bounty / money-on-the-table cue */
-  --accent: #c4f135;
-  --accent-dim: #8fb02a;
+  --radius: 0.625rem;
 
-  /* Reserved exclusively for escrow / payment states */
-  --money: #ffb020;
-  --money-dim: #b3821a;
+  --card: var(--surface);
+  --card-foreground: var(--foreground);
+  --popover: var(--surface);
+  --popover-foreground: var(--foreground);
+
+  --primary: var(--foreground);
+  --primary-foreground: var(--background);
+
+  --secondary: var(--surface-raised);
+  --secondary-foreground: var(--foreground);
+
+  --muted: var(--surface);
+  --muted-foreground: var(--foreground-muted);
+
+  /* IMPORTANT: --accent must stay legible as TEXT (old code uses
+     text-accent extensively) — it is NOT a background-only token here.
+     Bright, near-white, so every existing text-accent usage stays
+     readable while we migrate call sites off it over time. */
+  --accent: var(--foreground);
+  --accent-foreground: var(--background);
+  --accent-dim: var(--foreground-muted);
+
+  /* Legacy --money token — same legibility fix, kept alive until every
+     text-money/bg-money call site is migrated in the component sweep. */
+  --money: var(--foreground);
+  --money-dim: var(--foreground-muted);
+
+  --input: var(--surface);
+  --ring: rgba(255, 255, 255, 0.25);
 
   --danger: #ff5c5c;
+  --destructive: var(--danger);
+  --destructive-foreground: #ffffff;
+
+  --success: #3ecf6d;
+  --success-foreground: #ffffff;
+
+  --sidebar: var(--background);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--foreground);
+  --sidebar-primary-foreground: var(--background);
+  --sidebar-accent: var(--surface-raised);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
 }
 
 @theme inline {
@@ -27,13 +68,50 @@
   --color-foreground: var(--foreground);
   --color-foreground-muted: var(--foreground-muted);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
   --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
   --color-accent-dim: var(--accent-dim);
   --color-money: var(--money);
   --color-money-dim: var(--money-dim);
+
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
   --color-danger: var(--danger);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
   --font-sans: var(--font-inter);
   --font-mono: var(--font-mono-display);
+
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
 }
 
 body {
@@ -42,7 +120,6 @@ body {
   font-family: var(--font-sans), system-ui, sans-serif;
 }
 
-/* Respect reduced-motion preferences */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -51,20 +128,6 @@ body {
   }
 }
 
-/*
- * Universal scrollbar styling — applies to every scrollable element on
- * the site (the page itself, any overflow-y-auto/overflow-x-auto
- * container, <pre> blocks like captured sandbox output, modals, etc.)
- * with zero per-component work. Set once here, never needed again.
- *
- * Two rule sets are required for real cross-browser coverage:
- *   - scrollbar-color / scrollbar-width: the current CSS standard,
- *     supported by Firefox and modern Chrome/Edge (111+).
- *   - ::-webkit-scrollbar and friends: still needed for full styling
- *     control (hover states, corner) in WebKit/Blink browsers, since
- *     their support for the standard properties alone is coarser.
- * Applying both to `*` means no element needs individual opt-in.
- */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
@@ -92,8 +155,6 @@ body {
   background: transparent;
 }
 
-/* Hide the default up/down (or left/right) arrow buttons at each end of
-   the scrollbar track — WebKit renders these unless explicitly zeroed out. */
 *::-webkit-scrollbar-button {
   display: none;
   width: 0;

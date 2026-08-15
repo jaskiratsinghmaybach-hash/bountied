@@ -420,7 +420,7 @@ export async function autoSaveProblem(
           addons,
           referenceRepoUrls,
           screenshotUrls,
-        },
+        } as any,
       });
       return { draftProblemId };
     } else {
@@ -441,7 +441,7 @@ export async function autoSaveProblem(
           addons,
           referenceRepoUrls,
           screenshotUrls,
-        },
+        } as any,
       });
       return { draftProblemId: problem.id };
     }

@@ -92,8 +92,8 @@ export function StepBountyType({ value, onSelect }: StepBountyTypeProps) {
             className={cn(
               "relative flex flex-col justify-center items-start gap-3 rounded-xl border p-5 text-left cursor-pointer transition-colors h-28",
               selected 
-                ? "border-accent bg-accent/5" 
-                : "border-border bg-surface hover:border-foreground-muted"
+                ? "border-2 border-border-strong bg-foreground text-background" 
+                : "border-border bg-surface hover:border-foreground-muted text-foreground"
             )}
           >
             <div className="absolute top-2.5 right-2.5">
@@ -102,7 +102,10 @@ export function StepBountyType({ value, onSelect }: StepBountyTypeProps) {
                 onClick={(e) => e.stopPropagation()}
                 onMouseEnter={() => setHoveredInfoId(option.value)}
                 onMouseLeave={() => setHoveredInfoId(null)}
-                className="text-foreground-muted hover:text-foreground transition-colors p-1.5"
+                className={cn(
+                  "transition-colors p-1.5",
+                  selected ? "text-background/70 hover:text-background" : "text-foreground-muted hover:text-foreground"
+                )}
                 aria-label="More info"
               >
                 <Info size={14} />
@@ -126,10 +129,10 @@ export function StepBountyType({ value, onSelect }: StepBountyTypeProps) {
               </AnimatePresence>
             </div>
 
-            <Icon size={22} className={selected ? "text-accent" : "text-foreground-muted"} />
+            <Icon size={22} className={selected ? "text-background" : "text-foreground-muted"} />
             <span className={cn(
               "font-medium text-sm",
-              selected ? "text-accent" : "text-foreground"
+              selected ? "text-background" : "text-foreground"
             )}>
               {option.title}
             </span>

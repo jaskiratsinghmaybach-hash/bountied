@@ -1,4 +1,5 @@
 import { Pill } from "../pill";
+import { Input } from "@/components/ui/input";
 
 export type DeadlinePreset = "none" | "1w" | "2w" | "1m" | "custom";
 
@@ -41,12 +42,12 @@ export function FieldDeadline({
         <Pill mode="single" selected={preset === "custom"} onClick={() => handlePreset("custom")} disabled={false} label="Custom" />
       </div>
       {preset === "custom" && (
-        <input
+        <Input
           type="date"
           name="deadline"
           value={customDate}
           onChange={(e) => onCustomDateChange(e.target.value)}
-          className="w-full sm:w-64 rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent transition-colors"
+          className="w-full sm:w-64 bg-surface border-border focus-visible:ring-2 focus-visible:ring-white/20 focus-visible:border-border-strong focus-visible:outline-none transition-colors"
         />
       )}
       {preset !== "custom" && customDate && <input type="hidden" name="deadline" value={customDate} />}
