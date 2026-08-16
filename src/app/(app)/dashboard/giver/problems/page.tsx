@@ -58,8 +58,9 @@ export default async function GiverProblemsPage({
   });
 
   return (
-    <main className="px-8 py-10 max-w-4xl">
-      <div className="mb-8 flex items-start justify-between">
+    <main className="px-8 pb-10 max-w-4xl">
+      <div className="sticky top-0 bg-background z-20 pt-10 pb-6 -mx-8 px-8 border-b border-border/20">
+        <div className="flex items-start justify-between mb-8">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight mb-1">My problems</h1>
           <p className="text-sm text-foreground-muted">
@@ -92,7 +93,10 @@ export default async function GiverProblemsPage({
             </Link>
           );
         })}
+        </div>
       </div>
+
+      <div className="pt-6">
 
       {problems.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border p-10 text-center">
@@ -132,6 +136,7 @@ export default async function GiverProblemsPage({
           })}
         </div>
       )}
+      </div>
     </main>
   );
 }

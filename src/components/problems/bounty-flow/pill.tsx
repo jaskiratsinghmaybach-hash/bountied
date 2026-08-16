@@ -90,7 +90,7 @@ export function Pill({
         <span
           role="tooltip"
           className={cn(
-            "pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 w-max max-w-55 -translate-x-1/2",
+            "pointer-events-none absolute bottom-full left-0 z-30 mb-2 w-max max-w-55",
             "rounded-md border border-border bg-surface-raised px-2.5 py-1.5 text-center text-[11px] leading-snug text-foreground-muted shadow-lg",
             "opacity-0 transition-opacity duration-150 group-hover/pill:opacity-100 group-focus-within/pill:opacity-100"
           )}

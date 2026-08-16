@@ -11,6 +11,7 @@ import {
   PlusCircle,
   Inbox,
   Plug,
+  Banknote,
 } from "lucide-react";
 import {
   Sidebar,
@@ -39,6 +40,7 @@ const giverLinks = [
   { href: "/dashboard/giver/problems", label: "My bounties", icon: Inbox },
   { href: "/problems/new", label: "Post a bounty", icon: PlusCircle },
   { href: "/dashboard/giver/wallet", label: "Wallet", icon: Wallet },
+  { href: "/dashboard/giver/funds", label: "Funds", icon: Banknote },
 ];
 
 const bottomLinks = [

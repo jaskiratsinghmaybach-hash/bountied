@@ -26,5 +26,7 @@ export async function acceptSubmission(
   if (!result.ok) return { error: result.reason };
 
   revalidatePath(`/dashboard/giver/problems/${problemId}`);
+  revalidatePath("/problems");
+  revalidatePath(`/problems/${problemId}`);
   return { ok: true };
 }

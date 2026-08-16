@@ -3,8 +3,10 @@ import { prisma } from "@/lib/db";
 import { mirrorSubmissionRepo } from "@/lib/github/mirror";
 
 export async function POST(req: Request) {
+  let submissionId: string | undefined;
   try {
-    const { submissionId } = await req.json();
+    const body = await req.json();
+    submissionId = body.submissionId;
 
     if (!submissionId) {
       return NextResponse.json({ error: "Missing submissionId" }, { status: 400 });
@@ -23,7 +25,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Solver has not connected GitHub" }, { status: 400 });
     }
 
-    // Mirror the repository asynchronously or inline
     const mirrorResult = await mirrorSubmissionRepo({
       submissionId: submission.id,
       sourceRepoUrl: submission.repoUrl,
@@ -33,10 +34,16 @@ export async function POST(req: Request) {
     });
 
     if (!mirrorResult.ok) {
-       return NextResponse.json({ error: mirrorResult.reason }, { status: 500 });
+      await prisma.submission.update({
+        where: { id: submission.id },
+        data: {
+          status: "SANDBOX_FAILED",
+          sandboxError: `Repository mirror failed: ${mirrorResult.reason}`,
+        },
+      });
+      return NextResponse.json({ error: mirrorResult.reason }, { status: 500 });
     }
 
-    // Update submission state to AWAITING_REVIEW for lazy execution strategy
     await prisma.submission.update({
       where: { id: submission.id },
       data: {
@@ -49,6 +56,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, status: "AWAITING_REVIEW" });
   } catch (error) {
     console.error("Error mirroring repository:", error);
+    if (submissionId) {
+      await prisma.submission.update({
+        where: { id: submissionId },
+        data: {
+          status: "SANDBOX_FAILED",
+          sandboxError: `Repository mirror failed: ${error instanceof Error ? error.message : String(error)}`,
+        },
+      }).catch(() => {});
+    }
     return NextResponse.json(
       { error: "Failed to mirror repository" },
       { status: 500 }

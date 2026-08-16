@@ -51,7 +51,10 @@ export function WorkspaceLayout({
           >
             {/* ── Sticky summary strip ─────────────────────────────────── */}
             {(summaryStrip || saveStatus) && (
-              <div className="sticky top-0 z-20 px-6 sm:px-10 py-3 bg-background/95 backdrop-blur-sm border-b border-border flex items-center justify-between gap-4">
+              <div
+                className="sticky z-20 px-6 sm:px-10 py-3 bg-background/95 backdrop-blur-sm border-b border-border flex items-center justify-between gap-4"
+                style={{ top: "var(--header-height, 72px)" }}
+              >
                 <div className="min-w-0 flex-1 flex flex-wrap items-center gap-2">
                   {summaryStrip}
                 </div>

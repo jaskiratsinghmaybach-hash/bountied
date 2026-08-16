@@ -1,8 +1,10 @@
 "use server";
 
+import { after } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth/session";
 import { revalidatePath } from "next/cache";
+import { mirrorSubmissionRepo } from "@/lib/github/mirror";
 
 export type CreateSubmissionResult =
   | { error: string }
@@ -61,13 +63,79 @@ export async function createSubmission(
     },
   });
 
-  // Trigger non-blocking asynchronous mirror job
-  fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/github/mirror`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ submissionId: submission.id }),
-  }).catch((err) => console.error("Mirror trigger error:", err));
+  // Mirror the repo eagerly so it's ready before any giver-triggered review.
+  // Sandbox execution is intentionally NOT called here — it only runs when
+  // the giver clicks ReviewButton (billing is enforced there via triggerSubmissionReview).
+  after(async () => {
+    await mirrorOnly(submission.id);
+  });
 
   revalidatePath("/dashboard/solver/submissions");
   return { ok: true, submissionId: submission.id };
+}
+
+async function mirrorOnly(submissionId: string) {
+  try {
+    const submission = await prisma.submission.findUnique({
+      where: { id: submissionId },
+      include: { problem: true, solver: true },
+    });
+
+    if (!submission) return;
+
+    if (!submission.solver.githubAccessToken) {
+      await prisma.submission.update({
+        where: { id: submissionId },
+        data: {
+          status: "SANDBOX_FAILED",
+          sandboxError:
+            "GitHub account not connected. Connect your GitHub account in Settings before submitting.",
+        },
+      });
+      return;
+    }
+
+    await prisma.submission.update({
+      where: { id: submissionId },
+      data: { status: "RUNNING" },
+    });
+
+    const mirrorResult = await mirrorSubmissionRepo({
+      submissionId,
+      sourceRepoUrl: submission.repoUrl,
+      solverToken: submission.solver.githubAccessToken,
+      runtime: submission.problem.runtime,
+      problemTitle: submission.problem.title,
+    });
+
+    if (!mirrorResult.ok) {
+      await prisma.submission.update({
+        where: { id: submissionId },
+        data: {
+          status: "SANDBOX_FAILED",
+          sandboxError: `Repository mirror failed: ${mirrorResult.reason}`,
+        },
+      });
+      return;
+    }
+
+    // Mirror succeeded — repo is ready. Status becomes AWAITING_REVIEW so the
+    // giver's ReviewButton becomes actionable. Sandbox has NOT run yet.
+    await prisma.submission.update({
+      where: { id: submissionId },
+      data: {
+        platformRepoUrl: mirrorResult.repo.cloneUrl,
+        platformRepoFullName: mirrorResult.repo.fullName,
+        status: "AWAITING_REVIEW",
+      },
+    });
+  } catch (err) {
+    await prisma.submission.update({
+      where: { id: submissionId },
+      data: {
+        status: "SANDBOX_FAILED",
+        sandboxError: `Mirror failed: ${err instanceof Error ? err.message : String(err)}`,
+      },
+    }).catch(() => {});
+  }
 }

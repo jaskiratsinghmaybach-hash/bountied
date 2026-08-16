@@ -1,24 +1,30 @@
 import { prisma } from "@/lib/db";
 import Link from "next/link";
 
+export const dynamic = "force-dynamic";
+
 export default async function ProblemsPage() {
   const problems = await prisma.problem.findMany({
-    where: { status: "OPEN" },
+    where: {
+      status: {
+        in: ["OPEN", "COMPLETED"],
+      },
+    },
     include: { _count: { select: { submissions: true } } },
     orderBy: { createdAt: "desc" },
   });
 
   return (
     <main className="px-8 py-10 max-w-4xl">
-      <h1 className="text-2xl font-semibold tracking-tight mb-1">Open bounties</h1>
+      <h1 className="text-2xl font-semibold tracking-tight mb-1">Bounties</h1>
       <p className="text-sm text-foreground-muted mb-8">
-        Pick something and submit a solution — funds are already in escrow.
+        Solve active challenges to earn rewards — completed bounties are shown for reference.
       </p>
 
       {problems.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border p-10 text-center">
           <p className="text-sm text-foreground-muted">
-            No open bounties right now. Check back soon.
+            No bounties right now. Check back soon.
           </p>
         </div>
       ) : (
@@ -30,7 +36,14 @@ export default async function ProblemsPage() {
               className="rounded-lg border border-border bg-surface p-5 flex items-center justify-between hover:border-foreground-muted transition-colors"
             >
               <div>
-                <h3 className="font-medium text-foreground mb-1">{p.title}</h3>
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  <h3 className="font-medium text-foreground">{p.title}</h3>
+                  {p.status === "COMPLETED" && (
+                    <span className="text-[10px] font-mono font-semibold uppercase tracking-wider text-success border border-success/30 bg-success/10 px-1.5 py-0.5 rounded">
+                      Completed
+                    </span>
+                  )}
+                </div>
                 <div className="flex flex-wrap gap-1.5">
                   {p.tags.map((tag) => (
                     <span
@@ -43,7 +56,7 @@ export default async function ProblemsPage() {
                 </div>
               </div>
               <div className="text-right shrink-0 pl-4">
-                <span className="font-mono text-lg font-semibold text-emerald-500 block">
+                <span className={`font-mono text-lg font-semibold block ${p.status === "COMPLETED" ? "text-foreground-muted line-through" : "text-emerald-500"}`}>
                   {p.bountyAmount ? `$${p.bountyAmount}` : "Free"}
                 </span>
                 <span className="text-xs text-foreground-muted">

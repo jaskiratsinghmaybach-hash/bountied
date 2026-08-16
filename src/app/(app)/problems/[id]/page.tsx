@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { SubmissionForm } from "@/components/problems/submission-form";
+import { parseDescription, DESCRIPTION_SECTION_HEADERS } from "@/lib/problems/description-sections";
 
 export default async function ProblemDetailPage({
   params,
@@ -45,8 +46,15 @@ export default async function ProblemDetailPage({
   return (
     <main className="px-8 py-10 max-w-3xl">
       <div className="flex items-start justify-between mb-4">
-        <h1 className="text-2xl font-semibold tracking-tight">{problem.title}</h1>
-        <span className="font-mono text-xl font-semibold text-emerald-500 shrink-0 pl-4">
+        <div className="flex items-center gap-3 flex-wrap">
+          <h1 className="text-2xl font-semibold tracking-tight">{problem.title}</h1>
+          {problem.status === "COMPLETED" && (
+            <span className="inline-flex items-center rounded-full bg-success/15 px-2.5 py-0.5 text-xs font-mono font-medium text-success border border-success/30">
+              Completed
+            </span>
+          )}
+        </div>
+        <span className={`font-mono text-xl font-semibold shrink-0 pl-4 ${problem.status === "COMPLETED" ? "text-foreground-muted line-through" : "text-emerald-500"}`}>
           {problem.bountyAmount ? `$${problem.bountyAmount}` : "Free"}
         </span>
       </div>
@@ -75,9 +83,7 @@ export default async function ProblemDetailPage({
       </div>
 
       <div className="rounded-lg border border-border bg-surface p-6 mb-6">
-        <p className="text-sm text-foreground-muted leading-relaxed whitespace-pre-wrap">
-          {problem.description}
-        </p>
+        <DescriptionSections description={problem.description} />
       </div>
 
       <div className="flex items-center justify-between text-sm text-foreground-muted mb-8">
@@ -90,7 +96,7 @@ export default async function ProblemDetailPage({
 
       {/* Giver sees nothing to submit here */}
       {isOwner && (
-        <div className="rounded-lg border border-dashed border-border p-5 text-center">
+        <div className="rounded-lg border border-dashed border-border p-5 text-center mb-6">
           <p className="text-sm text-foreground-muted">
             You posted this bounty. View submissions from your{" "}
             <a href={`/dashboard/giver/problems/${problem.id}`} className="text-primary hover:underline">
@@ -100,8 +106,21 @@ export default async function ProblemDetailPage({
         </div>
       )}
 
+      {/* Problem is completed — show banner instead of submission form for solvers/guests */}
+      {!isOwner && problem.status === "COMPLETED" && (
+        <div className="rounded-lg border border-success/20 bg-success/5 p-6 mb-6">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="h-2.5 w-2.5 rounded-full bg-success animate-pulse" />
+            <p className="text-sm font-medium text-success">Bounty Completed</p>
+          </div>
+          <p className="text-xs text-foreground-muted">
+            This bounty has been successfully solved, the solution was accepted, and the funds have been released. It is no longer accepting new submissions.
+          </p>
+        </div>
+      )}
+
       {/* Not logged in */}
-      {!user && (
+      {!user && problem.status === "OPEN" && (
         <div className="rounded-lg border border-border bg-surface p-6 text-center">
           <p className="text-sm text-foreground-muted mb-3">
             Sign in to submit a solution.
@@ -116,7 +135,7 @@ export default async function ProblemDetailPage({
       )}
 
       {/* Logged in but not a solver and not the owner */}
-      {user && !isSolver && !isOwner && (
+      {user && !isSolver && !isOwner && problem.status === "OPEN" && (
         <div className="rounded-lg border border-border bg-surface p-5 text-center">
           <p className="text-sm text-foreground-muted">
             Your account is set up as a problem giver. Switch to a solver account to submit.
@@ -174,11 +193,51 @@ export default async function ProblemDetailPage({
       {isSolver && !isOwner && !existingSubmission && problem.status === "OPEN" && (
         <SubmissionForm
           problemId={problem.id}
-          runCommand={problem.runCommand}
-          runtime={problem.runtime}
           githubConnected={profile?.githubConnected ?? false}
         />
       )}
     </main>
+  );
+}
+
+const SECTION_LABELS: Record<string, string> = {
+  [DESCRIPTION_SECTION_HEADERS.problem]: "Problem",
+  [DESCRIPTION_SECTION_HEADERS.whatsBroken]: "What's broken",
+  [DESCRIPTION_SECTION_HEADERS.desiredOutput]: "Desired output",
+};
+
+function DescriptionSections({ description }: { description: string }) {
+  const sections = parseDescription(description);
+  const entries = [
+    { header: DESCRIPTION_SECTION_HEADERS.problem, body: sections.description },
+    { header: DESCRIPTION_SECTION_HEADERS.whatsBroken, body: sections.whatsBroken },
+    { header: DESCRIPTION_SECTION_HEADERS.desiredOutput, body: sections.desiredOutput },
+  ].filter((s) => s.body);
+
+  if (entries.length === 0) return null;
+
+  // Legacy row with no headers — render as plain text
+  if (entries.length === 1 && entries[0].header === DESCRIPTION_SECTION_HEADERS.problem) {
+    const hasHeaders = description.includes("##");
+    if (!hasHeaders) {
+      return (
+        <p className="text-sm text-foreground-muted leading-relaxed whitespace-pre-wrap">
+          {entries[0].body}
+        </p>
+      );
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      {entries.map(({ header, body }) => (
+        <div key={header}>
+          <h3 className="text-xs font-medium text-foreground-muted uppercase tracking-wide mb-1.5">
+            {SECTION_LABELS[header]}
+          </h3>
+          <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{body}</p>
+        </div>
+      ))}
+    </div>
   );
 }

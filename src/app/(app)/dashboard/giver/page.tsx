@@ -56,8 +56,9 @@ export default async function GiverDashboardPage() {
   const pendingReview = problems.reduce((sum, p) => sum + p._count.submissions, 0);
 
   return (
-    <main className="px-8 py-10 max-w-4xl">
-      <div className="mb-8 flex items-start justify-between">
+    <main className="px-8 pb-10 max-w-4xl">
+      <div className="sticky top-0 bg-background z-20 pt-10 pb-4 -mx-8 px-8 border-b border-border/20">
+        <div className="flex items-start justify-between mb-8">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight mb-1">
             Welcome back, {profile.name}
@@ -89,15 +90,17 @@ export default async function GiverDashboardPage() {
         <StatCard label="Submissions to review" value={String(pendingReview)} icon={Clock} />
       </div>
 
-      <section>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-medium text-foreground-muted uppercase tracking-wide">
-            Your bounties
-          </h2>
-          <Link href="/dashboard/giver/problems" className="text-sm text-foreground-muted hover:text-foreground hover:underline">
-            View all →
-          </Link>
-        </div>
+      <div className="flex items-center justify-between mt-6">
+        <h2 className="text-sm font-medium text-foreground-muted uppercase tracking-wide">
+          Your bounties
+        </h2>
+        <Link href="/dashboard/giver/problems" className="text-sm text-foreground-muted hover:text-foreground hover:underline">
+          View all →
+        </Link>
+      </div>
+    </div>
+
+    <div className="pt-6">
 
         {problems.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border p-10 text-center">
@@ -136,7 +139,7 @@ export default async function GiverDashboardPage() {
             })}
           </div>
         )}
-      </section>
+      </div>
     </main>
   );
 }

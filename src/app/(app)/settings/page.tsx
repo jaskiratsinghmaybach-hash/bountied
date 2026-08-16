@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
-import { AddCreditsWidget } from "@/components/payments/add-credits-widget";
 import { SettingsPayoutSection } from "@/components/payments/settings-payout-section";
 
 export default async function SettingsPage() {
@@ -12,7 +11,6 @@ export default async function SettingsPage() {
   const profile = await prisma.user.findUnique({ where: { id: user.id } });
   if (!profile) redirect("/login");
 
-  const showGiverSection = profile.role === "GIVER" || profile.role === "BOTH";
   const showSolverSection = profile.role === "SOLVER" || profile.role === "BOTH";
 
   return (
@@ -35,10 +33,6 @@ export default async function SettingsPage() {
       </div>
 
       <div className="flex flex-col gap-6">
-        {showGiverSection && (
-          <AddCreditsWidget currentBalance={Number(profile.creditBalance)} />
-        )}
-
         {showSolverSection && (
           <SettingsPayoutSection
             bankDetailsAdded={profile.bankDetailsAdded}

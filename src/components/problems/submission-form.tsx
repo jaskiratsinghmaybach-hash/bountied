@@ -10,6 +10,7 @@ import {
 } from "@/lib/problems/submission-actions";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import Link from "next/link";
 import { RepoSelector } from "./repo-selector";
 
@@ -18,13 +19,9 @@ const initialState: CreateSubmissionResult | undefined = undefined;
 
 export function SubmissionForm({
   problemId,
-  runCommand,
-  runtime,
   githubConnected,
 }: {
   problemId: string;
-  runCommand: string;
-  runtime: string;
   githubConnected: boolean;
 }) {
   // @ts-ignore
@@ -32,12 +29,11 @@ export function SubmissionForm({
   const [state, formAction, pending] = useActionState(boundAction, initialState);
   const [hasRepo, setHasRepo] = useState(false);
 
-  // Success state — show a "you're in the queue" confirmation
   if (state && "ok" in state) {
     return (
-      <div className="rounded-lg border border-accent/30 bg-primary/5 p-6">
+      <div className="rounded-lg border border-border bg-surface p-6">
         <div className="flex items-center gap-2 mb-2">
-          <Terminal size={16} className="text-primary" />
+          <Terminal size={16} className="text-foreground" />
           <p className="text-sm font-medium text-foreground">Submission received</p>
         </div>
         <p className="text-xs text-foreground-muted">
@@ -49,8 +45,6 @@ export function SubmissionForm({
     );
   }
 
-  // GitHub not connected — show an alert instructing the solver to connect
-  // their account on the integrations page before they can submit.
   if (!githubConnected) {
     return (
       <Alert className="border-border bg-surface">
@@ -78,22 +72,12 @@ export function SubmissionForm({
         sees only the captured terminal output — not your source code.
       </p>
 
-      {/* Show the solver exactly what command will run against their code */}
-      <div className="rounded-md bg-surface-raised border border-border px-3 py-2.5 mb-6 flex items-center gap-2">
-        <Terminal size={13} className="text-foreground-muted shrink-0" />
-        <div>
-          <p className="text-[10px] text-foreground-muted uppercase tracking-wide mb-0.5">
-            Run command ({runtime.toLowerCase()})
-          </p>
-          <p className="text-xs font-mono text-foreground">{runCommand}</p>
-        </div>
-      </div>
-
       {state && "error" in state && (
-        <div className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2.5 flex items-start gap-2 mb-4">
-          <TriangleAlert size={14} className="text-danger shrink-0 mt-0.5" />
-          <p className="text-xs text-danger">{state.error}</p>
-        </div>
+        <Alert variant="destructive" className="mb-4">
+          <TriangleAlert className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{state.error}</AlertDescription>
+        </Alert>
       )}
 
       <form action={formAction} className="flex flex-col gap-5">
@@ -118,24 +102,24 @@ export function SubmissionForm({
           >
             Explain your approach
           </label>
-          <textarea
+          <Textarea
             id="writeup"
             name="writeup"
             required
             minLength={30}
             rows={4}
             placeholder="What did you build? What approach did you take? Any known limitations or tradeoffs worth the giver knowing before they review the output?"
-            className="w-full rounded-md border border-border bg-surface-raised px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent transition-colors resize-y"
+            className="bg-surface-raised border-border text-foreground placeholder:text-foreground-muted focus-visible:ring-0 focus-visible:border-foreground-muted resize-y"
           />
         </div>
 
-        <button
+        <Button
           type="submit"
           disabled={pending || !hasRepo}
-          className="self-start rounded-md bg-primary text-background font-medium px-6 py-2.5 text-sm hover:bg-primary/80 transition-colors disabled:opacity-60"
+          className="self-start"
         >
           {pending ? "Submitting…" : "Submit solution"}
-        </button>
+        </Button>
       </form>
     </div>
   );

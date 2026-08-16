@@ -8,7 +8,9 @@ import { ArrowLeft } from "lucide-react";
 import { DraftActions } from "@/components/problems/draft-actions";
 import { FundDraftButton } from "@/components/problems/fund-draft-button";
 import { GiverSubmissionCard } from "@/components/problems/giver-submission-card";
+import { StickyHeaderWatcher } from "@/components/problems/sticky-header-watcher";
 import type { ProblemStatus, ProblemType } from "@prisma/client";
+import { parseDescription, DESCRIPTION_SECTION_HEADERS } from "@/lib/problems/description-sections";
 
 const statusLabel: Record<ProblemStatus, { label: string; color: string }> = {
   DRAFT: { label: "Draft", color: "text-foreground-muted" },
@@ -70,44 +72,48 @@ export default async function GiverProblemPage({
   const bountyAmount = problem.bountyAmount ? Number(problem.bountyAmount) : null;
 
   return (
-    <main className="px-8 py-10 max-w-4xl">
-      <Link
-        href="/dashboard/giver/problems"
-        className="inline-flex items-center gap-1.5 text-sm text-foreground-muted hover:text-foreground transition-colors mb-6"
-      >
-        <ArrowLeft size={14} />
-        Back to My bounties
-      </Link>
+    <main className="px-8 pb-10 max-w-4xl">
+      <StickyHeaderWatcher />
+      <div className="sticky top-0 bg-background z-20 pt-10 pb-4 -mx-8 px-8 border-b border-border/20 sticky-header">
+        <Link
+          href="/dashboard/giver/problems"
+          className="inline-flex items-center gap-1.5 text-sm text-foreground-muted hover:text-foreground transition-colors mb-6"
+        >
+          <ArrowLeft size={14} />
+          Back to My bounties
+        </Link>
 
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div>
-          <div className="flex flex-wrap items-center gap-3 mb-2">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-              {problem.title}
-            </h1>
-            <span className={`text-xs font-mono ${status.color}`}>{status.label}</span>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="flex flex-wrap items-center gap-3 mb-2">
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+                {problem.title}
+              </h1>
+              <span className={`text-xs font-mono ${status.color}`}>{status.label}</span>
+            </div>
+            <p className="text-sm text-foreground-muted">
+              {typeLabel[problem.type]}
+              {!isDraft && (
+                <>
+                  {" "}
+                  · {problem.submissions.length} submission
+                  {problem.submissions.length === 1 ? "" : "s"}
+                </>
+              )}
+            </p>
           </div>
-          <p className="text-sm text-foreground-muted">
-            {typeLabel[problem.type]}
-            {!isDraft && (
-              <>
-                {" "}
-                · {problem.submissions.length} submission
-                {problem.submissions.length === 1 ? "" : "s"}
-              </>
-            )}
-          </p>
-        </div>
 
-        <div className="flex flex-col items-end gap-2 shrink-0">
-          <span className="font-mono text-xl font-semibold text-emerald-500">
-            {bountyAmount ? `$${bountyAmount.toFixed(2)}` : "Free"}
-          </span>
-          {isDraft && <DraftActions problemId={problem.id} />}
+          <div className="flex flex-col items-end gap-2 shrink-0">
+            <span className="font-mono text-xl font-semibold text-emerald-500">
+              {bountyAmount ? `$${bountyAmount.toFixed(2)}` : "Free"}
+            </span>
+            {isDraft && <DraftActions problemId={problem.id} />}
+          </div>
         </div>
       </div>
 
-      {isDraft && bountyAmount && (
+      <div className="pt-6">
+        {isDraft && bountyAmount && (
         <FundDraftButton
           problemId={problem.id}
           requiredTotal={creditsRequiredToFund(bountyAmount)}
@@ -159,9 +165,9 @@ export default async function GiverProblemPage({
           </p>
         </div>
 
-        <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap mb-4">
-          {problem.description}
-        </p>
+        <div className="mb-4">
+          <DescriptionSections description={problem.description} />
+        </div>
 
         <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs font-mono text-foreground-muted pt-4 border-t border-border">
           <span>Posted {problem.createdAt.toLocaleDateString()}</span>
@@ -178,7 +184,10 @@ export default async function GiverProblemPage({
 
       {!isDraft && (
         <section>
-          <h2 className="text-sm font-medium text-foreground-muted uppercase tracking-wide mb-4">
+          <h2
+            className="sticky text-sm font-medium text-foreground-muted uppercase tracking-wide py-3 bg-background z-10 -mx-8 px-8 border-b border-border/10 mb-4"
+            style={{ top: "var(--header-height, 148px)" }}
+          >
             Submissions
           </h2>
 
@@ -206,6 +215,47 @@ export default async function GiverProblemPage({
           )}
         </section>
       )}
+      </div>
     </main>
+  );
+}
+
+const SECTION_LABELS: Record<string, string> = {
+  [DESCRIPTION_SECTION_HEADERS.problem]: "Problem",
+  [DESCRIPTION_SECTION_HEADERS.whatsBroken]: "What's broken",
+  [DESCRIPTION_SECTION_HEADERS.desiredOutput]: "Desired output",
+};
+
+function DescriptionSections({ description }: { description: string }) {
+  const sections = parseDescription(description);
+  const entries = [
+    { header: DESCRIPTION_SECTION_HEADERS.problem, body: sections.description },
+    { header: DESCRIPTION_SECTION_HEADERS.whatsBroken, body: sections.whatsBroken },
+    { header: DESCRIPTION_SECTION_HEADERS.desiredOutput, body: sections.desiredOutput },
+  ].filter((s) => s.body);
+
+  if (entries.length === 0) return null;
+
+  if (entries.length === 1 && entries[0].header === DESCRIPTION_SECTION_HEADERS.problem) {
+    if (!description.includes("##")) {
+      return (
+        <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+          {entries[0].body}
+        </p>
+      );
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      {entries.map(({ header, body }) => (
+        <div key={header}>
+          <h3 className="text-xs font-medium text-foreground-muted uppercase tracking-wide mb-1.5">
+            {SECTION_LABELS[header]}
+          </h3>
+          <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{body}</p>
+        </div>
+      ))}
+    </div>
   );
 }

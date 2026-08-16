@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { ArrowDownCircle, CreditCard, Wallet } from "lucide-react";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { StickyHeaderWatcher } from "@/components/problems/sticky-header-watcher";
 import type { CreditTransactionType } from "@prisma/client";
 
 const txTypeLabel: Record<CreditTransactionType, string> = {
@@ -52,37 +53,48 @@ export default async function GiverWalletPage() {
   const creditsAdded = Number(purchases._sum.amount ?? 0);
 
   return (
-    <main className="px-8 py-10 max-w-4xl">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight mb-1">Wallet</h1>
-        <p className="text-sm text-foreground-muted">
-          View your credit balance and transaction history.
-        </p>
+    <main className="px-8 pb-10 max-w-4xl">
+      {/* ── Sticky header: title + stats ── */}
+      <div className="sticky top-0 bg-background z-20 pt-10 pb-4 -mx-8 px-8 border-b border-border/20 sticky-header">
+        <div className="mb-6">
+          <h1 className="text-2xl font-semibold tracking-tight mb-1">Wallet</h1>
+          <p className="text-sm text-foreground-muted">
+            View your credit balance and transaction history.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <StatCard
+            label="Credit balance"
+            value={`$${creditBalance.toFixed(2)}`}
+            icon={Wallet}
+          />
+          <StatCard
+            label="Money spent"
+            value={`$${moneySpent.toFixed(2)}`}
+            icon={ArrowDownCircle}
+          />
+          <StatCard
+            label="Credits added"
+            value={`$${creditsAdded.toFixed(2)}`}
+            icon={CreditCard}
+          />
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-10">
-        <StatCard
-          label="Credit balance"
-          value={`$${creditBalance.toFixed(2)}`}
-          icon={Wallet}
-        />
-        <StatCard
-          label="Money spent"
-          value={`$${moneySpent.toFixed(2)}`}
-          icon={ArrowDownCircle}
-        />
-        <StatCard
-          label="Credits added"
-          value={`$${creditsAdded.toFixed(2)}`}
-          icon={CreditCard}
-        />
-      </div>
-
-      <section>
-        <h2 className="text-sm font-medium text-foreground-muted uppercase tracking-wide mb-4">
+      {/* ── Sticky Transaction History heading ── */}
+      <StickyHeaderWatcher />
+      <div
+        className="sticky z-10 bg-background pt-4 pb-3 -mx-8 px-8 border-b border-border/10"
+        style={{ top: "var(--header-height, 200px)" }}
+      >
+        <h2 className="text-sm font-medium text-foreground-muted uppercase tracking-wide">
           Transaction history
         </h2>
+      </div>
 
+      {/* ── Scrollable transactions ── */}
+      <div className="pt-4">
         {transactions.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border p-10 text-center">
             <p className="text-sm text-foreground-muted">No transactions recorded yet.</p>
@@ -113,7 +125,7 @@ export default async function GiverWalletPage() {
             })}
           </div>
         )}
-      </section>
+      </div>
     </main>
   );
 }

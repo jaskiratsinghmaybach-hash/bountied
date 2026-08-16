@@ -3,8 +3,10 @@ import { prisma } from "@/lib/db";
 import { executeSubmission } from "@/lib/sandbox/execute";
 
 export async function POST(req: Request) {
+  let submissionId: string | undefined;
   try {
-    const { submissionId } = await req.json();
+    const body = await req.json();
+    submissionId = body.submissionId;
 
     if (!submissionId) {
       return NextResponse.json({ error: "Missing submissionId" }, { status: 400 });
@@ -52,6 +54,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, submission: updatedSubmission });
   } catch (error) {
     console.error("Sandbox execution error:", error);
+    if (submissionId) {
+      await prisma.submission.update({
+        where: { id: submissionId },
+        data: {
+          status: "SANDBOX_FAILED",
+          sandboxError: `Sandbox execution failed: ${error instanceof Error ? error.message : String(error)}`,
+          sandboxRanAt: new Date(),
+        },
+      }).catch(() => {});
+    }
     return NextResponse.json(
       { error: "Sandbox execution failed" },
       { status: 500 }
