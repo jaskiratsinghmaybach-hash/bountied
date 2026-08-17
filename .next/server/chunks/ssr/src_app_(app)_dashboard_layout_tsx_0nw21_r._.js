@@ -1,0 +1,3 @@
+module.exports=[72576,a=>a.a(async(b,c)=>{try{var d=a.i(7997),e=a.i(16349),f=a.i(61469);a.i(70396);var g=a.i(73727),h=b([f]);async function i({children:a}){let b=await (0,e.createClient)(),{data:{user:c}}=await b.auth.getUser();c||(0,g.redirect)("/login");let h=await f.prisma.user.findUnique({where:{id:c.id}});return h?.role||(0,g.redirect)("/onboarding"),(0,d.jsx)(d.Fragment,{children:a})}[f]=h.then?(await h)():h,a.s(["default",0,i]),c()}catch(a){c(a)}},!1),71411,a=>{a.n(a.i(72576))}];
+
+//# sourceMappingURL=src_app_%28app%29_dashboard_layout_tsx_0nw21_r._.js.map

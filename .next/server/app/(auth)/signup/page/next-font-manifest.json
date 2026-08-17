@@ -1,0 +1,14 @@
+{
+  "pages": {},
+  "app": {
+    "[project]/src/app/(auth)/signup/page": [
+      "static/media/83afe278b6a6bb3c-s.p.2bn3s6zvc0dyp.woff2",
+      "static/media/99e609270109b47d-s.p.40sczeszzbjw1.woff2",
+      "static/media/effe91970fc4db64-s.p.0oace-s_gkfks.woff2",
+      "static/media/23b7a97ae3b5c134-s.p.226pwps5o-gq_.woff2",
+      "static/media/a7e15459c1805da0-s.p.3y9b8znjr2455.woff2"
+    ]
+  },
+  "appUsingSizeAdjust": true,
+  "pagesUsingSizeAdjust": false
+}

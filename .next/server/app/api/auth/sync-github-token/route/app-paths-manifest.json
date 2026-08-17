@@ -1,0 +1,3 @@
+{
+  "/api/auth/sync-github-token/route": "app/api/auth/sync-github-token/route.js"
+}

@@ -1,0 +1,1134 @@
+{
+  "node": {
+    "0014904854ac2a518db922633767b99bb56c450fa2": {
+      "workers": {
+        "app/(app)/admin/payouts/page": {
+          "moduleId": 62942,
+          "async": true,
+          "exportedName": "signOut",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/funds/page": {
+          "moduleId": 45876,
+          "async": true,
+          "exportedName": "signOut",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/page": {
+          "moduleId": 5176,
+          "async": true,
+          "exportedName": "signOut",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/problems/[id]/edit/page": {
+          "moduleId": 43292,
+          "async": true,
+          "exportedName": "signOut",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/problems/[id]/page": {
+          "moduleId": 4617,
+          "async": true,
+          "exportedName": "signOut",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/problems/page": {
+          "moduleId": 4309,
+          "async": true,
+          "exportedName": "signOut",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/wallet/page": {
+          "moduleId": 89274,
+          "async": true,
+          "exportedName": "signOut",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/page": {
+          "moduleId": 19531,
+          "async": true,
+          "exportedName": "signOut",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/solver/earnings/page": {
+          "moduleId": 75119,
+          "async": true,
+          "exportedName": "signOut",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/solver/page": {
+          "moduleId": 66390,
+          "async": true,
+          "exportedName": "signOut",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/solver/submissions/page": {
+          "moduleId": 9755,
+          "async": true,
+          "exportedName": "signOut",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/integrations/page": {
+          "moduleId": 91501,
+          "async": true,
+          "exportedName": "signOut",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/problems/[id]/page": {
+          "moduleId": 69069,
+          "async": true,
+          "exportedName": "signOut",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/problems/new/page": {
+          "moduleId": 89291,
+          "async": true,
+          "exportedName": "signOut",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/problems/page": {
+          "moduleId": 27574,
+          "async": true,
+          "exportedName": "signOut",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/settings/page": {
+          "moduleId": 66937,
+          "async": true,
+          "exportedName": "signOut",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/temp-unlink-github/page": {
+          "moduleId": 67367,
+          "async": true,
+          "exportedName": "signOut",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(auth)/forgot-password/page": {
+          "moduleId": 36548,
+          "async": true,
+          "exportedName": "signOut",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(auth)/login/page": {
+          "moduleId": 42114,
+          "async": true,
+          "exportedName": "signOut",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(auth)/reset-password/page": {
+          "moduleId": 29796,
+          "async": true,
+          "exportedName": "signOut",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(auth)/signup/page": {
+          "moduleId": 73412,
+          "async": true,
+          "exportedName": "signOut",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/_not-found/page": {
+          "moduleId": 99034,
+          "async": true,
+          "exportedName": "signOut",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/onboarding/page": {
+          "moduleId": 30053,
+          "async": true,
+          "exportedName": "signOut",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/page": {
+          "moduleId": 17716,
+          "async": true,
+          "exportedName": "signOut",
+          "filename": "src/lib/auth/actions.ts"
+        }
+      },
+      "filename": "src/lib/auth/actions.ts",
+      "exportedName": "signOut"
+    },
+    "4065daab4b0d4fa778780b7e5855ead987a2b37f70": {
+      "workers": {
+        "app/(app)/admin/payouts/page": {
+          "moduleId": 62942,
+          "async": true,
+          "exportedName": "requestPasswordReset",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/funds/page": {
+          "moduleId": 45876,
+          "async": true,
+          "exportedName": "requestPasswordReset",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/page": {
+          "moduleId": 5176,
+          "async": true,
+          "exportedName": "requestPasswordReset",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/problems/[id]/edit/page": {
+          "moduleId": 43292,
+          "async": true,
+          "exportedName": "requestPasswordReset",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/problems/[id]/page": {
+          "moduleId": 4617,
+          "async": true,
+          "exportedName": "requestPasswordReset",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/problems/page": {
+          "moduleId": 4309,
+          "async": true,
+          "exportedName": "requestPasswordReset",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/wallet/page": {
+          "moduleId": 89274,
+          "async": true,
+          "exportedName": "requestPasswordReset",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/page": {
+          "moduleId": 19531,
+          "async": true,
+          "exportedName": "requestPasswordReset",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/solver/earnings/page": {
+          "moduleId": 75119,
+          "async": true,
+          "exportedName": "requestPasswordReset",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/solver/page": {
+          "moduleId": 66390,
+          "async": true,
+          "exportedName": "requestPasswordReset",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/solver/submissions/page": {
+          "moduleId": 9755,
+          "async": true,
+          "exportedName": "requestPasswordReset",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/integrations/page": {
+          "moduleId": 91501,
+          "async": true,
+          "exportedName": "requestPasswordReset",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/problems/[id]/page": {
+          "moduleId": 69069,
+          "async": true,
+          "exportedName": "requestPasswordReset",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/problems/new/page": {
+          "moduleId": 89291,
+          "async": true,
+          "exportedName": "requestPasswordReset",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/problems/page": {
+          "moduleId": 27574,
+          "async": true,
+          "exportedName": "requestPasswordReset",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/settings/page": {
+          "moduleId": 66937,
+          "async": true,
+          "exportedName": "requestPasswordReset",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/temp-unlink-github/page": {
+          "moduleId": 67367,
+          "async": true,
+          "exportedName": "requestPasswordReset",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(auth)/forgot-password/page": {
+          "moduleId": 36548,
+          "async": true,
+          "exportedName": "requestPasswordReset",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(auth)/login/page": {
+          "moduleId": 42114,
+          "async": true,
+          "exportedName": "requestPasswordReset",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(auth)/reset-password/page": {
+          "moduleId": 29796,
+          "async": true,
+          "exportedName": "requestPasswordReset",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(auth)/signup/page": {
+          "moduleId": 73412,
+          "async": true,
+          "exportedName": "requestPasswordReset",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/_not-found/page": {
+          "moduleId": 99034,
+          "async": true,
+          "exportedName": "requestPasswordReset",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/onboarding/page": {
+          "moduleId": 30053,
+          "async": true,
+          "exportedName": "requestPasswordReset",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/page": {
+          "moduleId": 17716,
+          "async": true,
+          "exportedName": "requestPasswordReset",
+          "filename": "src/lib/auth/actions.ts"
+        }
+      },
+      "filename": "src/lib/auth/actions.ts",
+      "exportedName": "requestPasswordReset"
+    },
+    "4076ccb6953dcb40b63d0e6976289853dbe83c8fb6": {
+      "workers": {
+        "app/(app)/admin/payouts/page": {
+          "moduleId": 62942,
+          "async": true,
+          "exportedName": "setUserRole",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/funds/page": {
+          "moduleId": 45876,
+          "async": true,
+          "exportedName": "setUserRole",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/page": {
+          "moduleId": 5176,
+          "async": true,
+          "exportedName": "setUserRole",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/problems/[id]/edit/page": {
+          "moduleId": 43292,
+          "async": true,
+          "exportedName": "setUserRole",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/problems/[id]/page": {
+          "moduleId": 4617,
+          "async": true,
+          "exportedName": "setUserRole",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/problems/page": {
+          "moduleId": 4309,
+          "async": true,
+          "exportedName": "setUserRole",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/wallet/page": {
+          "moduleId": 89274,
+          "async": true,
+          "exportedName": "setUserRole",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/page": {
+          "moduleId": 19531,
+          "async": true,
+          "exportedName": "setUserRole",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/solver/earnings/page": {
+          "moduleId": 75119,
+          "async": true,
+          "exportedName": "setUserRole",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/solver/page": {
+          "moduleId": 66390,
+          "async": true,
+          "exportedName": "setUserRole",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/solver/submissions/page": {
+          "moduleId": 9755,
+          "async": true,
+          "exportedName": "setUserRole",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/integrations/page": {
+          "moduleId": 91501,
+          "async": true,
+          "exportedName": "setUserRole",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/problems/[id]/page": {
+          "moduleId": 69069,
+          "async": true,
+          "exportedName": "setUserRole",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/problems/new/page": {
+          "moduleId": 89291,
+          "async": true,
+          "exportedName": "setUserRole",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/problems/page": {
+          "moduleId": 27574,
+          "async": true,
+          "exportedName": "setUserRole",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/settings/page": {
+          "moduleId": 66937,
+          "async": true,
+          "exportedName": "setUserRole",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/temp-unlink-github/page": {
+          "moduleId": 67367,
+          "async": true,
+          "exportedName": "setUserRole",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(auth)/forgot-password/page": {
+          "moduleId": 36548,
+          "async": true,
+          "exportedName": "setUserRole",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(auth)/login/page": {
+          "moduleId": 42114,
+          "async": true,
+          "exportedName": "setUserRole",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(auth)/reset-password/page": {
+          "moduleId": 29796,
+          "async": true,
+          "exportedName": "setUserRole",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(auth)/signup/page": {
+          "moduleId": 73412,
+          "async": true,
+          "exportedName": "setUserRole",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/_not-found/page": {
+          "moduleId": 99034,
+          "async": true,
+          "exportedName": "setUserRole",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/onboarding/page": {
+          "moduleId": 30053,
+          "async": true,
+          "exportedName": "setUserRole",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/page": {
+          "moduleId": 17716,
+          "async": true,
+          "exportedName": "setUserRole",
+          "filename": "src/lib/auth/actions.ts"
+        }
+      },
+      "filename": "src/lib/auth/actions.ts",
+      "exportedName": "setUserRole"
+    },
+    "408c99d30089780a97175f55824145ed58e47a5ef2": {
+      "workers": {
+        "app/(app)/admin/payouts/page": {
+          "moduleId": 62942,
+          "async": true,
+          "exportedName": "signUpWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/funds/page": {
+          "moduleId": 45876,
+          "async": true,
+          "exportedName": "signUpWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/page": {
+          "moduleId": 5176,
+          "async": true,
+          "exportedName": "signUpWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/problems/[id]/edit/page": {
+          "moduleId": 43292,
+          "async": true,
+          "exportedName": "signUpWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/problems/[id]/page": {
+          "moduleId": 4617,
+          "async": true,
+          "exportedName": "signUpWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/problems/page": {
+          "moduleId": 4309,
+          "async": true,
+          "exportedName": "signUpWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/wallet/page": {
+          "moduleId": 89274,
+          "async": true,
+          "exportedName": "signUpWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/page": {
+          "moduleId": 19531,
+          "async": true,
+          "exportedName": "signUpWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/solver/earnings/page": {
+          "moduleId": 75119,
+          "async": true,
+          "exportedName": "signUpWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/solver/page": {
+          "moduleId": 66390,
+          "async": true,
+          "exportedName": "signUpWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/solver/submissions/page": {
+          "moduleId": 9755,
+          "async": true,
+          "exportedName": "signUpWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/integrations/page": {
+          "moduleId": 91501,
+          "async": true,
+          "exportedName": "signUpWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/problems/[id]/page": {
+          "moduleId": 69069,
+          "async": true,
+          "exportedName": "signUpWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/problems/new/page": {
+          "moduleId": 89291,
+          "async": true,
+          "exportedName": "signUpWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/problems/page": {
+          "moduleId": 27574,
+          "async": true,
+          "exportedName": "signUpWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/settings/page": {
+          "moduleId": 66937,
+          "async": true,
+          "exportedName": "signUpWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/temp-unlink-github/page": {
+          "moduleId": 67367,
+          "async": true,
+          "exportedName": "signUpWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(auth)/forgot-password/page": {
+          "moduleId": 36548,
+          "async": true,
+          "exportedName": "signUpWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(auth)/login/page": {
+          "moduleId": 42114,
+          "async": true,
+          "exportedName": "signUpWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(auth)/reset-password/page": {
+          "moduleId": 29796,
+          "async": true,
+          "exportedName": "signUpWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(auth)/signup/page": {
+          "moduleId": 73412,
+          "async": true,
+          "exportedName": "signUpWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/_not-found/page": {
+          "moduleId": 99034,
+          "async": true,
+          "exportedName": "signUpWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/onboarding/page": {
+          "moduleId": 30053,
+          "async": true,
+          "exportedName": "signUpWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/page": {
+          "moduleId": 17716,
+          "async": true,
+          "exportedName": "signUpWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        }
+      },
+      "filename": "src/lib/auth/actions.ts",
+      "exportedName": "signUpWithEmail"
+    },
+    "40cf9b67ae7c340183a2ee162c973acdd2f8d626f2": {
+      "workers": {
+        "app/(app)/admin/payouts/page": {
+          "moduleId": 62942,
+          "async": true,
+          "exportedName": "signInWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/funds/page": {
+          "moduleId": 45876,
+          "async": true,
+          "exportedName": "signInWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/page": {
+          "moduleId": 5176,
+          "async": true,
+          "exportedName": "signInWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/problems/[id]/edit/page": {
+          "moduleId": 43292,
+          "async": true,
+          "exportedName": "signInWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/problems/[id]/page": {
+          "moduleId": 4617,
+          "async": true,
+          "exportedName": "signInWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/problems/page": {
+          "moduleId": 4309,
+          "async": true,
+          "exportedName": "signInWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/wallet/page": {
+          "moduleId": 89274,
+          "async": true,
+          "exportedName": "signInWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/page": {
+          "moduleId": 19531,
+          "async": true,
+          "exportedName": "signInWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/solver/earnings/page": {
+          "moduleId": 75119,
+          "async": true,
+          "exportedName": "signInWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/solver/page": {
+          "moduleId": 66390,
+          "async": true,
+          "exportedName": "signInWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/solver/submissions/page": {
+          "moduleId": 9755,
+          "async": true,
+          "exportedName": "signInWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/integrations/page": {
+          "moduleId": 91501,
+          "async": true,
+          "exportedName": "signInWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/problems/[id]/page": {
+          "moduleId": 69069,
+          "async": true,
+          "exportedName": "signInWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/problems/new/page": {
+          "moduleId": 89291,
+          "async": true,
+          "exportedName": "signInWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/problems/page": {
+          "moduleId": 27574,
+          "async": true,
+          "exportedName": "signInWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/settings/page": {
+          "moduleId": 66937,
+          "async": true,
+          "exportedName": "signInWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/temp-unlink-github/page": {
+          "moduleId": 67367,
+          "async": true,
+          "exportedName": "signInWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(auth)/forgot-password/page": {
+          "moduleId": 36548,
+          "async": true,
+          "exportedName": "signInWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(auth)/login/page": {
+          "moduleId": 42114,
+          "async": true,
+          "exportedName": "signInWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(auth)/reset-password/page": {
+          "moduleId": 29796,
+          "async": true,
+          "exportedName": "signInWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(auth)/signup/page": {
+          "moduleId": 73412,
+          "async": true,
+          "exportedName": "signInWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/_not-found/page": {
+          "moduleId": 99034,
+          "async": true,
+          "exportedName": "signInWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/onboarding/page": {
+          "moduleId": 30053,
+          "async": true,
+          "exportedName": "signInWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/page": {
+          "moduleId": 17716,
+          "async": true,
+          "exportedName": "signInWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        }
+      },
+      "filename": "src/lib/auth/actions.ts",
+      "exportedName": "signInWithEmail"
+    },
+    "40d9dcd785c4b069a4cdf307a3e992072f8e67484c": {
+      "workers": {
+        "app/(app)/admin/payouts/page": {
+          "moduleId": 62942,
+          "async": true,
+          "exportedName": "updatePassword",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/funds/page": {
+          "moduleId": 45876,
+          "async": true,
+          "exportedName": "updatePassword",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/page": {
+          "moduleId": 5176,
+          "async": true,
+          "exportedName": "updatePassword",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/problems/[id]/edit/page": {
+          "moduleId": 43292,
+          "async": true,
+          "exportedName": "updatePassword",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/problems/[id]/page": {
+          "moduleId": 4617,
+          "async": true,
+          "exportedName": "updatePassword",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/problems/page": {
+          "moduleId": 4309,
+          "async": true,
+          "exportedName": "updatePassword",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/giver/wallet/page": {
+          "moduleId": 89274,
+          "async": true,
+          "exportedName": "updatePassword",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/page": {
+          "moduleId": 19531,
+          "async": true,
+          "exportedName": "updatePassword",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/solver/earnings/page": {
+          "moduleId": 75119,
+          "async": true,
+          "exportedName": "updatePassword",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/solver/page": {
+          "moduleId": 66390,
+          "async": true,
+          "exportedName": "updatePassword",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/dashboard/solver/submissions/page": {
+          "moduleId": 9755,
+          "async": true,
+          "exportedName": "updatePassword",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/integrations/page": {
+          "moduleId": 91501,
+          "async": true,
+          "exportedName": "updatePassword",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/problems/[id]/page": {
+          "moduleId": 69069,
+          "async": true,
+          "exportedName": "updatePassword",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/problems/new/page": {
+          "moduleId": 89291,
+          "async": true,
+          "exportedName": "updatePassword",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/problems/page": {
+          "moduleId": 27574,
+          "async": true,
+          "exportedName": "updatePassword",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/settings/page": {
+          "moduleId": 66937,
+          "async": true,
+          "exportedName": "updatePassword",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(app)/temp-unlink-github/page": {
+          "moduleId": 67367,
+          "async": true,
+          "exportedName": "updatePassword",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(auth)/forgot-password/page": {
+          "moduleId": 36548,
+          "async": true,
+          "exportedName": "updatePassword",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(auth)/login/page": {
+          "moduleId": 42114,
+          "async": true,
+          "exportedName": "updatePassword",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(auth)/reset-password/page": {
+          "moduleId": 29796,
+          "async": true,
+          "exportedName": "updatePassword",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/(auth)/signup/page": {
+          "moduleId": 73412,
+          "async": true,
+          "exportedName": "updatePassword",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/_not-found/page": {
+          "moduleId": 99034,
+          "async": true,
+          "exportedName": "updatePassword",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/onboarding/page": {
+          "moduleId": 30053,
+          "async": true,
+          "exportedName": "updatePassword",
+          "filename": "src/lib/auth/actions.ts"
+        },
+        "app/page": {
+          "moduleId": 17716,
+          "async": true,
+          "exportedName": "updatePassword",
+          "filename": "src/lib/auth/actions.ts"
+        }
+      },
+      "filename": "src/lib/auth/actions.ts",
+      "exportedName": "updatePassword"
+    },
+    "400a4ee40297be2617b893e2ba5f97989447754429": {
+      "workers": {
+        "app/(app)/admin/payouts/page": {
+          "moduleId": 62942,
+          "async": true,
+          "exportedName": "markPayoutSucceeded",
+          "filename": "src/lib/payouts/admin-actions.ts"
+        }
+      },
+      "filename": "src/lib/payouts/admin-actions.ts",
+      "exportedName": "markPayoutSucceeded"
+    },
+    "4052bb4edf0b0d692fe64c344c499d11081192f7bb": {
+      "workers": {
+        "app/(app)/admin/payouts/page": {
+          "moduleId": 62942,
+          "async": true,
+          "exportedName": "markPayoutFailed",
+          "filename": "src/lib/payouts/admin-actions.ts"
+        }
+      },
+      "filename": "src/lib/payouts/admin-actions.ts",
+      "exportedName": "markPayoutFailed"
+    },
+    "40705d5af51183548e0f9b8b71ea517be3fc8c697b": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/page": {
+          "moduleId": 4617,
+          "async": true,
+          "exportedName": "deleteProblem",
+          "filename": "src/lib/problems/create-actions.ts"
+        }
+      },
+      "filename": "src/lib/problems/create-actions.ts",
+      "exportedName": "deleteProblem"
+    },
+    "40463b8d7afa0d94efac2d5ca4fb648a697076ba7c": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/edit/page": {
+          "moduleId": 43292,
+          "async": true,
+          "exportedName": "retryFundDraft",
+          "filename": "src/lib/problems/create-actions.ts"
+        },
+        "app/(app)/dashboard/giver/problems/[id]/page": {
+          "moduleId": 4617,
+          "async": true,
+          "exportedName": "retryFundDraft",
+          "filename": "src/lib/problems/create-actions.ts"
+        },
+        "app/(app)/problems/new/page": {
+          "moduleId": 89291,
+          "async": true,
+          "exportedName": "retryFundDraft",
+          "filename": "src/lib/problems/create-actions.ts"
+        }
+      },
+      "filename": "src/lib/problems/create-actions.ts",
+      "exportedName": "retryFundDraft"
+    },
+    "6071aae0c7f60baf6e6b9151c31b1e5d1e9ddda7b9": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/page": {
+          "moduleId": 4617,
+          "async": true,
+          "exportedName": "acceptSubmission",
+          "filename": "src/lib/problems/actions.ts"
+        }
+      },
+      "filename": "src/lib/problems/actions.ts",
+      "exportedName": "acceptSubmission"
+    },
+    "405a5979532b08d3ef18fe4f18fe86eb1c11ce38ad": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/page": {
+          "moduleId": 4617,
+          "async": true,
+          "exportedName": "retryGithubAccessGrant",
+          "filename": "src/lib/github/retry-grant-actions.ts"
+        }
+      },
+      "filename": "src/lib/github/retry-grant-actions.ts",
+      "exportedName": "retryGithubAccessGrant"
+    },
+    "60aeec7958bc071d56b268387b87072b14ecee42b1": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/page": {
+          "moduleId": 4617,
+          "async": true,
+          "exportedName": "triggerSubmissionReview",
+          "filename": "src/lib/reviews/actions.ts"
+        }
+      },
+      "filename": "src/lib/reviews/actions.ts",
+      "exportedName": "triggerSubmissionReview"
+    },
+    "604651be3a070f1fda0c1443f6f0915e7eb9bfadb5": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/edit/page": {
+          "moduleId": 43292,
+          "async": true,
+          "exportedName": "createProblem",
+          "filename": "src/lib/problems/create-actions.ts"
+        },
+        "app/(app)/problems/new/page": {
+          "moduleId": 89291,
+          "async": true,
+          "exportedName": "createProblem",
+          "filename": "src/lib/problems/create-actions.ts"
+        }
+      },
+      "filename": "src/lib/problems/create-actions.ts",
+      "exportedName": "createProblem"
+    },
+    "70f1e3894df08b089e3b3b022a7a74fafdf6da916f": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/edit/page": {
+          "moduleId": 43292,
+          "async": true,
+          "exportedName": "updateProblem",
+          "filename": "src/lib/problems/create-actions.ts"
+        },
+        "app/(app)/problems/new/page": {
+          "moduleId": 89291,
+          "async": true,
+          "exportedName": "updateProblem",
+          "filename": "src/lib/problems/create-actions.ts"
+        }
+      },
+      "filename": "src/lib/problems/create-actions.ts",
+      "exportedName": "updateProblem"
+    },
+    "6029431fecdc2987e318b05e88fb9484094a82ffd0": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/edit/page": {
+          "moduleId": 43292,
+          "async": true,
+          "exportedName": "autoSaveProblem",
+          "filename": "src/lib/problems/create-actions.ts"
+        },
+        "app/(app)/problems/new/page": {
+          "moduleId": 89291,
+          "async": true,
+          "exportedName": "autoSaveProblem",
+          "filename": "src/lib/problems/create-actions.ts"
+        }
+      },
+      "filename": "src/lib/problems/create-actions.ts",
+      "exportedName": "autoSaveProblem"
+    },
+    "601c4dbca7953c2caba9a720c42db965c604ab9b2b": {
+      "workers": {
+        "app/(app)/dashboard/solver/earnings/page": {
+          "moduleId": 75119,
+          "async": true,
+          "exportedName": "saveBankDetails",
+          "filename": "src/lib/payouts/bank-details-actions.ts"
+        },
+        "app/(app)/settings/page": {
+          "moduleId": 66937,
+          "async": true,
+          "exportedName": "saveBankDetails",
+          "filename": "src/lib/payouts/bank-details-actions.ts"
+        }
+      },
+      "filename": "src/lib/payouts/bank-details-actions.ts",
+      "exportedName": "saveBankDetails"
+    },
+    "6037860ed5038e4ff35b50feaa993bae701a32e283": {
+      "workers": {
+        "app/(app)/dashboard/solver/earnings/page": {
+          "moduleId": 75119,
+          "async": true,
+          "exportedName": "withdrawEarnings",
+          "filename": "src/lib/payouts/actions.ts"
+        }
+      },
+      "filename": "src/lib/payouts/actions.ts",
+      "exportedName": "withdrawEarnings"
+    },
+    "006783505f373b7dddc5ce7fd924d2a5ea8e0488b5": {
+      "workers": {
+        "app/(app)/integrations/page": {
+          "moduleId": 91501,
+          "async": true,
+          "exportedName": "unlinkGithubIdentity",
+          "filename": "src/lib/auth/unlink-github.ts"
+        }
+      },
+      "filename": "src/lib/auth/unlink-github.ts",
+      "exportedName": "unlinkGithubIdentity"
+    },
+    "00e2b0e79e5ded14d35e8c7cb4d8c9615364b1ac85": {
+      "workers": {
+        "app/(app)/integrations/page": {
+          "moduleId": 91501,
+          "async": true,
+          "exportedName": "relinkGithubIdentity",
+          "filename": "src/lib/auth/relink-github.ts"
+        }
+      },
+      "filename": "src/lib/auth/relink-github.ts",
+      "exportedName": "relinkGithubIdentity"
+    },
+    "7022af6eac27293ecd3c0be7d5adf586b8a97f5019": {
+      "workers": {
+        "app/(app)/problems/[id]/page": {
+          "moduleId": 69069,
+          "async": true,
+          "exportedName": "createSubmission",
+          "filename": "src/lib/problems/submission-actions.ts"
+        }
+      },
+      "filename": "src/lib/problems/submission-actions.ts",
+      "exportedName": "createSubmission"
+    },
+    "0016dfb848fd8c7be216303bae894bf77f17b61e38": {
+      "workers": {
+        "app/(app)/temp-unlink-github/page": {
+          "moduleId": 67367,
+          "async": true,
+          "exportedName": "unlinkStaleGithubIdentity",
+          "filename": "src/lib/auth/unlink-stale-github-TEMP.ts"
+        }
+      },
+      "filename": "src/lib/auth/unlink-stale-github-TEMP.ts",
+      "exportedName": "unlinkStaleGithubIdentity"
+    }
+  },
+  "edge": {},
+  "encryptionKey": "zriE8YM/oQQrQaMc1yqlMaJflk6q7YIlgbFX7k7oF64="
+}

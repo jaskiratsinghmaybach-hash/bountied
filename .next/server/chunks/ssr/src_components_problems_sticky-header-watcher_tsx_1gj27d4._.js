@@ -1,0 +1,3 @@
+module.exports=[18899,a=>{"use strict";var b=a.i(72131);a.s(["StickyHeaderWatcher",0,function(){return(0,b.useEffect)(()=>{let a=()=>{let a=document.querySelector(".sticky-header");a instanceof HTMLElement&&document.documentElement.style.setProperty("--header-height",`${a.offsetHeight}px`)};a();let b=document.querySelector(".sticky-header"),c=null;return b&&(c=new ResizeObserver(a)).observe(b),window.addEventListener("resize",a),()=>{window.removeEventListener("resize",a),c&&c.disconnect()}},[]),null}])}];
+
+//# sourceMappingURL=src_components_problems_sticky-header-watcher_tsx_1gj27d4._.js.map
