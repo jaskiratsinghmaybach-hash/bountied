@@ -67,18 +67,22 @@ export function RoleSelector({ name }: { name: string }) {
         {roles.map((role, i) => {
           const Icon = role.icon;
           const isSelected = selected === role.value;
+          const isDisabled = role.value === "BOTH";
           return (
             <motion.button
               key={role.value}
               type="button"
-              onClick={() => setSelected(role.value)}
+              disabled={isDisabled}
+              onClick={() => !isDisabled && setSelected(role.value)}
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.1 + i * 0.08 }}
-              className={`text-left rounded-lg border p-5 flex items-start gap-4 transition-colors ${
-                isSelected
-                  ? "border-accent bg-surface-raised"
-                  : "border-border bg-surface hover:border-foreground-muted"
+              className={`text-left rounded-lg border p-5 flex items-start gap-4 transition-all ${
+                isDisabled
+                  ? "border-border/50 bg-surface/50 opacity-40 cursor-not-allowed"
+                  : isSelected
+                    ? "border-accent bg-surface-raised"
+                    : "border-border bg-surface hover:border-foreground-muted"
               }`}
             >
               <div
@@ -89,7 +93,14 @@ export function RoleSelector({ name }: { name: string }) {
                 <Icon size={18} />
               </div>
               <div>
-                <h3 className="font-medium text-foreground mb-1">{role.title}</h3>
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="font-medium text-foreground">{role.title}</h3>
+                  {isDisabled && (
+                    <span className="text-[10px] font-mono tracking-wider text-foreground-muted uppercase border border-border px-1.5 py-0.5 rounded-sm bg-surface">
+                      Coming Soon
+                    </span>
+                  )}
+                </div>
                 <p className="text-sm text-foreground-muted leading-relaxed">
                   {role.description}
                 </p>

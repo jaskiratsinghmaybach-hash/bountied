@@ -1,10 +1,28 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { BountyTicket } from "./bounty-ticket";
 import { Button } from "@/components/ui/button";
+import { createClient } from "@/lib/supabase/client";
 
 export function Hero() {
+  const router = useRouter();
+  const supabase = createClient();
+
+  async function handleCta(target: "login" | "signup") {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      router.push(target === "login" ? "/login" : "/signup");
+      return;
+    }
+
+    router.push("/dashboard");
+  }
+
   return (
     <section className="relative border-b border-border">
       {/* Ambient grid texture — quiet, not a scroll-triggered gimmick */}
@@ -58,10 +76,21 @@ export function Hero() {
             transition={{ duration: 0.5, delay: 0.3 }}
             className="flex flex-wrap gap-3"
           >
-            <Button size="lg" className="px-5 py-2.5 h-auto text-sm">
+            <Button
+              type="button"
+              size="lg"
+              className="px-5 py-2.5 h-auto text-sm"
+              onClick={() => handleCta("signup")}
+            >
               Launch a Bounty
             </Button>
-            <Button variant="outline" size="lg" className="px-5 py-2.5 h-auto text-sm">
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              className="px-5 py-2.5 h-auto text-sm"
+              onClick={() => handleCta("login")}
+            >
               Solve & Earn
             </Button>
           </motion.div>

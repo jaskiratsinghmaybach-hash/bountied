@@ -1,6 +1,6 @@
 import * as React from "react";
 import * as ToastPrimitives from "@radix-ui/react-toast";
-import { X } from "lucide-react";
+import { X, Info } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -8,6 +8,7 @@ interface ToastProps {
   message: string;
   onDismiss: () => void;
   duration?: number; // ms, default 8000
+  variant?: "default" | "destructive";
 }
 
 const ToastViewport = React.forwardRef<
@@ -32,7 +33,7 @@ const ToastRoot = React.forwardRef<
   <ToastPrimitives.Root
     ref={ref}
     className={cn(
-      "group pointer-events-auto relative flex w-full items-start gap-3 overflow-hidden rounded-lg border border-destructive/30 bg-destructive/10 p-4 shadow-lg transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-80 data-[state=open]:slide-in-from-top-2 data-[state=closed]:slide-out-to-top-2",
+      "group pointer-events-auto relative flex w-full items-start gap-3 overflow-hidden rounded-lg border p-4 shadow-lg transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-80 data-[state=open]:slide-in-from-top-2 data-[state=closed]:slide-out-to-top-2",
       className,
     )}
     {...props}
@@ -47,7 +48,7 @@ const ToastClose = React.forwardRef<
   <ToastPrimitives.Close
     ref={ref}
     className={cn(
-      "ml-2 rounded-md p-1 text-destructive/70 transition-colors hover:bg-destructive/10 hover:text-destructive focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+      "ml-2 rounded-md p-1 transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
       className,
     )}
     {...props}
@@ -55,7 +56,7 @@ const ToastClose = React.forwardRef<
 ));
 ToastClose.displayName = ToastPrimitives.Close.displayName;
 
-export function Toast({ message, onDismiss, duration = 8000 }: ToastProps) {
+export function Toast({ message, onDismiss, duration = 8000, variant = "destructive" }: ToastProps) {
   const [open, setOpen] = React.useState(true);
 
   React.useEffect(() => {
@@ -69,6 +70,8 @@ export function Toast({ message, onDismiss, duration = 8000 }: ToastProps) {
     return () => clearTimeout(timer);
   }, [duration, onDismiss, open]);
 
+  const isDestructive = variant === "destructive";
+
   return (
     <ToastPrimitives.Provider swipeDirection="right">
       <ToastRoot
@@ -78,10 +81,34 @@ export function Toast({ message, onDismiss, duration = 8000 }: ToastProps) {
           if (!nextOpen) onDismiss();
         }}
         role="alert"
+        className={
+          isDestructive
+            ? "border-destructive/30 bg-destructive/10"
+            : "border-border bg-surface-raised"
+        }
       >
-        <X className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-        <div className="flex-1 text-xs font-normal text-destructive">{message}</div>
-        <ToastClose aria-label="Dismiss toast" asChild>
+        {isDestructive ? (
+          <X className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+        ) : (
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-foreground-muted" />
+        )}
+        <div
+          className={cn(
+            "flex-1 text-xs font-normal",
+            isDestructive ? "text-destructive" : "text-foreground"
+          )}
+        >
+          {message}
+        </div>
+        <ToastClose
+          aria-label="Dismiss toast"
+          asChild
+          className={
+            isDestructive
+              ? "text-destructive/70 hover:bg-destructive/10 hover:text-destructive"
+              : "text-foreground-muted hover:bg-surface hover:text-foreground"
+          }
+        >
           <button type="button" aria-label="Dismiss toast">
             <X className="h-3.5 w-3.5" />
           </button>
