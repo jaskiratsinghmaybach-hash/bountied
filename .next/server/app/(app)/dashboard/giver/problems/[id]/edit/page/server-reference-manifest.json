@@ -1,0 +1,125 @@
+{
+  "node": {
+    "0014904854ac2a518db922633767b99bb56c450fa2": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/edit/page": {
+          "moduleId": 43292,
+          "async": true,
+          "exportedName": "signOut",
+          "filename": "src/lib/auth/actions.ts"
+        }
+      },
+      "exportedName": "signOut",
+      "filename": "src/lib/auth/actions.ts"
+    },
+    "4065daab4b0d4fa778780b7e5855ead987a2b37f70": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/edit/page": {
+          "moduleId": 43292,
+          "async": true,
+          "exportedName": "requestPasswordReset",
+          "filename": "src/lib/auth/actions.ts"
+        }
+      },
+      "exportedName": "requestPasswordReset",
+      "filename": "src/lib/auth/actions.ts"
+    },
+    "4076ccb6953dcb40b63d0e6976289853dbe83c8fb6": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/edit/page": {
+          "moduleId": 43292,
+          "async": true,
+          "exportedName": "setUserRole",
+          "filename": "src/lib/auth/actions.ts"
+        }
+      },
+      "exportedName": "setUserRole",
+      "filename": "src/lib/auth/actions.ts"
+    },
+    "408c99d30089780a97175f55824145ed58e47a5ef2": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/edit/page": {
+          "moduleId": 43292,
+          "async": true,
+          "exportedName": "signUpWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        }
+      },
+      "exportedName": "signUpWithEmail",
+      "filename": "src/lib/auth/actions.ts"
+    },
+    "40cf9b67ae7c340183a2ee162c973acdd2f8d626f2": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/edit/page": {
+          "moduleId": 43292,
+          "async": true,
+          "exportedName": "signInWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        }
+      },
+      "exportedName": "signInWithEmail",
+      "filename": "src/lib/auth/actions.ts"
+    },
+    "40d9dcd785c4b069a4cdf307a3e992072f8e67484c": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/edit/page": {
+          "moduleId": 43292,
+          "async": true,
+          "exportedName": "updatePassword",
+          "filename": "src/lib/auth/actions.ts"
+        }
+      },
+      "exportedName": "updatePassword",
+      "filename": "src/lib/auth/actions.ts"
+    },
+    "604651be3a070f1fda0c1443f6f0915e7eb9bfadb5": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/edit/page": {
+          "moduleId": 43292,
+          "async": true,
+          "exportedName": "createProblem",
+          "filename": "src/lib/problems/create-actions.ts"
+        }
+      },
+      "exportedName": "createProblem",
+      "filename": "src/lib/problems/create-actions.ts"
+    },
+    "70f1e3894df08b089e3b3b022a7a74fafdf6da916f": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/edit/page": {
+          "moduleId": 43292,
+          "async": true,
+          "exportedName": "updateProblem",
+          "filename": "src/lib/problems/create-actions.ts"
+        }
+      },
+      "exportedName": "updateProblem",
+      "filename": "src/lib/problems/create-actions.ts"
+    },
+    "6029431fecdc2987e318b05e88fb9484094a82ffd0": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/edit/page": {
+          "moduleId": 43292,
+          "async": true,
+          "exportedName": "autoSaveProblem",
+          "filename": "src/lib/problems/create-actions.ts"
+        }
+      },
+      "exportedName": "autoSaveProblem",
+      "filename": "src/lib/problems/create-actions.ts"
+    },
+    "40463b8d7afa0d94efac2d5ca4fb648a697076ba7c": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/edit/page": {
+          "moduleId": 43292,
+          "async": true,
+          "exportedName": "retryFundDraft",
+          "filename": "src/lib/problems/create-actions.ts"
+        }
+      },
+      "exportedName": "retryFundDraft",
+      "filename": "src/lib/problems/create-actions.ts"
+    }
+  },
+  "edge": {}
+}

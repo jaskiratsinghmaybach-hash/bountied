@@ -1,0 +1,137 @@
+{
+  "node": {
+    "0014904854ac2a518db922633767b99bb56c450fa2": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/page": {
+          "moduleId": 4617,
+          "async": true,
+          "exportedName": "signOut",
+          "filename": "src/lib/auth/actions.ts"
+        }
+      },
+      "exportedName": "signOut",
+      "filename": "src/lib/auth/actions.ts"
+    },
+    "4065daab4b0d4fa778780b7e5855ead987a2b37f70": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/page": {
+          "moduleId": 4617,
+          "async": true,
+          "exportedName": "requestPasswordReset",
+          "filename": "src/lib/auth/actions.ts"
+        }
+      },
+      "exportedName": "requestPasswordReset",
+      "filename": "src/lib/auth/actions.ts"
+    },
+    "4076ccb6953dcb40b63d0e6976289853dbe83c8fb6": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/page": {
+          "moduleId": 4617,
+          "async": true,
+          "exportedName": "setUserRole",
+          "filename": "src/lib/auth/actions.ts"
+        }
+      },
+      "exportedName": "setUserRole",
+      "filename": "src/lib/auth/actions.ts"
+    },
+    "408c99d30089780a97175f55824145ed58e47a5ef2": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/page": {
+          "moduleId": 4617,
+          "async": true,
+          "exportedName": "signUpWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        }
+      },
+      "exportedName": "signUpWithEmail",
+      "filename": "src/lib/auth/actions.ts"
+    },
+    "40cf9b67ae7c340183a2ee162c973acdd2f8d626f2": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/page": {
+          "moduleId": 4617,
+          "async": true,
+          "exportedName": "signInWithEmail",
+          "filename": "src/lib/auth/actions.ts"
+        }
+      },
+      "exportedName": "signInWithEmail",
+      "filename": "src/lib/auth/actions.ts"
+    },
+    "40d9dcd785c4b069a4cdf307a3e992072f8e67484c": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/page": {
+          "moduleId": 4617,
+          "async": true,
+          "exportedName": "updatePassword",
+          "filename": "src/lib/auth/actions.ts"
+        }
+      },
+      "exportedName": "updatePassword",
+      "filename": "src/lib/auth/actions.ts"
+    },
+    "40705d5af51183548e0f9b8b71ea517be3fc8c697b": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/page": {
+          "moduleId": 4617,
+          "async": true,
+          "exportedName": "deleteProblem",
+          "filename": "src/lib/problems/create-actions.ts"
+        }
+      },
+      "exportedName": "deleteProblem",
+      "filename": "src/lib/problems/create-actions.ts"
+    },
+    "40463b8d7afa0d94efac2d5ca4fb648a697076ba7c": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/page": {
+          "moduleId": 4617,
+          "async": true,
+          "exportedName": "retryFundDraft",
+          "filename": "src/lib/problems/create-actions.ts"
+        }
+      },
+      "exportedName": "retryFundDraft",
+      "filename": "src/lib/problems/create-actions.ts"
+    },
+    "6071aae0c7f60baf6e6b9151c31b1e5d1e9ddda7b9": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/page": {
+          "moduleId": 4617,
+          "async": true,
+          "exportedName": "acceptSubmission",
+          "filename": "src/lib/problems/actions.ts"
+        }
+      },
+      "exportedName": "acceptSubmission",
+      "filename": "src/lib/problems/actions.ts"
+    },
+    "405a5979532b08d3ef18fe4f18fe86eb1c11ce38ad": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/page": {
+          "moduleId": 4617,
+          "async": true,
+          "exportedName": "retryGithubAccessGrant",
+          "filename": "src/lib/github/retry-grant-actions.ts"
+        }
+      },
+      "exportedName": "retryGithubAccessGrant",
+      "filename": "src/lib/github/retry-grant-actions.ts"
+    },
+    "60aeec7958bc071d56b268387b87072b14ecee42b1": {
+      "workers": {
+        "app/(app)/dashboard/giver/problems/[id]/page": {
+          "moduleId": 4617,
+          "async": true,
+          "exportedName": "triggerSubmissionReview",
+          "filename": "src/lib/reviews/actions.ts"
+        }
+      },
+      "exportedName": "triggerSubmissionReview",
+      "filename": "src/lib/reviews/actions.ts"
+    }
+  },
+  "edge": {}
+}
