@@ -21,7 +21,11 @@ type Role = "SOLVER" | "GIVER" | "BOTH";
 const solverLinks = [
   { href: "/dashboard/solver", label: "Overview", icon: LayoutDashboard },
   { href: "/problems", label: "Browse bounties", icon: Search },
-  { href: "/dashboard/solver/submissions", label: "My submissions", icon: FileText },
+  {
+    href: "/dashboard/solver/submissions",
+    label: "My submissions",
+    icon: FileText,
+  },
   { href: "/dashboard/solver/earnings", label: "Earnings", icon: Wallet },
 ];
 
@@ -40,7 +44,7 @@ export function DashboardSidebar({ role }: { role: Role }) {
   return (
     <aside
       className={[
-        "relative h-full shrink-0 border-r border-border",
+        "relative h-[calc(100vh-4.5rem)] shrink-0 border-r border-border",
         "flex flex-col",
         "transition-[width] duration-200 ease-out",
         collapsed ? "w-16" : "w-56",
@@ -65,19 +69,13 @@ export function DashboardSidebar({ role }: { role: Role }) {
                 className={[
                   "flex h-10 w-full items-center rounded-md text-sm",
                   "transition-colors",
-                  collapsed
-                    ? "justify-center px-0"
-                    : "gap-2.5 px-3",
+                  collapsed ? "justify-center px-0" : "gap-2.5 px-3",
                   active
                     ? "bg-surface text-foreground"
                     : "text-foreground-muted hover:bg-surface hover:text-foreground",
                 ].join(" ")}
               >
-                <Icon
-                  size={17}
-                  strokeWidth={1.7}
-                  className="shrink-0"
-                />
+                <Icon size={17} strokeWidth={1.7} className="shrink-0" />
 
                 {!collapsed && (
                   <span className="whitespace-nowrap overflow-hidden">
@@ -92,23 +90,17 @@ export function DashboardSidebar({ role }: { role: Role }) {
                   type="button"
                   onClick={() => setCollapsed((value) => !value)}
                   className={[
-                    "absolute top-1/2 z-20 flex h-8 w-8 -translate-y-1/2",
-                    "items-center justify-center border border-border",
-                    "bg-background text-foreground-muted",
+                    "absolute right-0 top-5 z-50 flex h-7.75 w-7.75 translate-x-1/2 items-center justify-center",
+                    "border border-border bg-background text-foreground-muted",
                     "transition-colors hover:bg-surface hover:text-foreground",
-                    collapsed
-                      ? "left-[48px]"
-                      : "right-[-16px]",
                   ].join(" ")}
-                  aria-label={
-                    collapsed ? "Expand sidebar" : "Collapse sidebar"
-                  }
+                  aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
                   title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
                 >
                   {collapsed ? (
-                    <PanelLeftOpen size={16} strokeWidth={1.7} />
+                    <PanelLeftOpen size={20} strokeWidth={1.7} />
                   ) : (
-                    <PanelLeftClose size={16} strokeWidth={1.7} />
+                    <PanelLeftClose size={25} strokeWidth={1.7} />
                   )}
                 </button>
               )}
@@ -127,7 +119,9 @@ export function DashboardSidebar({ role }: { role: Role }) {
             "flex h-10 items-center rounded-md text-sm",
             "transition-colors",
             collapsed ? "justify-center px-0" : "gap-2.5 px-3",
-            "text-foreground-muted hover:bg-surface hover:text-foreground",
+            pathname === "/integrations"
+              ? "bg-surface text-foreground"
+              : "text-foreground-muted hover:bg-surface hover:text-foreground",
           ].join(" ")}
         >
           <Plug size={17} strokeWidth={1.7} className="shrink-0" />
@@ -155,9 +149,7 @@ export function DashboardSidebar({ role }: { role: Role }) {
           <Settings size={17} strokeWidth={1.7} className="shrink-0" />
 
           {!collapsed && (
-            <span className="whitespace-nowrap overflow-hidden">
-              Settings
-            </span>
+            <span className="whitespace-nowrap overflow-hidden">Settings</span>
           )}
         </Link>
       </div>
