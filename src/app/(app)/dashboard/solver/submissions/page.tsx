@@ -45,7 +45,7 @@ export default async function SolverSubmissionsPage() {
           </Button>
         </div>
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 overflow-y-auto max-h-[calc(100vh-200px)]">
           {submissions.map((s) => {
             const status = statusLabel[s.status] ?? statusLabel.SUBMITTED;
             return (
