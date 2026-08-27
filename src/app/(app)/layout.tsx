@@ -36,11 +36,11 @@ export default async function AppLayout({
   }
 
   return (
-    <SidebarProvider className="relative flex-1 min-h-0 flex">
+    <SidebarProvider className="relative flex-1 min-h-0">
       <DashboardSidebar role={role} />
       <SidebarInset
         id="main-scroll"
-        className="flex-1 h-[calc(100vh-4rem)] min-w-0 overflow-y-auto flex flex-col"
+        className="h-[calc(100vh-4rem)] min-w-0 overflow-y-auto flex flex-col"
       >
         <OAuthFragmentHandler />
         {children}
