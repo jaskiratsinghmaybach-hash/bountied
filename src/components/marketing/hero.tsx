@@ -36,7 +36,7 @@ export function Hero() {
       />
 
       <div className="relative mx-auto max-w-6xl px-6 py-24 md:py-32 grid md:grid-cols-2 gap-16 items-center">
-        <div>
+        <div className="md:-translate-y-17">
           <motion.p
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
