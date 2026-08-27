@@ -10,22 +10,10 @@ import {
   Settings,
   PlusCircle,
   Inbox,
-  Plug,
-  Banknote,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
-
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarTrigger,
-} from "@/components/ui/sidebar";
-
-import { cn } from "@/lib/utils";
+import { useState } from "react";
 
 type Role = "SOLVER" | "GIVER" | "BOTH";
 
@@ -68,135 +56,122 @@ const giverLinks = [
     label: "Post a bounty",
     icon: PlusCircle,
   },
-  {
-    href: "/dashboard/giver/wallet",
-    label: "Wallet",
-    icon: Wallet,
-  },
-  {
-    href: "/dashboard/giver/funds",
-    label: "Funds",
-    icon: Banknote,
-  },
 ];
 
-const bottomLinks = [
-  {
-    href: "/integrations",
-    label: "Integrations",
-    icon: Plug,
-  },
-  {
-    href: "/settings",
-    label: "Settings",
-    icon: Settings,
-  },
-];
-
-function SidebarInner({ role }: { role: Role }) {
-  const links = role === "GIVER" ? giverLinks : solverLinks;
+export function DashboardSidebar({ role }: { role: Role }) {
   const pathname = usePathname();
+  const [collapsed, setCollapsed] = useState(false);
+
+  const links = role === "GIVER" ? giverLinks : solverLinks;
+
+  const isActive = (href: string) => {
+    if (href === "/dashboard/solver" || href === "/dashboard/giver") {
+      return pathname === href;
+    }
+
+    return pathname === href || pathname.startsWith(`${href}/`);
+  };
 
   return (
-    <Sidebar
-      data-dashboard-sidebar
-      className="top-16 h-[calc(100vh-4rem)] border-r border-border bg-background"
-      collapsible="icon"
+    <aside
+      className={[
+        "shrink-0 h-full border-r border-border",
+        "flex flex-col",
+        "transition-[width] duration-200 ease-out",
+        collapsed ? "w-16" : "w-56",
+      ].join(" ")}
     >
-      <SidebarHeader className="h-16 border-b border-border p-0 flex items-center justify-center">
-        <SidebarTrigger
-          className="h-8 w-8 text-foreground-muted hover:text-foreground hover:bg-surface"
-          aria-label="Toggle sidebar"
-        />
-      </SidebarHeader>
       {/* Collapse control */}
-      <SidebarHeader className="border-b border-border/60 px-3 py-3">
-        <SidebarTrigger
-          className="ml-auto text-foreground-muted hover:bg-surface hover:text-foreground group-data-[collapsible=icon]:mx-auto"
-          aria-label="Toggle sidebar"
-        />
-      </SidebarHeader>
+      <div
+        className={[
+          "h-16 flex items-center border-b border-border",
+          collapsed ? "justify-center" : "justify-end px-3",
+        ].join(" ")}
+      >
+        <button
+          type="button"
+          onClick={() => setCollapsed((value) => !value)}
+          className="flex h-9 w-9 items-center justify-center rounded-md text-foreground-muted transition-colors hover:bg-surface hover:text-foreground"
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {collapsed ? (
+            <PanelLeftOpen size={18} strokeWidth={1.7} />
+          ) : (
+            <PanelLeftClose size={18} strokeWidth={1.7} />
+          )}
+        </button>
+      </div>
 
       {/* Main navigation */}
-      <SidebarContent className="px-3 py-6">
-        <SidebarMenu>
-          {links.map((link) => {
-            const Icon = link.icon;
+      <nav className="flex flex-col gap-1 px-2 py-4">
+        {links.map((link) => {
+          const Icon = link.icon;
+          const active = isActive(link.href);
 
-            const isDashboardHome =
-              link.href === "/dashboard/giver" ||
-              link.href === "/dashboard/solver";
+          return (
+            <Link
+              key={link.href}
+              href={link.href}
+              title={collapsed ? link.label : undefined}
+              aria-label={collapsed ? link.label : undefined}
+              className={[
+                "flex h-10 items-center rounded-md text-sm",
+                "transition-colors",
+                collapsed
+                  ? "justify-center px-0"
+                  : "gap-2.5 px-3",
+                active
+                  ? "bg-surface text-foreground"
+                  : "text-foreground-muted hover:bg-surface hover:text-foreground",
+              ].join(" ")}
+            >
+              <Icon
+                size={17}
+                strokeWidth={1.7}
+                className="shrink-0"
+              />
 
-            const isActive = isDashboardHome
-              ? pathname === link.href
-              : pathname === link.href || pathname.startsWith(link.href + "/");
+              {!collapsed && (
+                <span className="whitespace-nowrap overflow-hidden">
+                  {link.label}
+                </span>
+              )}
+            </Link>
+          );
+        })}
+      </nav>
 
-            return (
-              <SidebarMenuItem key={link.href}>
-                <SidebarMenuButton
-                  asChild
-                  isActive={isActive}
-                  tooltip={link.label}
-                  className={cn(
-                    "w-full gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
-                    "group-data-[collapsible=icon]:justify-center",
-                    "group-data-[collapsible=icon]:gap-0",
-                    isActive
-                      ? "bg-foreground text-background font-medium"
-                      : "text-foreground-muted hover:bg-surface hover:text-foreground",
-                  )}
-                >
-                  <Link href={link.href}>
-                    <Icon size={16} />
-                    <span className="group-data-[collapsible=icon]:hidden">
-                      {link.label}
-                    </span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            );
-          })}
-        </SidebarMenu>
-      </SidebarContent>
+      {/* Bottom navigation */}
+      <div className="mt-auto border-t border-border px-2 py-4">
+        <Link
+          href="/settings"
+          title={collapsed ? "Settings" : undefined}
+          aria-label={collapsed ? "Settings" : undefined}
+          className={[
+            "flex h-10 items-center rounded-md text-sm",
+            "transition-colors",
+            collapsed
+              ? "justify-center px-0"
+              : "gap-2.5 px-3",
+            pathname === "/settings"
+              ? "bg-surface text-foreground"
+              : "text-foreground-muted hover:bg-surface hover:text-foreground",
+          ].join(" ")}
+        >
+          <Settings
+            size={17}
+            strokeWidth={1.7}
+            className="shrink-0"
+          />
 
-      {/* Secondary navigation */}
-      <SidebarFooter className="border-t border-border px-3 pb-6 pt-4">
-        <SidebarMenu>
-          {bottomLinks.map((link) => {
-            const Icon = link.icon;
-
-            const isActive =
-              pathname === link.href || pathname.startsWith(link.href + "/");
-
-            return (
-              <SidebarMenuItem key={link.href}>
-                <SidebarMenuButton
-                  asChild
-                  isActive={isActive}
-                  tooltip={link.label}
-                  className={cn(
-                    "w-full gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
-                    "group-data-[collapsible=icon]:justify-center",
-                    "group-data-[collapsible=icon]:gap-0",
-                    isActive
-                      ? "bg-foreground text-background font-medium"
-                      : "text-foreground-muted hover:bg-surface hover:text-foreground",
-                  )}
-                >
-                  <Link href={link.href}>
-                    <Icon size={16} />
-                    <span className="group-data-[collapsible=icon]:hidden">
-                      {link.label}
-                    </span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            );
-          })}
-        </SidebarMenu>
-      </SidebarFooter>
-    </Sidebar>
+          {!collapsed && (
+            <span className="whitespace-nowrap overflow-hidden">
+              Settings
+            </span>
+          )}
+        </Link>
+      </div>
+    </aside>
   );
 }
-
-export { SidebarInner as DashboardSidebar };
