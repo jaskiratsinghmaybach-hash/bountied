@@ -12,6 +12,7 @@ import {
   Inbox,
   Plug,
   PanelLeftClose,
+  DollarSign,
   PanelLeftOpen,
 } from "lucide-react";
 import { useState } from "react";
@@ -33,6 +34,8 @@ const giverLinks = [
   { href: "/dashboard/giver", label: "Overview", icon: LayoutDashboard },
   { href: "/dashboard/giver/problems", label: "My bounties", icon: Inbox },
   { href: "/problems/new", label: "Post a bounty", icon: PlusCircle },
+  { href: "/dashboard/giver/wallet", label: "Wallet", icon: Wallet },
+  { href: "/dashboard/giver/funds", label: "Funds", icon: DollarSign },
 ];
 
 export function DashboardSidebar({ role }: { role: Role }) {
@@ -47,7 +50,7 @@ export function DashboardSidebar({ role }: { role: Role }) {
         "relative h-[calc(100vh-4.5rem)] shrink-0 border-r border-border",
         "flex flex-col",
         "transition-[width] duration-200 ease-out",
-        collapsed ? "w-16" : "w-56",
+        collapsed ? "w-16" : "w-46",
       ].join(" ")}
     >
       {/* Main navigation */}
