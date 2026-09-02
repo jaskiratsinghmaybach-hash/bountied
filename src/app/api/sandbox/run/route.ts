@@ -40,6 +40,17 @@ export async function POST(req: Request) {
 
     // Save logs and exit code
     const isSuccess = result.ok && result.exitCode === 0;
+    // Failure status mapping (product decision 2026-09-02): a dependency
+    // install failure gets its own status distinct from clone/infra
+    // failures, so a giver reviewing a failed submission can tell "the
+    // solver's environment didn't build" from "our infra broke" instead of
+    // both collapsing into one opaque SANDBOX_FAILED bucket. Clone and
+    // infra failures intentionally stay SANDBOX_FAILED, unchanged.
+    const failureStatus =
+      !result.ok && result.kind === "dependency-install"
+        ? "DEPENDENCY_INSTALL_FAILED"
+        : "SANDBOX_FAILED";
+
     const updatedSubmission = await prisma.submission.update({
       where: { id: submission.id },
       data: {
@@ -47,7 +58,7 @@ export async function POST(req: Request) {
         sandboxExitCode: result.ok ? result.exitCode : null,
         sandboxError: result.ok ? null : result.reason,
         sandboxRanAt: new Date(),
-        status: isSuccess ? "UNDER_REVIEW" : "SANDBOX_FAILED",
+        status: isSuccess ? "UNDER_REVIEW" : failureStatus,
       },
     });
 

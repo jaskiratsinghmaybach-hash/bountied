@@ -3,7 +3,25 @@ import type { Runtime } from "@prisma/client";
 import { getRuntimeConfig, isRuntimeReady } from "./runtimes";
 
 const EXECUTION_TIMEOUT_MS = 30_000;
+// Sandbox lifetime (Sandbox.create's timeoutMs) has to cover clone + install
+// + the retry ladder's extra apt-get/retry-install commands, each of which
+// gets its own EXECUTION_TIMEOUT_MS budget below — NOT just one command's
+// worth. Individual command timeouts are still the real per-step cost/
+// runaway guard; this is only the outer envelope so a legitimate retry
+// sequence doesn't get killed by sandbox lifetime before it finishes.
+const SANDBOX_LIFETIME_MS = EXECUTION_TIMEOUT_MS * 5;
 const MAX_OUTPUT_CHARS = 50_000;
+
+/**
+ * Lets the caller (the API route) map a failure onto the right
+ * SubmissionStatus without execute.ts knowing anything about Prisma.
+ * "dependency-install" is the one new addition (product decision
+ * 2026-09-02) — everything else stays SANDBOX_FAILED, same as before.
+ */
+export type ExecutionFailureKind =
+  | "clone"
+  | "dependency-install"
+  | "infra";
 
 export type ExecutionResult =
   | {
@@ -14,6 +32,7 @@ export type ExecutionResult =
     }
   | {
       ok: false;
+      kind: ExecutionFailureKind;
       /**
        * Human-readable reason execution never produced real output.
        * Shown as sandboxError, distinct from a program that ran and
@@ -56,6 +75,7 @@ export async function executeSubmission(params: {
   if (!isRuntimeReady(runtime)) {
     return {
       ok: false,
+      kind: "infra",
       reason: `Runtime ${runtime} has no sandbox template configured yet — set templateId in lib/sandbox/runtimes.ts.`,
     };
   }
@@ -64,6 +84,7 @@ export async function executeSubmission(params: {
   if (!config.templateId) {
     return {
       ok: false,
+      kind: "infra",
       reason: `Runtime ${runtime} has no sandbox template configured yet.`,
     };
   }
@@ -77,20 +98,20 @@ export async function executeSubmission(params: {
     const parsed = new URL(repoUrl);
     // Ensure it's actually a GitHub URL before embedding our token in it
     if (parsed.hostname !== "github.com") {
-      return { ok: false, reason: "Only GitHub repo URLs are accepted." };
+      return { ok: false, kind: "clone", reason: "Only GitHub repo URLs are accepted." };
     }
     parsed.username = "x-access-token";
     parsed.password = githubToken;
     authenticatedUrl = parsed.toString();
   } catch {
-    return { ok: false, reason: "Invalid repo URL." };
+    return { ok: false, kind: "clone", reason: "Invalid repo URL." };
   }
 
   let sandbox: Sandbox | null = null;
 
   try {
     sandbox = await Sandbox.create(config.templateId, {
-      timeoutMs: EXECUTION_TIMEOUT_MS,
+      timeoutMs: SANDBOX_LIFETIME_MS,
     });
 
     const workDir = "/home/user/submission";
@@ -106,11 +127,28 @@ export async function executeSubmission(params: {
     if (clone.exitCode !== 0) {
       return {
         ok: false,
+        kind: "clone",
         reason: `Could not clone the repository. Make sure your GitHub account has access to this repo. (${truncate(clone.stderr, 300)})`,
       };
     }
 
     // 2. Install dependencies if the solver included the expected file.
+    //
+    // Retry ladder (product decision 2026-09-02): a lean base image can't
+    // have every system lib every package might need preinstalled without
+    // bloating every single boot. So on failure we classify WHY it failed
+    // before deciding what to do:
+    //   - missing system lib (e.g. no pg_config, no gcc) -> apt-get the
+    //     specific missing piece IN THIS SAME SANDBOX and retry the exact
+    //     same install command once. No second boot, no second clone.
+    //   - anything else (bad package name, real version conflict) -> that
+    //     is never fixed by installing more system libraries, so we don't
+    //     waste an apt-get round-trip retrying it. Fail straight to
+    //     DEPENDENCY_INSTALL_FAILED with the real pip stderr.
+    // A second full sandbox (config.fallbackTemplateId) is intentionally
+    // NOT used here — see runtimes.ts doc comment on why that's reserved
+    // as a last resort the platform doesn't currently need to reach for
+    // to solve the common cases above.
     if (config.dependencyFileName && config.installCommand) {
       const checkDepFile = await sandbox.commands.run(
         `test -f "${workDir}/${config.dependencyFileName}" && echo "exists" || echo "missing"`,
@@ -123,11 +161,65 @@ export async function executeSubmission(params: {
           config.installCommand(config.dependencyFileName),
           { cwd: workDir, timeoutMs: EXECUTION_TIMEOUT_MS }
         );
+
         if (install.exitCode !== 0) {
-          return {
-            ok: false,
-            reason: `Dependency install failed (exit ${install.exitCode}):\n${truncate(install.stderr)}`,
-          };
+          const retry = config.installRetry;
+          const classification = retry?.classifyFailure(install.stderr) ?? "unretryable";
+
+          if (retry && classification === "missing-system-lib") {
+            const aptPackages = retry.resolveAptPackages(install.stderr);
+
+            if (aptPackages.length > 0) {
+              // Best-effort update — some base images have a stale apt
+              // cache; if `update` itself fails we still attempt install,
+              // since the cache may already be good enough.
+              await sandbox.commands
+                .run(retry.aptUpdateCommand, { timeoutMs: EXECUTION_TIMEOUT_MS })
+                .catch(() => {});
+
+              const aptInstall = await sandbox.commands.run(
+                retry.aptInstallCommand(aptPackages),
+                { timeoutMs: EXECUTION_TIMEOUT_MS }
+              );
+
+              if (aptInstall.exitCode === 0) {
+                const retryInstall = await sandbox.commands.run(
+                  config.installCommand(config.dependencyFileName),
+                  { cwd: workDir, timeoutMs: EXECUTION_TIMEOUT_MS }
+                );
+
+                if (retryInstall.exitCode !== 0) {
+                  return {
+                    ok: false,
+                    kind: "dependency-install",
+                    reason: `Dependency install failed even after installing ${aptPackages.join(", ")} (exit ${retryInstall.exitCode}):\n${truncate(retryInstall.stderr)}`,
+                  };
+                }
+                // Retry succeeded — fall through to step 3 as normal.
+              } else {
+                return {
+                  ok: false,
+                  kind: "dependency-install",
+                  reason: `Dependency install failed (missing system library) and the automatic fix (${aptPackages.join(", ")}) also failed:\n${truncate(aptInstall.stderr, 1000)}`,
+                };
+              }
+            } else {
+              // Classified as a system-lib issue but we don't know which
+              // apt package fixes it — nothing to retry with.
+              return {
+                ok: false,
+                kind: "dependency-install",
+                reason: `Dependency install failed (exit ${install.exitCode}):\n${truncate(install.stderr)}`,
+              };
+            }
+          } else {
+            // Not retry-worthy — bad package name/version conflict/etc.
+            return {
+              ok: false,
+              kind: "dependency-install",
+              reason: `Dependency install failed (exit ${install.exitCode}):\n${truncate(install.stderr)}`,
+            };
+          }
         }
       }
     }
@@ -161,6 +253,7 @@ export async function executeSubmission(params: {
     const message = err instanceof Error ? err.message : String(err);
     return {
       ok: false,
+      kind: "infra",
       reason: `Sandbox execution failed: ${truncate(message, 500)}`,
     };
   } finally {

@@ -5,6 +5,8 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth/session";
 import { revalidatePath } from "next/cache";
 import { mirrorSubmissionRepo } from "@/lib/github/mirror";
+import { fetchRequirementsTxt } from "@/lib/github/fetch-requirements";
+import { checkDependencyPolicy, parseDependencyPolicy } from "@/lib/sandbox/dependency-policy";
 
 export type CreateSubmissionResult =
   | { error: string }
@@ -93,6 +95,40 @@ async function mirrorOnly(submissionId: string) {
         },
       });
       return;
+    }
+
+    // Dependency policy check (product decision 2026-09-02) — runs BEFORE
+    // any sandbox boots. If the Giver set Problem.dependencyPolicy and the
+    // solver's requirements.txt violates it, reject here for the cost of
+    // one GitHub API call, not a mirror boot + an eventual execute boot.
+    // No policy set (the common case) = zero extra calls, this resolves
+    // instantly to ok:true with an empty policy.
+    const policy = parseDependencyPolicy(submission.problem.dependencyPolicy);
+    if (policy) {
+      const reqFile = await fetchRequirementsTxt({
+        repoUrl: submission.repoUrl,
+        solverToken: submission.solver.githubAccessToken,
+      });
+
+      if (!reqFile.ok) {
+        // Can't verify the policy because we couldn't even read the repo —
+        // that's a real problem, but it's a CLONE-shaped problem, not a
+        // policy violation. Let the normal mirror step below surface it
+        // with its own (better) error message rather than duplicating it
+        // here with a less specific one.
+      } else {
+        const check = checkDependencyPolicy(policy, reqFile.content);
+        if (!check.ok) {
+          await prisma.submission.update({
+            where: { id: submissionId },
+            data: {
+              status: "DEPENDENCY_POLICY_VIOLATION",
+              sandboxError: check.reason,
+            },
+          });
+          return;
+        }
+      }
     }
 
     await prisma.submission.update({
