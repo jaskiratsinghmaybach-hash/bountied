@@ -1,4 +1,5 @@
 import type { Runtime } from "@prisma/client";
+import type { ManifestDependency } from "./bountied-manifest";
 
 /**
  * Single source of truth for what each Runtime actually needs to execute.
@@ -13,12 +14,14 @@ import type { Runtime } from "@prisma/client";
  * template is built and its real ID pasted in here, that runtime is
  * registered but not actually usable — see isRuntimeReady() below.
  *
- * dependencyFileName: the file, if any, a solver's submission is expected
- * to include for the sandbox to install their dependencies from.
- *
- * installCommand: run once, before the giver's runCommand, only if
- * dependencyFileName is present in the submitted code. null means no
- * install step (nothing to install, or the runtime handles it inline).
+ * Every runtime reads dependencies from the same file — bountied.json —
+ * rather than a per-language manifest (requirements.txt, package.json,
+ * Cargo.toml, ...). See lib/sandbox/bountied-manifest.ts for why (product
+ * decision 2026-09-26). installCommand turns the parsed dependency list
+ * into the real install invocation for this runtime's package manager; an
+ * empty list means installCommand still runs but is handed nothing to
+ * install (most runtimes should just no-op on an empty list rather than
+ * fail).
  *
  * fallbackTemplateId / installRetry: the tiered-install system (product
  * decision 2026-09-02) — see their own doc comments just below.
@@ -65,8 +68,16 @@ export type RuntimeConfig = {
    * see /sandbox-templates/<runtime>/e2b.heavy.Dockerfile.
    */
   fallbackTemplateId: string | null;
-  dependencyFileName: string | null;
-  installCommand: ((depFile: string) => string) | null;
+  /**
+   * Builds the install invocation for this runtime's package manager from
+   * the parsed bountied.json dependency list. Called once, before the
+   * giver's runCommand, whenever bountied.json is present in the submitted
+   * code (regardless of whether `dependencies` is empty — a runtime can
+   * choose to no-op on empty rather than skip the step entirely, e.g. if
+   * it also wants to react to other manifest fields later). null means no
+   * install step for this runtime at all.
+   */
+  installCommand: ((deps: ManifestDependency[]) => string) | null;
   /** null = no retry ladder for this runtime; install failures go straight to DEPENDENCY_INSTALL_FAILED. */
   installRetry: InstallRetryConfig | null;
   /** File extension used for single-file uploads in the submission form. */
@@ -125,8 +136,26 @@ export const RUNTIME_REGISTRY: Record<Runtime, RuntimeConfig> = {
     // in-place apt-get retry is still attempted — this is only the
     // last-resort fallback on top of that.
     fallbackTemplateId: null,
-    dependencyFileName: "requirements.txt",
-    installCommand: (depFile) => `pip install -r ${depFile}`,
+    // pip needs an explicit comparator ("name==2.1.0", "name>=2.0"); a bare
+    // "name 2.1.0" isn't valid pip syntax. bountied.json's version field is
+    // a free-form string (lib/sandbox/bountied-manifest.ts) that a Solver's
+    // AI assistant may write either as a bare version ("2.1.0") or already
+    // pip-flavored ("==2.1.0", ">=2.0", "2.x"). If it already starts with a
+    // comparator (or is a loose match like "2.x", which pip understands as
+    // "2.*"), pass it through as-is; a bare leading digit gets "==" prefixed
+    // so the common case a Giver actually gets from their AI just works.
+    // pip rejects anything it still doesn't understand at install time —
+    // that surfaces as a normal DEPENDENCY_INSTALL_FAILED, same as a
+    // typo'd requirements.txt line would have before.
+    installCommand: (deps) => {
+      if (deps.length === 0) return "true"; // nothing declared — no-op, don't fail the step
+      const specs = deps.map((d) => {
+        if (!d.version) return d.name;
+        const v = /^[=<>~!]/.test(d.version) ? d.version : `==${d.version}`;
+        return `"${d.name}${v}"`;
+      });
+      return `pip install ${specs.join(" ")}`;
+    },
     installRetry: PYTHON_INSTALL_RETRY,
     fileExtension: ".py",
   },

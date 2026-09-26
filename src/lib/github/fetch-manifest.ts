@@ -1,10 +1,13 @@
 /**
- * Reads requirements.txt straight from the SOLVER's own repo via the GitHub
+ * Reads bountied.json straight from the SOLVER's own repo via the GitHub
  * Contents API — no clone, no sandbox. This exists purely so
- * lib/sandbox/dependency-policy.ts can check a Giver's optional
+ * lib/sandbox/bountied-manifest.ts can check a Giver's optional
  * dependencyPolicy BEFORE anything gets mirrored or booted (see product
  * decision 2026-09-02): a policy violation caught here costs one HTTP call,
  * not a mirror + sandbox boot.
+ *
+ * Replaces fetch-requirements.ts (product decision 2026-09-26 — bountied.json
+ * is now the one manifest file every runtime reads, not a per-language file).
  *
  * Uses the SOLVER's OAuth token (same one lib/github/mirror.ts uses for the
  * clone step) — read-only, same as that call. Never the platform token;
@@ -14,22 +17,22 @@
 const GITHUB_API_VERSION = "2022-11-28";
 const GITHUB_API = "https://api.github.com";
 
-export type FetchRequirementsResult =
+export type FetchManifestResult =
   | { ok: true; content: string | null } // null = file doesn't exist, not an error
   | { ok: false; reason: string };
 
 /**
  * repoUrl is the solver's https://github.com/{owner}/{repo} submission URL
  * (Submission.repoUrl). Only ever called before mirroring — once
- * platformRepoUrl exists, execute.ts reads requirements.txt itself inside
+ * platformRepoUrl exists, execute.ts reads bountied.json itself inside
  * the sandbox as part of the normal install step.
  */
-export async function fetchRequirementsTxt(params: {
+export async function fetchBountiedManifest(params: {
   repoUrl: string;
   solverToken: string;
-  path?: string; // defaults to root requirements.txt
-}): Promise<FetchRequirementsResult> {
-  const { repoUrl, solverToken, path = "requirements.txt" } = params;
+  path?: string; // defaults to root bountied.json
+}): Promise<FetchManifestResult> {
+  const { repoUrl, solverToken, path = "bountied.json" } = params;
 
   let owner: string;
   let repo: string;
@@ -59,8 +62,9 @@ export async function fetchRequirementsTxt(params: {
     }
   );
 
-  // No requirements.txt at all is a legitimate, common case (pure-stdlib
-  // solution) — not a failure. Let the caller decide what that means.
+  // No bountied.json at all is a legitimate, common case (pure-stdlib
+  // solution, or the solver hasn't run their AI assistant's generation
+  // step yet) — not a failure. Let the caller decide what that means.
   if (res.status === 404) {
     return { ok: true, content: null };
   }
@@ -74,7 +78,7 @@ export async function fetchRequirementsTxt(params: {
   }
 
   if (!res.ok) {
-    return { ok: false, reason: `GitHub API error while reading requirements.txt (${res.status}).` };
+    return { ok: false, reason: `GitHub API error while reading bountied.json (${res.status}).` };
   }
 
   const data = (await res.json()) as { content?: string; encoding?: string; type?: string };

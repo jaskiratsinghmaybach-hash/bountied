@@ -1,6 +1,11 @@
 import { Sandbox } from "e2b";
 import type { Runtime } from "@prisma/client";
 import { getRuntimeConfig, isRuntimeReady } from "./runtimes";
+import { parseBountiedManifest } from "./bountied-manifest";
+
+/** The one manifest file every runtime reads dependencies from — see
+ * lib/sandbox/bountied-manifest.ts (product decision 2026-09-26). */
+const MANIFEST_FILE_NAME = "bountied.json";
 
 const EXECUTION_TIMEOUT_MS = 30_000;
 // Sandbox lifetime (Sandbox.create's timeoutMs) has to cover clone + install
@@ -132,7 +137,7 @@ export async function executeSubmission(params: {
       };
     }
 
-    // 2. Install dependencies if the solver included the expected file.
+    // 2. Install dependencies if the solver included bountied.json.
     //
     // Retry ladder (product decision 2026-09-02): a lean base image can't
     // have every system lib every package might need preinstalled without
@@ -149,16 +154,26 @@ export async function executeSubmission(params: {
     // NOT used here — see runtimes.ts doc comment on why that's reserved
     // as a last resort the platform doesn't currently need to reach for
     // to solve the common cases above.
-    if (config.dependencyFileName && config.installCommand) {
-      const checkDepFile = await sandbox.commands.run(
-        `test -f "${workDir}/${config.dependencyFileName}" && echo "exists" || echo "missing"`,
+    if (config.installCommand) {
+      const manifestCheck = await sandbox.commands.run(
+        `cat "${workDir}/${MANIFEST_FILE_NAME}" 2>/dev/null || echo "__MISSING__"`,
         { timeoutMs: 5_000 }
       );
-      const hasDepFile = checkDepFile.stdout.trim() === "exists";
+      const manifestText = manifestCheck.stdout;
+      const hasManifest = manifestText.trim() !== "__MISSING__";
 
-      if (hasDepFile) {
+      if (hasManifest) {
+        const { manifest, parseError } = parseBountiedManifest(manifestText);
+        if (parseError || !manifest) {
+          return {
+            ok: false,
+            kind: "dependency-install",
+            reason: `bountied.json could not be parsed: ${parseError ?? "invalid manifest"}.`,
+          };
+        }
+
         const install = await sandbox.commands.run(
-          config.installCommand(config.dependencyFileName),
+          config.installCommand(manifest.dependencies),
           { cwd: workDir, timeoutMs: EXECUTION_TIMEOUT_MS }
         );
 
@@ -184,7 +199,7 @@ export async function executeSubmission(params: {
 
               if (aptInstall.exitCode === 0) {
                 const retryInstall = await sandbox.commands.run(
-                  config.installCommand(config.dependencyFileName),
+                  config.installCommand(manifest.dependencies),
                   { cwd: workDir, timeoutMs: EXECUTION_TIMEOUT_MS }
                 );
 
