@@ -2,7 +2,10 @@ import { prisma } from "@/lib/db";
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { SubmissionForm } from "@/components/problems/submission-form";
+import { ManifestHelper } from "@/components/problems/manifest-helper";
 import { parseDescription, DESCRIPTION_SECTION_HEADERS } from "@/lib/problems/description-sections";
+import { getLanguageDef } from "@/components/problems/bounty-flow/flow-data";
+import { renderManifestSkeleton, buildManifestPrompt } from "@/lib/problems/manifest-template";
 
 export default async function ProblemDetailPage({
   params,
@@ -191,10 +194,21 @@ export default async function ProblemDetailPage({
 
       {/* Solver without a submission yet */}
       {isSolver && !isOwner && !existingSubmission && problem.status === "OPEN" && (
-        <SubmissionForm
-          problemId={problem.id}
-          githubConnected={profile?.githubConnected ?? false}
-        />
+        <div className="flex flex-col gap-4">
+          <ManifestHelper
+            languageLabel={getLanguageDef(problem.language ?? "python")?.label ?? "Python"}
+            skeleton={renderManifestSkeleton(problem.language ?? "python")}
+            prompt={buildManifestPrompt({
+              languageId: problem.language ?? "python",
+              scopeId: problem.scope,
+              runCommand: problem.runCommand,
+            })}
+          />
+          <SubmissionForm
+            problemId={problem.id}
+            githubConnected={profile?.githubConnected ?? false}
+          />
+        </div>
       )}
     </main>
   );

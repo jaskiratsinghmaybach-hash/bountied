@@ -108,7 +108,7 @@ model Problem {
   // the ~95% of Givers who never touch this). Constrains what packages a
   // Solver's requirements.txt may contain; never touches runCommand or
   // runtime, which stay the Giver's exclusive contract. Shape (validated
-  // in lib/sandbox/dependency-policy.ts, not enforced by Postgres):
+  // in lib/sandbox/bountied-manifest.ts, not enforced by Postgres):
   //   { maxDependencies?: number, allowedPackages?: string[], bannedPackages?: string[] }
   dependencyPolicy Json?
 
@@ -260,7 +260,7 @@ enum SubmissionStatus {
   AWAITING_REVIEW
 
   // Added (product decision 2026-09-02) — see Problem.dependencyPolicy doc
-  // comment above and lib/sandbox/dependency-policy.ts. Splits what used
+  // comment above and lib/sandbox/bountied-manifest.ts. Splits what used
   // to be one opaque SANDBOX_FAILED bucket into cases a giver can actually
   // tell apart when reviewing a failed submission.
   DEPENDENCY_POLICY_VIOLATION
