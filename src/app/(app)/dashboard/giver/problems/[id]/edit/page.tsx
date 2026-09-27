@@ -4,6 +4,7 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { BountyFlow } from "@/components/problems/bounty-flow/bounty-flow";
+import { StickyHeaderWatcher } from "@/components/problems/sticky-header-watcher";
 
 export default async function EditProblemPage({
   params,
@@ -29,20 +30,23 @@ export default async function EditProblemPage({
   }
 
   return (
-    <main className="px-8 py-10 max-w-4xl">
-      <Link
-        href={`/dashboard/giver/problems/${problem.id}`}
-        className="inline-flex items-center gap-1.5 text-sm text-foreground-muted hover:text-foreground transition-colors mb-6"
-      >
-        <ArrowLeft size={14} />
-        Back to bounty
-      </Link>
+    <main className="pb-8 w-full">
+      <StickyHeaderWatcher />
+      <div className="sticky top-0 bg-background z-20 pt-8 pb-4 border-b border-border/20 px-6 sm:px-10 sticky-header">
+        <Link
+          href={`/dashboard/giver/problems/${problem.id}`}
+          className="inline-flex items-center gap-1.5 text-sm text-foreground-muted hover:text-foreground transition-colors mb-6"
+        >
+          <ArrowLeft size={14} />
+          Back to bounty
+        </Link>
 
-      <h1 className="text-2xl font-semibold tracking-tight mb-1">Edit draft</h1>
-      <p className="text-sm text-foreground-muted mb-8">
-        Nothing here has been charged yet — change anything, including the
-        bounty amount, before you post.
-      </p>
+        <h1 className="text-2xl font-semibold tracking-tight mb-1">Edit draft</h1>
+        <p className="text-sm text-foreground-muted">
+          Nothing here has been charged yet — change anything, including the
+          bounty amount, before you post.
+        </p>
+      </div>
 
       <BountyFlow
         existingProblem={{
