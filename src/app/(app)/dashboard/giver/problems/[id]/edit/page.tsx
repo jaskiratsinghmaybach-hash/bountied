@@ -56,13 +56,12 @@ export default async function EditProblemPage({
             ? problem.deadline.toISOString().split("T")[0]
             : null,
           runCommand: problem.runCommand,
-          // Fields not yet in DB schema — default to empty until migration
-          language: null,
-          scope: null,
-          addons: [],
-          referenceRepoUrls: [],
-          screenshotUrls: [],
-          logs: null,
+          language: problem.language,
+          scope: problem.scope,
+          addons: problem.addons,
+          referenceRepoUrls: problem.referenceRepoUrls,
+          screenshotUrls: problem.screenshotUrls,
+          logs: problem.logs,
         }}
       />
     </main>
