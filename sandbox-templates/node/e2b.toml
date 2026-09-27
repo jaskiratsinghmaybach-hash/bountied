@@ -1,9 +1,0 @@
-# E2B template config for Runtime.NODE.
-#
-# team_id and template_id are populated automatically by `e2b template
-# build` on first run — leave them unset here and let the CLI write them
-# in. Committing the file afterward (with those two fields filled in) is
-# what makes the build reproducible and reviewable, instead of a template
-# that only exists in the E2B dashboard with no source of truth in the repo.
-template_name = "bountied-node"
-dockerfile = "e2b.Dockerfile"

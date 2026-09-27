@@ -9,10 +9,13 @@ import type { ManifestDependency } from "./bountied-manifest";
  * Adding a language is: add one entry here, build one E2B template, done.
  *
  * templateId: the E2B template to launch sandboxes from. Each runtime gets
- * its own template (its own Dockerfile, built via `e2b template build`) —
- * see /sandbox-templates/<runtime>/e2b.Dockerfile for the source. Until a
- * template is built and its real ID pasted in here, that runtime is
- * registered but not actually usable — see isRuntimeReady() below.
+ * its own template, defined as code (E2B Build System 2.0's Template()
+ * builder — NOT the deprecated e2b.Dockerfile + e2b.toml + `e2b template
+ * build` v1 flow) and built via `npm run e2b:build:prod` — see
+ * /sandbox-templates/<runtime>/template.ts for the source and that
+ * folder's README.md for the build steps. Until a template is built and
+ * its real ID pasted in here, that runtime is registered but not
+ * actually usable — see isRuntimeReady() below.
  *
  * Every runtime reads dependencies from the same file — bountied.json —
  * rather than a per-language manifest (requirements.txt, package.json,
@@ -65,7 +68,7 @@ export type RuntimeConfig = {
    * still fails. Optional — a runtime with no fallback just fails after
    * the in-place retry instead of booting a second sandbox. Keep this to a
    * small, fixed number of pre-built images (not built per-submission) —
-   * see /sandbox-templates/<runtime>/e2b.heavy.Dockerfile.
+   * a separate "heavy" variant of /sandbox-templates/<runtime>/template.ts.
    */
   fallbackTemplateId: string | null;
   /**
@@ -163,10 +166,10 @@ const NODE_INSTALL_RETRY: InstallRetryConfig = {
 export const RUNTIME_REGISTRY: Record<Runtime, RuntimeConfig> = {
   PYTHON: {
     label: "Python",
-    // TODO: replace with the real template ID after running
-    // `e2b template build` against sandbox-templates/python/e2b.Dockerfile
+    // Built via `npm run e2b:build:prod` in sandbox-templates/python/
+    // (template.ts + build.prod.ts there — see that folder's README.md).
     templateId: "1z9fpclwmf3aeijmmv6s",
-    // TODO: build sandbox-templates/python/e2b.heavy.Dockerfile (adds
+    // TODO: build a "heavy" Python template.ts variant (adds
     // build-essential, libpq-dev, libffi-dev, python3-dev, common headers
     // preinstalled) and paste its template id here. Until set, the
     // in-place apt-get retry is still attempted — this is only the
@@ -197,11 +200,12 @@ export const RUNTIME_REGISTRY: Record<Runtime, RuntimeConfig> = {
   },
   NODE: {
     label: "Node.js",
-    // Set after running `e2b template build` against
-    // sandbox-templates/node/e2b.Dockerfile — see that file and
-    // sandbox-templates/node/e2b.toml. null (not-ready) until then; see
-    // isRuntimeReady() below and step-language.tsx's `enabled` flag,
-    // which should flip to true in the same change that sets this.
+    // Set after running `npm run e2b:build:prod` inside
+    // sandbox-templates/node/ (see that folder's README.md and
+    // template.ts/build.prod.ts) — the resulting template ID from that
+    // build's output. null (not-ready) until then; see isRuntimeReady()
+    // below and step-language.tsx's `enabled` flag, which should flip to
+    // true in the same change that sets this.
     templateId: null,
     fallbackTemplateId: null,
     // npm's version syntax already matches bountied.json's convention
