@@ -1,7 +1,7 @@
 "use client";
 
 
-import { useActionState, useEffect, useRef, useState, useCallback } from "react";
+import { useActionState, useEffect, useRef, useState, useCallback, type ReactNode } from "react";
 import { FlowStep } from "./flow-step";
 import { type BountyTypeValue, StepBountyType } from "./step-bounty-type";
 import { StepLanguage } from "./step-language";
@@ -44,11 +44,17 @@ export type ExistingProblem = {
 type BountyFlowProps = {
   existingProblem?: ExistingProblem;
   githubConnected?: boolean;
+  /** Page-level header (title/subtitle/back-link) — rendered inside
+   * WorkspaceLayout's single sticky wrapper alongside the pill summary
+   * strip, so the two can never drift apart into a visible gap. See
+   * WorkspaceLayout's own doc comment for why this replaced each page
+   * rendering its own separately-sticky header. */
+  header?: ReactNode;
 };
 
 const initialState: CreateProblemResult | undefined = undefined;
 
-export function BountyFlow({ existingProblem, githubConnected = true }: BountyFlowProps) {
+export function BountyFlow({ existingProblem, githubConnected = true, header }: BountyFlowProps) {
   const isEditing = !!existingProblem;
   const initialDraftId = existingProblem?.id;
   const [draftProblemId, setDraftProblemId] = useState<string | null>(initialDraftId ?? null);
@@ -158,6 +164,7 @@ export function BountyFlow({ existingProblem, githubConnected = true }: BountyFl
 
         <WorkspaceLayout
           layoutMode={layoutMode}
+          header={header}
           pillPhase={
             <>
               <FlowStep

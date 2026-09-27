@@ -9,6 +9,14 @@ export type LayoutMode = "pills" | "workspace";
 
 export type WorkspaceLayoutProps = {
   layoutMode: LayoutMode;
+  /**
+   * Page-level header content (title, subtitle, back-link) to render
+   * inside the SAME sticky wrapper as the pill summary strip, so the two
+   * form one continuous sticky block with a structurally guaranteed zero
+   * gap — no second sticky element, no JS-measured height, nothing that
+   * can drift out of sync between them.
+   */
+  header?: ReactNode;
   /** Sequential pill steps — visible only in pills mode. */
   pillPhase?: ReactNode;
   /** Collapsed pill-phase answers — sticky when in workspace mode. */
@@ -25,6 +33,7 @@ export type WorkspaceLayoutProps = {
 
 export function WorkspaceLayout({
   layoutMode,
+  header,
   pillPhase,
   summaryStrip,
   saveStatus,
@@ -49,24 +58,31 @@ export function WorkspaceLayout({
             transition={{ ...flowTransition, ease: flowEase }}
             className="flex flex-col gap-0"
           >
-            {/* ── Sticky summary strip ─────────────────────────────────── */}
-            {/* top's fallback (used only before StickyHeaderWatcher's
-                useLayoutEffect measures the real .sticky-header) is a
-                rough average — this component is shared by pages with
-                different header heights (a single-line header on
-                problems/new/page.tsx vs. a two-line header + back-link
-                on the edit page), so no single fallback is exactly right
-                for both. useLayoutEffect runs before paint, so this only
-                matters if JS fails to run at all. */}
-            {(summaryStrip || saveStatus) && (
-              <div
-                className="sticky z-20 px-6 sm:px-10 py-3 bg-background border-b border-border flex items-center justify-between gap-4"
-                style={{ top: "var(--header-height, 100px)" }}
-              >
-                <div className="min-w-0 flex-1 flex flex-wrap items-center gap-2">
-                  {summaryStrip}
-                </div>
-                {saveStatus}
+            {/* ── Sticky header + summary strip, ONE element ──────────────
+                header (title/subtitle/back-link) and the pill summary
+                strip render inside a single sticky wrapper instead of two
+                independently-positioned sticky elements synced through a
+                JS-measured CSS variable. Two sticky elements relying on a
+                measured height to butt together will always have a window
+                (before the measurement effect runs, or after any reflow
+                the observer hasn't caught yet) where they can drift apart
+                and let scrolled content show through the gap. One sticky
+                element has no seam to open in the first place. */}
+            {(header || summaryStrip || saveStatus) && (
+              <div className="sticky top-0 z-20 bg-background border-b border-border">
+                {header && (
+                  <div className="pt-8 pb-4 px-6 sm:px-10 border-b border-border/20">
+                    {header}
+                  </div>
+                )}
+                {(summaryStrip || saveStatus) && (
+                  <div className="px-6 sm:px-10 py-3 flex items-center justify-between gap-4">
+                    <div className="min-w-0 flex-1 flex flex-wrap items-center gap-2">
+                      {summaryStrip}
+                    </div>
+                    {saveStatus}
+                  </div>
+                )}
               </div>
             )}
 
@@ -111,9 +127,16 @@ export function WorkspaceLayout({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={flowTransition}
-            className="px-6 sm:px-10 py-8 flex flex-col gap-6 w-full"
+            className="flex flex-col gap-0 w-full"
           >
-            {pillPhase}
+            {header && (
+              <div className="pt-8 pb-4 px-6 sm:px-10 border-b border-border/20">
+                {header}
+              </div>
+            )}
+            <div className="px-6 sm:px-10 py-8 flex flex-col gap-6 w-full">
+              {pillPhase}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
