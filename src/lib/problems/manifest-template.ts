@@ -56,6 +56,8 @@ export type BountiedManifestSkeleton = {
  */
 const RUNTIME_VERSION_DEFAULTS: Record<string, string> = {
   python: "3.12",
+  nodejs: "20",
+  typescript: "20", // TypeScript compiles to/runs on the same Node runtime — not enabled yet (see flow-data.ts), kept here so the skeleton is correct the moment it is.
 };
 
 export function buildManifestSkeleton(languageId: string): BountiedManifestSkeleton {

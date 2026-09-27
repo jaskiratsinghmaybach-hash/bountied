@@ -240,6 +240,7 @@ enum ProblemStatus {
 
 enum Runtime {
   PYTHON
+  NODE
 }
 
 enum EscrowState {

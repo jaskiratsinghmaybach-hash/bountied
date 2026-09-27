@@ -124,6 +124,42 @@ const PYTHON_INSTALL_RETRY: InstallRetryConfig = {
   aptInstallCommand: (packages) => `apt-get install -y -qq ${packages.join(" ")}`,
 };
 
+/**
+ * Same purpose as PYTHON_SYSTEM_LIB_SIGNATURES, for npm installs. Native
+ * addons (node-gyp) are the dominant real-world cause of an npm install
+ * failing for a missing system dependency — Python wheels vs. Node native
+ * bindings differ in mechanism but the failure shape (a missing compiler
+ * or header) is the same class of problem, so this mirrors that list's
+ * intent rather than its specific patterns.
+ */
+const NODE_SYSTEM_LIB_SIGNATURES: Array<{ pattern: RegExp; aptPackages: string[] }> = [
+  { pattern: /gyp ERR!.*(gcc|g\+\+|make).*not found|error: command 'gcc' failed/i, aptPackages: ["build-essential"] },
+  { pattern: /Python\.h: No such file or directory/i, aptPackages: ["python3-dev"] }, // node-gyp shells out to a Python build step
+  { pattern: /libssl\.so|openssl\/opensslv\.h: No such file or directory/i, aptPackages: ["libssl-dev"] },
+  { pattern: /libpq-fe\.h: No such file or directory/i, aptPackages: ["libpq-dev"] }, // pg / native postgres clients
+  { pattern: /cairo\.h: No such file or directory/i, aptPackages: ["libcairo2-dev"] }, // canvas and similar native-graphics packages
+];
+
+const NODE_INSTALL_RETRY: InstallRetryConfig = {
+  classifyFailure: (stderr) => {
+    const hasKnownSystemLibSignature = NODE_SYSTEM_LIB_SIGNATURES.some(
+      (sig) => sig.pattern.test(stderr) && sig.aptPackages.length > 0
+    );
+    return hasKnownSystemLibSignature ? "missing-system-lib" : "unretryable";
+  },
+  resolveAptPackages: (stderr) => {
+    const pkgs = new Set<string>();
+    for (const sig of NODE_SYSTEM_LIB_SIGNATURES) {
+      if (sig.pattern.test(stderr)) {
+        for (const p of sig.aptPackages) pkgs.add(p);
+      }
+    }
+    return Array.from(pkgs);
+  },
+  aptUpdateCommand: "apt-get update -qq",
+  aptInstallCommand: (packages) => `apt-get install -y -qq ${packages.join(" ")}`,
+};
+
 export const RUNTIME_REGISTRY: Record<Runtime, RuntimeConfig> = {
   PYTHON: {
     label: "Python",
@@ -159,6 +195,34 @@ export const RUNTIME_REGISTRY: Record<Runtime, RuntimeConfig> = {
     installRetry: PYTHON_INSTALL_RETRY,
     fileExtension: ".py",
   },
+  NODE: {
+    label: "Node.js",
+    // Set after running `e2b template build` against
+    // sandbox-templates/node/e2b.Dockerfile — see that file and
+    // sandbox-templates/node/e2b.toml. null (not-ready) until then; see
+    // isRuntimeReady() below and step-language.tsx's `enabled` flag,
+    // which should flip to true in the same change that sets this.
+    templateId: null,
+    fallbackTemplateId: null,
+    // npm's version syntax already matches bountied.json's convention
+    // directly (bare "2.1.0" = exact pin, or a real npm range like "^2.0",
+    // "~1.4", ">=3.0" — no comparator-prefix rewriting needed the way pip's
+    // "==" requirement needed for Python). A bare version installs that
+    // exact version; npm does not need "==" the way pip does.
+    installCommand: (deps) => {
+      if (deps.length === 0) return "true"; // nothing declared — no-op, don't fail the step
+      const specs = deps.map((d) => (d.version ? `"${d.name}@${d.version}"` : d.name));
+      return `npm install ${specs.join(" ")}`;
+    },
+    installRetry: NODE_INSTALL_RETRY,
+    // .js, not .ts — fileExtension is keyed by Runtime, and typescript +
+    // nodejs both collapse to this one Runtime (see LANGUAGE_TO_RUNTIME
+    // below), so this can't distinguish them. Not a live issue today since
+    // typescript isn't enabled yet (flow-data.ts), but when it is, this
+    // field may need to move from RuntimeConfig to a per-language lookup
+    // instead of assuming one extension per Runtime.
+    fileExtension: ".js",
+  },
 };
 
 export function getRuntimeConfig(runtime: Runtime): RuntimeConfig {
@@ -172,4 +236,34 @@ export function isRuntimeReady(runtime: Runtime): boolean {
 
 export function listReadyRuntimes(): Runtime[] {
   return (Object.keys(RUNTIME_REGISTRY) as Runtime[]).filter(isRuntimeReady);
+}
+
+/**
+ * Maps a Problem.language value (the Giver's selection from
+ * components/problems/bounty-flow/step-language.tsx's LANGUAGE_DEFS — e.g.
+ * "python", "typescript", "nodejs") to the Runtime that actually executes
+ * it in the sandbox. NOT a 1:1 identity mapping: language and Runtime are
+ * different axes on purpose. language is a Giver-facing product category
+ * used for browsing/scoping bounties (a Giver picks between "TypeScript"
+ * and "Node.js" as distinct, differently-scoped bounty types — see
+ * flow-data.ts's SCOPE_MATRIX, where they have entirely different scope
+ * options). Runtime is the sandbox execution environment — TypeScript and
+ * Node.js bounties both execute on the exact same Node runtime/template,
+ * so they intentionally collapse to one Runtime here.
+ *
+ * Falls back to PYTHON for any languageId with no explicit mapping —
+ * matches the pre-multi-runtime default (every problem was created as
+ * PYTHON regardless of language before this mapping existed), and keeps
+ * an unmapped/future languageId from ever resolving to `undefined` and
+ * crashing problem creation.
+ */
+const LANGUAGE_TO_RUNTIME: Partial<Record<string, Runtime>> = {
+  python: "PYTHON",
+  typescript: "NODE",
+  nodejs: "NODE",
+};
+
+export function getRuntimeForLanguage(languageId: string | null): Runtime {
+  if (!languageId) return "PYTHON";
+  return LANGUAGE_TO_RUNTIME[languageId] ?? "PYTHON";
 }

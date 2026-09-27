@@ -11,10 +11,20 @@ export type LanguageDef = {
 export const LANGUAGE_DEFS: LanguageDef[] = [
   // Web & Full-Stack
   { id: "javascript", label: "JavaScript", section: "web", enabled: false },
+  // typescript and javascript both stay disabled for the same reason:
+  // several of their scopes need a browser environment the sandbox
+  // doesn't provide (typescript's "Frontend (typed)" and "Full-Stack
+  // (Next.js-style)" — see SCOPE_MATRIX.typescript — are the same class
+  // of problem as javascript's DOM/extension scopes above). Only nodejs
+  // below is enabled: all four of its scopes (REST/GraphQL APIs,
+  // Real-time, CLI Tools, Background Jobs — SCOPE_MATRIX.nodejs) are
+  // genuinely backend/CLI and run fine under the same batch
+  // clone-install-run model Python already uses. Needs scope-level
+  // runtime routing before typescript/javascript can turn on safely.
   { id: "typescript", label: "TypeScript", section: "web", enabled: false },
   { id: "react", label: "React", section: "web", enabled: false },
   { id: "nextjs", label: "Next.js", section: "web", enabled: false },
-  { id: "nodejs", label: "Node.js", section: "web", enabled: false },
+  { id: "nodejs", label: "Node.js", section: "web", enabled: true },
   { id: "php", label: "PHP", section: "web", enabled: false },
   // Systems & Backend
   { id: "python", label: "Python", section: "systems", enabled: true },

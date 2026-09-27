@@ -5,8 +5,10 @@ import { prisma } from "@/lib/db";
 import { fundProblemFromCredits } from "@/lib/payments/credits";
 import { creditsRequiredToFund } from "@/lib/payments/fees";
 import { ProblemType } from "@prisma/client";
+import type { Runtime } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { getRuntimeForLanguage, isRuntimeReady } from "@/lib/sandbox/runtimes";
 
 export type CreateProblemResult =
   | { error: string }
@@ -37,6 +39,8 @@ type ParsedFields =
       isFree: boolean;
       deadline: Date | null;
       runCommand: string;
+      language: string | null;
+      runtime: Runtime;
     };
 
 /** Shared validation for both create and update — no DB writes here. */
@@ -48,6 +52,7 @@ function parseFields(formData: FormData): ParsedFields {
   const bountyAmountRaw = String(formData.get("bountyAmount") ?? "").trim();
   const deadlineRaw = String(formData.get("deadline") ?? "").trim();
   const runCommand = String(formData.get("runCommand") ?? "").trim();
+  const language = String(formData.get("language") ?? "").trim() || null;
 
   if (!title || title.length < 5) {
     return { error: "Title must be at least 5 characters." };
@@ -81,10 +86,21 @@ function parseFields(formData: FormData): ParsedFields {
   }
 
   if (!runCommand) {
-    return { error: "Enter the run command (e.g. python main.py)." };
+    return { error: "Enter the run command (e.g. python main.py or node index.js)." };
   }
-  if (!runCommand.startsWith("python")) {
-    return { error: "Run command must start with python (this platform is Python-only)." };
+
+  // Runtime is derived from the Giver's language selection, not assumed —
+  // see getRuntimeForLanguage's doc comment for why language and Runtime
+  // are different axes (e.g. both "typescript" and "nodejs" map to the
+  // one Node Runtime). A language that isn't actually ready yet (no E2B
+  // template built — see runtimes.ts's isRuntimeReady) can't be posted as
+  // a real bounty: it would create a Problem no sandbox can ever execute.
+  const runtime = getRuntimeForLanguage(language);
+  if (!isRuntimeReady(runtime)) {
+    return {
+      error:
+        "This language isn't available for bounties yet — its sandbox environment is still being set up. Try Python for now.",
+    };
   }
 
   const deadline = deadlineRaw ? new Date(deadlineRaw) : null;
@@ -92,7 +108,7 @@ function parseFields(formData: FormData): ParsedFields {
     return { error: "Invalid deadline." };
   }
 
-  return { title, description, type, tags, bountyAmount, isFree, deadline, runCommand };
+  return { title, description, type, tags, bountyAmount, isFree, deadline, runCommand, language, runtime };
 }
 
 /**
@@ -139,11 +155,12 @@ export async function createProblem(
       tags: parsed.tags,
       bountyAmount: parsed.bountyAmount,
       runCommand: parsed.runCommand,
-      runtime: "PYTHON",
+      runtime: parsed.runtime,
+      language: parsed.language,
       giverId: user.id,
       deadline: parsed.deadline,
       status: "DRAFT",
-    },
+    } as any,
   });
 
   if (intent === "draft") {
@@ -220,8 +237,10 @@ export async function updateProblem(
       tags: parsed.tags,
       bountyAmount: parsed.bountyAmount,
       runCommand: parsed.runCommand,
+      runtime: parsed.runtime,
+      language: parsed.language,
       deadline: parsed.deadline,
-    },
+    } as any,
   });
 
   if (intent === "draft") {
@@ -382,6 +401,11 @@ export async function autoSaveProblem(
   const addonsRaw = String(formData.get("addons") ?? "[]");
   const language = String(formData.get("language") ?? "").trim() || null;
   const scope = String(formData.get("scope") ?? "").trim() || null;
+  // Draft autosave never blocks on runtime readiness — a Giver mid-edit
+  // should always be able to save their progress, even for a language
+  // whose sandbox isn't ready yet. That gate belongs at actual
+  // publish/fund time (createProblem and fundAndPostProblem), not here.
+  const runtime = getRuntimeForLanguage(language);
 
   const typeValid = CREATABLE_TYPES.includes(type);
   const bountyAmount = (() => {
@@ -414,6 +438,7 @@ export async function autoSaveProblem(
           tags,
           bountyAmount,
           runCommand: runCommand || existing.runCommand,
+          runtime,
           deadline,
           language,
           scope,
@@ -432,7 +457,7 @@ export async function autoSaveProblem(
           tags,
           bountyAmount,
           runCommand: runCommand || "python main.py",
-          runtime: "PYTHON",
+          runtime,
           giverId: user.id,
           deadline,
           status: "DRAFT",

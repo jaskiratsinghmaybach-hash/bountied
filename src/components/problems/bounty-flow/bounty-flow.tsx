@@ -260,7 +260,7 @@ export function BountyFlow({ existingProblem, githubConnected = true, header }: 
               </div>
               <FieldTags value={tags} onChange={setTags} />
               <FieldDeadline preset={deadlinePreset} onPresetChange={setDeadlinePreset} customDate={deadlineCustom} onCustomDateChange={setDeadlineCustom} />
-              <FieldRunCommand value={runCommand} onChange={setRunCommand} />
+              <FieldRunCommand value={runCommand} onChange={setRunCommand} languageId={language} />
             </>
           }
           rightPanel={
