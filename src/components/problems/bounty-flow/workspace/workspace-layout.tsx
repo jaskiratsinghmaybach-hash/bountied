@@ -50,10 +50,18 @@ export function WorkspaceLayout({
             className="flex flex-col gap-0"
           >
             {/* ── Sticky summary strip ─────────────────────────────────── */}
+            {/* top's fallback (used only before StickyHeaderWatcher's
+                useLayoutEffect measures the real .sticky-header) is a
+                rough average — this component is shared by pages with
+                different header heights (a single-line header on
+                problems/new/page.tsx vs. a two-line header + back-link
+                on the edit page), so no single fallback is exactly right
+                for both. useLayoutEffect runs before paint, so this only
+                matters if JS fails to run at all. */}
             {(summaryStrip || saveStatus) && (
               <div
-                className="sticky z-20 px-6 sm:px-10 py-3 bg-background/95 backdrop-blur-sm border-b border-border flex items-center justify-between gap-4"
-                style={{ top: "var(--header-height, 72px)" }}
+                className="sticky z-20 px-6 sm:px-10 py-3 bg-background border-b border-border flex items-center justify-between gap-4"
+                style={{ top: "var(--header-height, 100px)" }}
               >
                 <div className="min-w-0 flex-1 flex flex-wrap items-center gap-2">
                   {summaryStrip}
