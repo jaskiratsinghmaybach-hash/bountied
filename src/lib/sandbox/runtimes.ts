@@ -200,13 +200,11 @@ export const RUNTIME_REGISTRY: Record<Runtime, RuntimeConfig> = {
   },
   NODE: {
     label: "Node.js",
-    // Set after running `npm run e2b:build:prod` inside
-    // sandbox-templates/node/ (see that folder's README.md and
-    // template.ts/build.prod.ts) — the resulting template ID from that
-    // build's output. null (not-ready) until then; see isRuntimeReady()
-    // below and step-language.tsx's `enabled` flag, which should flip to
-    // true in the same change that sets this.
-    templateId: null,
+    // Built via `npm run e2b:build:prod` in sandbox-templates/node/
+    // (template.ts + build.prod.ts there — see that folder's README.md).
+    // Template name: bountied_temp_node. The Node language option is
+    // enabled in flow-data.ts (nodejs) now that this ID is real.
+    templateId: "arhf00a0xpuxkq5fs3gj",
     fallbackTemplateId: null,
     // npm's version syntax already matches bountied.json's convention
     // directly (bare "2.1.0" = exact pin, or a real npm range like "^2.0",
