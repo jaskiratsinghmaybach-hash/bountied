@@ -156,17 +156,26 @@ export default async function ProblemDetailPage({
                 ? "text-emerald-500 border-money/30 bg-emerald-500/10"
                 : existingSubmission.status === "RUNNING"
                   ? "text-primary border-accent/30 bg-primary/10"
-                  : existingSubmission.status === "SANDBOX_FAILED"
-                    ? "text-danger border-danger/30 bg-danger/10"
-                    : "text-foreground-muted border-border"
+                  : existingSubmission.status === "MIRRORING"
+                    ? "text-foreground-muted border-border"
+                    : existingSubmission.status === "SANDBOX_FAILED"
+                      ? "text-danger border-danger/30 bg-danger/10"
+                      : "text-foreground-muted border-border"
             }`}>
               {existingSubmission.status.replace("_", " ").toLowerCase()}
             </span>
           </div>
 
+          {existingSubmission.status === "MIRRORING" && (
+            <p className="text-xs text-foreground-muted">
+              Your repo is being prepared for review. This takes a few seconds — no
+              sandbox has run yet, and no free review has been used.
+            </p>
+          )}
+
           {existingSubmission.status === "RUNNING" && (
             <p className="text-xs text-foreground-muted">
-              Your repo is being cloned and run in a sandbox. Refresh in 30 seconds to see the output.
+              The giver started a sandbox run on your repo. Refresh in 30 seconds to see the output.
             </p>
           )}
 

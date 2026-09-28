@@ -131,9 +131,15 @@ async function mirrorOnly(submissionId: string) {
       }
     }
 
+    // MIRRORING, not RUNNING — this step clones/mirrors the solver's repo
+    // and costs nothing. RUNNING is reserved for the paid E2B sandbox
+    // step in api/sandbox/run/route.ts, which only starts once the Giver
+    // clicks "Run sandbox review" — see MIRRORING's doc comment in
+    // schema.prisma for why these used to share one status and what that
+    // broke on the review card.
     await prisma.submission.update({
       where: { id: submissionId },
-      data: { status: "RUNNING" },
+      data: { status: "MIRRORING" },
     });
 
     const mirrorResult = await mirrorSubmissionRepo({

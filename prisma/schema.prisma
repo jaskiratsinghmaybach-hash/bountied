@@ -266,4 +266,15 @@ enum SubmissionStatus {
   // tell apart when reviewing a failed submission.
   DEPENDENCY_POLICY_VIOLATION
   DEPENDENCY_INSTALL_FAILED
+
+  // Added (product decision 2026-09-28). RUNNING previously covered two
+  // unrelated things: mirroring a solver's repo right after submission
+  // (free, automatic, seconds long) and actually running the paid E2B
+  // sandbox (only after the Giver clicks "Run sandbox review" — see
+  // review-button.tsx). Sharing one status meant the review card showed
+  // "Running sandbox" — with the same green styling a real paid run
+  // gets — during the free mirror step, before the Giver had clicked
+  // anything. MIRRORING is that free step; RUNNING now means only the
+  // paid sandbox execution in api/sandbox/run/route.ts.
+  MIRRORING
 }
