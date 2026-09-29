@@ -1,6 +1,8 @@
 import { AcceptSubmissionButton } from "@/components/dashboard/accept-submission-button";
 import { RepoAccessStatus } from "@/components/problems/repo-access-status";
 import { ReviewButton } from "@/components/problems/review-button";
+import { NotifySolverDialog } from "@/components/problems/notify-solver-dialog";
+import { classifySubmissionFailure } from "@/lib/problems/submission-failure";
 import type { SubmissionStatus } from "@prisma/client";
 
 const submissionStatusLabel: Record<
@@ -37,6 +39,7 @@ type SubmissionData = {
 export function GiverSubmissionCard({
   submission,
   problemId,
+  problemTitle,
   giverId,
   freeReviewsLeft,
   giverGithubUsername,
@@ -44,12 +47,14 @@ export function GiverSubmissionCard({
 }: {
   submission: SubmissionData;
   problemId: string;
+  problemTitle: string;
   giverId: string;
   freeReviewsLeft: number;
   giverGithubUsername: string | null;
   problemCompleted: boolean;
 }) {
   const status = submissionStatusLabel[submission.status];
+  const failure = classifySubmissionFailure(submission);
 
   return (
     <article className="rounded-lg border border-border bg-surface p-5">
@@ -85,9 +90,17 @@ export function GiverSubmissionCard({
           <p className="text-xs text-foreground-muted uppercase tracking-wide mb-2">
             Sandbox error
           </p>
-          <pre className="text-xs font-mono text-danger whitespace-pre-wrap overflow-x-auto">
-            {submission.sandboxError}
-          </pre>
+          <p className="text-sm text-danger leading-relaxed">
+            {failure?.summary ?? submission.sandboxError}
+          </p>
+          <details className="mt-2">
+            <summary className="text-xs text-foreground-muted cursor-pointer hover:text-foreground transition-colors">
+              Show raw error
+            </summary>
+            <pre className="text-xs font-mono text-danger whitespace-pre-wrap overflow-x-auto mt-2">
+              {submission.sandboxError}
+            </pre>
+          </details>
         </div>
       )}
 
@@ -103,6 +116,9 @@ export function GiverSubmissionCard({
               </span>
             )}
           </div>
+          {failure && submission.sandboxExitCode !== null && submission.sandboxExitCode !== 0 && (
+            <p className="text-sm text-danger leading-relaxed mb-2">{failure.summary}</p>
+          )}
           <pre className="text-xs font-mono text-foreground whitespace-pre-wrap overflow-x-auto max-h-64">
             {submission.sandboxOutput}
           </pre>
@@ -110,6 +126,14 @@ export function GiverSubmissionCard({
       )}
 
       <div className="flex flex-wrap items-center justify-end gap-3 pt-2 border-t border-border">
+        {submission.status !== "MIRRORING" && submission.status !== "RUNNING" && (
+          <NotifySolverDialog
+            submission={submission}
+            problemTitle={problemTitle}
+            solverName={submission.solver.name}
+          />
+        )}
+
         {submission.status === "AWAITING_REVIEW" && !problemCompleted && (
           <ReviewButton
             submissionId={submission.id}

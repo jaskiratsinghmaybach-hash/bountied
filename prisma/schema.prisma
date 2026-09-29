@@ -38,6 +38,8 @@ model User {
   reviewsReceived     Review[]            @relation("ReviewsReceived")
   submissions         Submission[]
   badges              UserBadge[]
+  notificationsReceived Notification[] @relation("NotificationRecipient")
+  notificationsSent   Notification[]  @relation("NotificationSender")
 
   @@index([email])
 }
@@ -163,9 +165,47 @@ model Submission {
   review                Review?
   problem               Problem             @relation(fields: [problemId], references: [id])
   solver                User                @relation(fields: [solverId], references: [id])
+  notifications         Notification[]
 
   @@index([problemId, status])
   @@index([solverId])
+}
+
+/**
+ * Two distinct kinds of notification share this one model on purpose,
+ * distinguished by `senderId` rather than split into two tables — a
+ * platform notification ("your payout is ready") and a Giver-to-solver
+ * message about a specific submission (product decision 2026-09-29) are
+ * both "something a User is told about," and the header bell
+ * (header-notifications.tsx) needs to render both in one merged, sorted
+ * feed regardless of source. senderId null = sent by the platform itself
+ * (a system event, no human sender). senderId set = a real user (today,
+ * always a Giver) sent it, and the UI should attribute it to them by name
+ * rather than showing it as an anonymous platform message.
+ *
+ * Deliberately NOT a chat/thread model: a Giver can send a notification
+ * about a submission, but a Solver cannot reply through this system (see
+ * the Giver-notify UI's own doc comment for why — the product concern is
+ * two parties negotiating a side deal off-platform to avoid the
+ * platform's fee, which back-and-forth messaging enables in a way a
+ * one-directional nudge doesn't).
+ */
+model Notification {
+  id           String    @id @default(cuid())
+  recipientId  String
+  recipient    User      @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  /** null = sent by the platform itself, not a human user. */
+  senderId     String?
+  sender       User?     @relation("NotificationSender", fields: [senderId], references: [id], onDelete: SetNull)
+  /** Optional link to the submission a Giver's notification is about — lets the notification deep-link back to the review page. Platform notifications (payouts, etc.) typically leave this null. */
+  submissionId String?
+  submission   Submission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+  body         String
+  readAt       DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([recipientId, readAt])
+  @@index([submissionId])
 }
 
 model Badge {

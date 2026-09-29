@@ -30,6 +30,20 @@ export async function Header() {
     profile?.role === "GIVER" || profile?.role === "BOTH";
   const creditBalance = profile ? Number(profile.creditBalance) : 0;
 
+  // Fetched here, not inside HeaderNotifications, so this stays a single
+  // server-rendered query instead of a second client-side fetch on every
+  // page mount — Header already renders on every page, so this rides
+  // along with the profile lookup above rather than adding a separate
+  // round trip.
+  const notifications = user
+    ? await prisma.notification.findMany({
+        where: { recipientId: user.id },
+        include: { sender: { select: { name: true } } },
+        orderBy: { createdAt: "desc" },
+        take: 30,
+      })
+    : [];
+
   return (
     <FixedHeader>
       <Link href="/" className="font-mono font-semibold text-foreground tracking-tight">
@@ -49,7 +63,7 @@ export async function Header() {
                 <span className="tabular-nums">${creditBalance.toFixed(2)}</span>
               </Link>
             ) : null}
-            <HeaderNotifications />
+            <HeaderNotifications notifications={notifications} />
             <HeaderAccountMenu
               name={profile?.name ?? ""}
               email={profile?.email ?? user.email ?? ""}
