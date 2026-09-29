@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { sendSubmissionNotification } from "@/lib/notifications/actions";
-import { buildSuggestedNotification } from "@/lib/problems/submission-failure";
 import {
   Dialog,
   DialogContent,
@@ -11,36 +10,26 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 
-type FailureFields = {
-  status: string;
-  sandboxError: string | null;
-  sandboxOutput: string | null;
-  sandboxExitCode: number | null;
-};
-
 /**
  * "Notify solver" — a Giver sending the solver on this submission a
  * one-way message (product decision 2026-09-29). No reply action exists
  * anywhere in this UI; this is deliberately not a chat. See
  * lib/notifications/actions.ts's sendSubmissionNotification for why.
  *
- * When the submission's failure is solver-caused (see
- * classifySubmissionFailure/buildSuggestedNotification in
- * lib/problems/submission-failure.ts), the textarea opens pre-filled with
- * a suggested message the Giver can send as-is or edit freely. This is
- * ALWAYS a suggestion, never auto-sent — the Giver still has to press
- * Send. For a platform-side failure (or no failure at all — the Giver can
- * notify about an accepted/in-review submission too, not just failures),
- * the textarea opens blank; there's nothing solver-actionable to suggest
- * for a failure that isn't theirs to fix.
+ * The textarea always opens blank (product decision 2026-09-29, revised
+ * same day) — an earlier version pre-filled a suggested message for
+ * solver-caused failures via buildSuggestedNotification
+ * (lib/problems/submission-failure.ts), which is still exported there but
+ * no longer called from here. classifySubmissionFailure's summary is
+ * still shown separately on the submission card itself
+ * (giver-submission-card.tsx) — only the pre-filled draft in this dialog
+ * was removed.
  */
 export function NotifySolverDialog({
-  submission,
-  problemTitle,
+  submissionId,
   solverName,
 }: {
-  submission: FailureFields & { id: string };
-  problemTitle: string;
+  submissionId: string;
   solverName: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -50,8 +39,7 @@ export function NotifySolverDialog({
   const [sent, setSent] = useState(false);
 
   function handleOpen() {
-    const suggestion = buildSuggestedNotification(submission, problemTitle);
-    setBody(suggestion ?? "");
+    setBody("");
     setError(null);
     setSent(false);
     setOpen(true);
@@ -64,7 +52,7 @@ export function NotifySolverDialog({
     const formData = new FormData();
     formData.set("body", body);
 
-    const result = await sendSubmissionNotification(submission.id, formData);
+    const result = await sendSubmissionNotification(submissionId, formData);
 
     setSending(false);
     if ("error" in result) {

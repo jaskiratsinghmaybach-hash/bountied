@@ -39,7 +39,6 @@ type SubmissionData = {
 export function GiverSubmissionCard({
   submission,
   problemId,
-  problemTitle,
   giverId,
   freeReviewsLeft,
   giverGithubUsername,
@@ -47,7 +46,6 @@ export function GiverSubmissionCard({
 }: {
   submission: SubmissionData;
   problemId: string;
-  problemTitle: string;
   giverId: string;
   freeReviewsLeft: number;
   giverGithubUsername: string | null;
@@ -128,8 +126,7 @@ export function GiverSubmissionCard({
       <div className="flex flex-wrap items-center justify-end gap-3 pt-2 border-t border-border">
         {submission.status !== "MIRRORING" && submission.status !== "RUNNING" && (
           <NotifySolverDialog
-            submission={submission}
-            problemTitle={problemTitle}
+            submissionId={submission.id}
             solverName={submission.solver.name}
           />
         )}

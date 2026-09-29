@@ -205,7 +205,6 @@ export default async function GiverProblemPage({
                   key={submission.id}
                   submission={submission}
                   problemId={problem.id}
-                  problemTitle={problem.title}
                   giverId={problem.giverId}
                   freeReviewsLeft={freeReviewsLeft}
                   giverGithubUsername={profile.githubUsername}
