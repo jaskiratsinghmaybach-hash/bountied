@@ -46,13 +46,24 @@ export async function createSubmission(
     return { error: "This problem is no longer accepting submissions." };
   }
 
-  const existingSubmission = await prisma.submission.findFirst({
+  // Up to 3 attempts per solver per problem (product decision 2026-09-29).
+  // Every prior attempt counts toward the cap, including failed/rejected
+  // ones — this is a hard resubmission limit, not "3 successful reviews."
+  // Each attempt is its own Submission row with its own independently
+  // mirrored repo (repoNameForSubmission keys off submissionId, not
+  // problemId+solverId — see lib/github/mirror.ts), so earlier attempts'
+  // mirror/review history is never overwritten by a later one; a Giver
+  // reviewing attempt 1 after the solver has already pushed attempt 3
+  // still sees attempt 1's own real output, not attempt 3's.
+  const MAX_SUBMISSION_ATTEMPTS = 3;
+  const priorAttempts = await prisma.submission.count({
     where: { problemId, solverId: user.id },
-    select: { id: true },
   });
 
-  if (existingSubmission) {
-    return { error: "You already submitted a solution for this problem." };
+  if (priorAttempts >= MAX_SUBMISSION_ATTEMPTS) {
+    return {
+      error: `You've used all ${MAX_SUBMISSION_ATTEMPTS} submission attempts for this problem.`,
+    };
   }
 
   const submission = await prisma.submission.create({
@@ -62,6 +73,7 @@ export async function createSubmission(
       repoUrl,
       writeup,
       status: "SUBMITTED",
+      attemptNumber: priorAttempts + 1,
     },
   });
 

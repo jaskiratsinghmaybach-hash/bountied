@@ -6,6 +6,10 @@ import { ManifestHelper } from "@/components/problems/manifest-helper";
 import { parseDescription, DESCRIPTION_SECTION_HEADERS } from "@/lib/problems/description-sections";
 import { getLanguageDef } from "@/components/problems/bounty-flow/flow-data";
 import { renderManifestSkeleton, buildManifestPrompt } from "@/lib/problems/manifest-template";
+import { classifySubmissionFailure } from "@/lib/problems/submission-failure";
+
+/** Product decision 2026-09-29 — see submission-actions.ts's createSubmission for the enforcement side. */
+const MAX_SUBMISSION_ATTEMPTS = 3;
 
 export default async function ProblemDetailPage({
   params,
@@ -30,17 +34,28 @@ export default async function ProblemDetailPage({
 
   if (!problem) notFound();
 
-  // Solvers see their own existing non-rejected submission if one exists
-  const existingSubmission = user
-    ? await prisma.submission.findFirst({
-        where: {
-          problemId: id,
-          solverId: user.id,
-          status: { notIn: ["REJECTED"] },
+  // Solvers see EVERY attempt they've made on this problem (up to
+  // MAX_SUBMISSION_ATTEMPTS), not just one — product decision 2026-09-29.
+  // Each attempt is its own row with its own independently mirrored repo
+  // (see createSubmission's doc comment in submission-actions.ts), so a
+  // rejected attempt 1 still has real history worth showing even after
+  // attempt 2 exists.
+  const mySubmissions = user
+    ? await prisma.submission.findMany({
+        where: { problemId: id, solverId: user.id },
+        select: {
+          id: true,
+          status: true,
+          sandboxOutput: true,
+          sandboxError: true,
+          sandboxExitCode: true,
+          writeup: true,
+          attemptNumber: true,
         },
-        select: { id: true, status: true, sandboxOutput: true, sandboxError: true, writeup: true },
+        orderBy: { attemptNumber: "asc" },
       })
-    : null;
+    : [];
+  const canResubmit = mySubmissions.length < MAX_SUBMISSION_ATTEMPTS;
 
   const isSolver = profile?.role === "SOLVER" || profile?.role === "BOTH";
   const isGiver = profile?.role === "GIVER" || profile?.role === "BOTH";
@@ -146,63 +161,67 @@ export default async function ProblemDetailPage({
         </div>
       )}
 
-      {/* Solver with an existing submission */}
-      {isSolver && !isOwner && existingSubmission && (
-        <div className="rounded-lg border border-border bg-surface p-6">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-medium text-foreground">Your submission</p>
-            <span className={`text-xs font-mono px-2 py-0.5 rounded border ${
-              existingSubmission.status === "UNDER_REVIEW"
-                ? "text-emerald-500 border-money/30 bg-emerald-500/10"
-                : existingSubmission.status === "RUNNING"
-                  ? "text-primary border-accent/30 bg-primary/10"
-                  : existingSubmission.status === "MIRRORING"
-                    ? "text-foreground-muted border-border"
-                    : existingSubmission.status === "SANDBOX_FAILED"
-                      ? "text-danger border-danger/30 bg-danger/10"
-                      : "text-foreground-muted border-border"
-            }`}>
-              {existingSubmission.status.replace("_", " ").toLowerCase()}
-            </span>
-          </div>
+      {/* Solver's own attempts — every one made so far, oldest first */}
+      {isSolver && !isOwner && mySubmissions.length > 0 && (
+        <div className="flex flex-col gap-4">
+          {mySubmissions.map((s) => {
+            const failure = classifySubmissionFailure(s);
+            return (
+              <div key={s.id} className="rounded-lg border border-border bg-surface p-6">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-medium text-foreground">
+                    Attempt {s.attemptNumber} of {MAX_SUBMISSION_ATTEMPTS}
+                  </p>
+                  <span className={`text-xs font-mono px-2 py-0.5 rounded border ${
+                    s.status === "UNDER_REVIEW" || s.status === "ACCEPTED"
+                      ? "text-emerald-500 border-money/30 bg-emerald-500/10"
+                      : s.status === "RUNNING"
+                        ? "text-primary border-accent/30 bg-primary/10"
+                        : s.status === "MIRRORING"
+                          ? "text-foreground-muted border-border"
+                          : failure
+                            ? "text-danger border-danger/30 bg-danger/10"
+                            : "text-foreground-muted border-border"
+                  }`}>
+                    {s.status.replace("_", " ").toLowerCase()}
+                  </span>
+                </div>
 
-          {existingSubmission.status === "MIRRORING" && (
-            <p className="text-xs text-foreground-muted">
-              Your repo is being prepared for review. This takes a few seconds — no
-              sandbox has run yet, and no free review has been used.
-            </p>
-          )}
+                {s.status === "MIRRORING" && (
+                  <p className="text-xs text-foreground-muted">
+                    Your repo is being prepared for review. This takes a few seconds — no
+                    sandbox has run yet, and no free review has been used.
+                  </p>
+                )}
 
-          {existingSubmission.status === "RUNNING" && (
-            <p className="text-xs text-foreground-muted">
-              The giver started a sandbox run on your repo. Refresh in 30 seconds to see the output.
-            </p>
-          )}
+                {s.status === "RUNNING" && (
+                  <p className="text-xs text-foreground-muted">
+                    The giver started a sandbox run on your repo. Refresh in 30 seconds to see the output.
+                  </p>
+                )}
 
-          {existingSubmission.status === "SANDBOX_FAILED" && (
-            <div>
-              <p className="text-xs text-danger mb-1">Sandbox failed to run your code:</p>
-              <pre className="text-[11px] font-mono text-foreground-muted bg-surface-raised rounded p-3 overflow-x-auto whitespace-pre-wrap">
-                {existingSubmission.sandboxError}
-              </pre>
-            </div>
-          )}
+                {failure && (
+                  <p className="text-xs text-danger mb-2">{failure.summary}</p>
+                )}
 
-          {existingSubmission.sandboxOutput && (
-            <div>
-              <p className="text-[11px] text-foreground-muted uppercase tracking-wide mb-1.5">
-                Captured output
-              </p>
-              <pre className="text-xs font-mono text-foreground bg-surface-raised rounded-md p-4 overflow-x-auto whitespace-pre-wrap max-h-64 overflow-y-auto border border-border">
-                {existingSubmission.sandboxOutput}
-              </pre>
-            </div>
-          )}
+                {s.sandboxOutput && (
+                  <div>
+                    <p className="text-[11px] text-foreground-muted uppercase tracking-wide mb-1.5">
+                      Captured output
+                    </p>
+                    <pre className="text-xs font-mono text-foreground bg-surface-raised rounded-md p-4 overflow-x-auto whitespace-pre-wrap max-h-64 overflow-y-auto border border-border">
+                      {s.sandboxOutput}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {/* Solver without a submission yet */}
-      {isSolver && !isOwner && !existingSubmission && problem.status === "OPEN" && (
+      {/* Solver can still submit — up to MAX_SUBMISSION_ATTEMPTS total */}
+      {isSolver && !isOwner && canResubmit && problem.status === "OPEN" && (
         <div className="flex flex-col gap-4">
           <ManifestHelper
             languageLabel={getLanguageDef(problem.language ?? "python")?.label ?? "Python"}

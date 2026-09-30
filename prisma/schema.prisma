@@ -148,6 +148,8 @@ model Submission {
   solverId              String
   status                SubmissionStatus    @default(SUBMITTED)
   submittedAt           DateTime            @default(now())
+  /** 1st/2nd/3rd attempt by this solver on this problem — product decision 2026-09-29 (max 3, see createSubmission). Stored, not derived, so the UI can label "Attempt 2 of 3" without re-sorting every sibling submission on every render. */
+  attemptNumber         Int                 @default(1)
   isRevealed            Boolean             @default(false)
   evaluationResult      Json?
   repoUrl               String

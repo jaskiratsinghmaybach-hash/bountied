@@ -33,6 +33,7 @@ type SubmissionData = {
   isRevealed: boolean;
   platformRepoUrl: string | null;
   githubAccessGrantedAt: Date | null;
+  attemptNumber: number;
   solver: { name: string };
 };
 
@@ -58,7 +59,12 @@ export function GiverSubmissionCard({
     <article className="rounded-lg border border-border bg-surface p-5">
       <div className="flex items-start justify-between gap-4 mb-4">
         <div>
-          <p className="text-sm font-medium text-foreground">{submission.solver.name}</p>
+          <p className="text-sm font-medium text-foreground">
+            {submission.solver.name}
+            <span className="ml-2 text-xs font-normal text-foreground-muted">
+              attempt {submission.attemptNumber}
+            </span>
+          </p>
           <p className="text-xs font-mono text-foreground-muted mt-1">
             Submitted {submission.submittedAt.toLocaleString()}
           </p>
