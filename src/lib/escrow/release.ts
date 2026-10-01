@@ -46,74 +46,86 @@ export async function acceptSubmissionAndRelease(params: {
 }): Promise<{ ok: true } | { ok: false; reason: string }> {
   const { problemId, submissionId, actingGiverId } = params;
 
+  // maxWait/timeout widened from Prisma's defaults (2s / 5s) — reported
+  // failure: "Unable to start a transaction in the given time" against
+  // the Supabase pooler (aws-0-ap-southeast-2.pooler.supabase.com), which
+  // can take longer than 2s to hand out a pooled connection under load or
+  // after being idle. This is pool contention, not a sign the transaction
+  // body itself is slow — the work inside is a handful of simple updates
+  // on indexed rows. Widening the wait window is the correct fix for
+  // "couldn't get a connection in time"; it would NOT be the right fix
+  // for a slow transaction body, which this isn't.
   const outcome: { ok: true; platformRepoFullName: string | null } | { ok: false; reason: string } =
-    await prisma.$transaction(async (tx) => {
-    const problem = await tx.problem.findUnique({
-      where: { id: problemId },
-      include: { escrow: true },
-    });
+    await prisma.$transaction(
+      async (tx) => {
+        const problem = await tx.problem.findUnique({
+          where: { id: problemId },
+          include: { escrow: true },
+        });
 
-    if (!problem) return { ok: false, reason: "Problem not found" };
-    if (problem.giverId !== actingGiverId) {
-      return { ok: false, reason: "Only the problem giver can accept a submission" };
-    }
-    if (!problem.escrow || problem.escrow.state !== EscrowState.HELD) {
-      return { ok: false, reason: "Escrow is not in a releasable state" };
-    }
+        if (!problem) return { ok: false, reason: "Problem not found" };
+        if (problem.giverId !== actingGiverId) {
+          return { ok: false, reason: "Only the problem giver can accept a submission" };
+        }
+        if (!problem.escrow || problem.escrow.state !== EscrowState.HELD) {
+          return { ok: false, reason: "Escrow is not in a releasable state" };
+        }
 
-    const submission = await tx.submission.findUnique({ where: { id: submissionId } });
-    if (!submission || submission.problemId !== problemId) {
-      return { ok: false, reason: "Submission not found for this problem" };
-    }
-    if (submission.isRevealed) {
-      return { ok: false, reason: "Submission already revealed/paid" };
-    }
+        const submission = await tx.submission.findUnique({ where: { id: submissionId } });
+        if (!submission || submission.problemId !== problemId) {
+          return { ok: false, reason: "Submission not found for this problem" };
+        }
+        if (submission.isRevealed) {
+          return { ok: false, reason: "Submission already revealed/paid" };
+        }
 
-    const bountyAmount = Number(problem.escrow.amount);
-    const creditedAmount = amountCreditedOnRelease(bountyAmount); // bounty * 0.95
+        const bountyAmount = Number(problem.escrow.amount);
+        const creditedAmount = amountCreditedOnRelease(bountyAmount); // bounty * 0.95
 
-    // 1. Flip the reveal gate.
-    await tx.submission.update({
-      where: { id: submissionId },
-      data: { status: SubmissionStatus.ACCEPTED, isRevealed: true },
-    });
+        // 1. Flip the reveal gate.
+        await tx.submission.update({
+          where: { id: submissionId },
+          data: { status: SubmissionStatus.ACCEPTED, isRevealed: true },
+        });
 
-    // 2. Reject every other submission on this problem.
-    await tx.submission.updateMany({
-      where: { problemId, id: { not: submissionId } },
-      data: { status: SubmissionStatus.REJECTED },
-    });
+        // 2. Reject every other submission on this problem.
+        await tx.submission.updateMany({
+          where: { problemId, id: { not: submissionId } },
+          data: { status: SubmissionStatus.REJECTED },
+        });
 
-    // 3. Release escrow record. paymentProviderRef stays null here — no
-    //    external payout happened yet, only an internal balance credit.
-    await tx.escrow.update({
-      where: { id: problem.escrow.id },
-      data: {
-        state: EscrowState.RELEASED,
-        releasedAt: new Date(),
-        releasedToSubmissionId: submissionId,
+        // 3. Release escrow record. paymentProviderRef stays null here — no
+        //    external payout happened yet, only an internal balance credit.
+        await tx.escrow.update({
+          where: { id: problem.escrow.id },
+          data: {
+            state: EscrowState.RELEASED,
+            releasedAt: new Date(),
+            releasedToSubmissionId: submissionId,
+          },
+        });
+
+        // 4. Close out the problem.
+        await tx.problem.update({
+          where: { id: problemId },
+          data: { status: ProblemStatus.COMPLETED, completedAt: new Date() },
+        });
+
+        // 5. Credit the solver: availableBalance (withdrawable now) at 95%,
+        //    totalEarned (lifetime stat, always the full bounty) unchanged.
+        await tx.user.update({
+          where: { id: submission.solverId },
+          data: {
+            completionCount: { increment: 1 },
+            totalEarned: { increment: bountyAmount },
+            availableBalance: { increment: creditedAmount },
+          },
+        });
+
+        return { ok: true, platformRepoFullName: submission.platformRepoFullName };
       },
-    });
-
-    // 4. Close out the problem.
-    await tx.problem.update({
-      where: { id: problemId },
-      data: { status: ProblemStatus.COMPLETED, completedAt: new Date() },
-    });
-
-    // 5. Credit the solver: availableBalance (withdrawable now) at 95%,
-    //    totalEarned (lifetime stat, always the full bounty) unchanged.
-    await tx.user.update({
-      where: { id: submission.solverId },
-      data: {
-        completionCount: { increment: 1 },
-        totalEarned: { increment: bountyAmount },
-        availableBalance: { increment: creditedAmount },
-      },
-    });
-
-    return { ok: true, platformRepoFullName: submission.platformRepoFullName };
-  });
+      { maxWait: 10_000, timeout: 15_000 }
+    );
 
   if (!outcome.ok) return outcome;
 

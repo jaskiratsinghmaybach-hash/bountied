@@ -52,8 +52,9 @@ export async function mirrorSubmissionRepo(params: {
   solverToken: string;
   runtime: Runtime;
   problemTitle?: string;
+  attemptNumber: number;
 }): Promise<MirrorResult> {
-  const { submissionId, sourceRepoUrl, solverToken, runtime, problemTitle } = params;
+  const { submissionId, sourceRepoUrl, solverToken, runtime, problemTitle, attemptNumber } = params;
 
   const platformToken = process.env.PLATFORM_GITHUB_TOKEN;
   if (!platformToken) {
@@ -88,7 +89,7 @@ export async function mirrorSubmissionRepo(params: {
   }
 
   const created = await createPlatformRepo(
-    repoNameForSubmission(submissionId),
+    repoNameForSubmission(submissionId, attemptNumber),
     problemTitle
       ? `Submission for "${problemTitle}" — mirrored by Bountied.`
       : undefined

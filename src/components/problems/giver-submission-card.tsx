@@ -1,7 +1,6 @@
 import { AcceptSubmissionButton } from "@/components/dashboard/accept-submission-button";
 import { RepoAccessStatus } from "@/components/problems/repo-access-status";
 import { ReviewButton } from "@/components/problems/review-button";
-import { NotifySolverDialog } from "@/components/problems/notify-solver-dialog";
 import { classifySubmissionFailure } from "@/lib/problems/submission-failure";
 import type { SubmissionStatus } from "@prisma/client";
 
@@ -56,14 +55,11 @@ export function GiverSubmissionCard({
   const failure = classifySubmissionFailure(submission);
 
   return (
-    <article className="rounded-lg border border-border bg-surface p-5">
+    <article className="rounded-lg border border-border bg-surface-raised p-5">
       <div className="flex items-start justify-between gap-4 mb-4">
         <div>
           <p className="text-sm font-medium text-foreground">
-            {submission.solver.name}
-            <span className="ml-2 text-xs font-normal text-foreground-muted">
-              attempt {submission.attemptNumber}
-            </span>
+            Attempt {submission.attemptNumber}
           </p>
           <p className="text-xs font-mono text-foreground-muted mt-1">
             Submitted {submission.submittedAt.toLocaleString()}
@@ -130,13 +126,6 @@ export function GiverSubmissionCard({
       )}
 
       <div className="flex flex-wrap items-center justify-end gap-3 pt-2 border-t border-border">
-        {submission.status !== "MIRRORING" && submission.status !== "RUNNING" && (
-          <NotifySolverDialog
-            submissionId={submission.id}
-            solverName={submission.solver.name}
-          />
-        )}
-
         {submission.status === "AWAITING_REVIEW" && !problemCompleted && (
           <ReviewButton
             submissionId={submission.id}

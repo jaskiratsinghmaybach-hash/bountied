@@ -168,6 +168,8 @@ model Submission {
   problem               Problem             @relation(fields: [problemId], references: [id])
   solver                User                @relation(fields: [solverId], references: [id])
   notifications         Notification[]
+  /** Every notification that references this attempt (product decision 2026-09-30) — see NotificationSubmission. */
+  notificationLinks     NotificationSubmission[] @relation("NotificationSubmissionLink")
 
   @@index([problemId, status])
   @@index([solverId])
@@ -199,14 +201,45 @@ model Notification {
   /** null = sent by the platform itself, not a human user. */
   senderId     String?
   sender       User?     @relation("NotificationSender", fields: [senderId], references: [id], onDelete: SetNull)
-  /** Optional link to the submission a Giver's notification is about — lets the notification deep-link back to the review page. Platform notifications (payouts, etc.) typically leave this null. */
+  /** Deep-link target for a single-attempt notification, or the FIRST
+   * referenced attempt for a multi-attempt one (product decision
+   * 2026-09-30) — kept so every existing single-attempt notification
+   * (and all code that reads this field directly) keeps working
+   * unchanged. referencedSubmissions below is the full, authoritative
+   * list for a multi-attempt message; this field is a convenience, not
+   * the source of truth once more than one attempt is referenced. */
   submissionId String?
   submission   Submission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+  /** Every attempt this notification actually references — one row per
+   * referenced Submission. A single-attempt notification still gets
+   * exactly one row here, matching submissionId. */
+  referencedSubmissions NotificationSubmission[]
   body         String
   readAt       DateTime?
   createdAt    DateTime  @default(now())
 
   @@index([recipientId, readAt])
+  @@index([submissionId])
+}
+
+/**
+ * Join table: which attempts a single Notification references. A Giver
+ * can tag more than one attempt in one message (product decision
+ * 2026-09-30 — e.g. "this applies to both your 2nd and 3rd tries"), so
+ * this is a proper many-to-many rather than a single foreign key or an
+ * array column — an array column can't carry a clean FK constraint or be
+ * joined/indexed the normal way, and this relationship is exactly the
+ * shape a join table exists for.
+ */
+model NotificationSubmission {
+  id             String       @id @default(cuid())
+  notificationId String
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  submissionId   String
+  submission     Submission   @relation("NotificationSubmissionLink", fields: [submissionId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@unique([notificationId, submissionId])
   @@index([submissionId])
 }
 

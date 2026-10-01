@@ -69,10 +69,31 @@ export async function grantGiverRepoAccess(params: {
   if (res.status === 201) return { ok: true, alreadyCollaborator: false };
   if (res.status === 204) return { ok: true, alreadyCollaborator: true };
 
+  // Every failure branch below used to guess at WHY from the status code
+  // alone (e.g. assuming 422 always means "bad username") rather than
+  // reading GitHub's own error body. That guess was actively misleading
+  // in a real case: a 422 on this endpoint, per GitHub's docs, means
+  // "validation failed" generically — most often a scope/permission
+  // problem on PLATFORM_GITHUB_TOKEN, NOT a malformed username — but the
+  // old message told the giver to go re-check their own username, which
+  // sent them chasing the wrong fix (re-authing their own GitHub
+  // connection, which this endpoint never even uses — see this file's
+  // top doc comment on why only PLATFORM_GITHUB_TOKEN matters here).
+  // GitHub's response body (the "message" field) is the actual reason;
+  // surface that instead of inventing one.
+  let githubMessage: string | null = null;
+  try {
+    const body = (await res.json()) as { message?: string };
+    githubMessage = typeof body.message === "string" ? body.message : null;
+  } catch {
+    // Non-JSON or empty body — fall through to the generic message below.
+  }
+
   if (res.status === 404) {
     return {
       ok: false,
       reason:
+        githubMessage ??
         "Could not find the mirrored repository, or the platform token no longer has access to it.",
     };
   }
@@ -80,15 +101,23 @@ export async function grantGiverRepoAccess(params: {
     return {
       ok: false,
       reason:
+        githubMessage ??
         "The platform GitHub token doesn't have permission to add collaborators (check its scopes).",
     };
   }
   if (res.status === 422) {
     return {
       ok: false,
-      reason: `GitHub could not process the invite — check that "${giverGithubUsername}" is a valid GitHub username.`,
+      reason: githubMessage
+        ? `GitHub rejected the invite: ${githubMessage}`
+        : `GitHub rejected the invite for an unspecified reason (422). This is usually a permission/scope issue on the platform's GitHub token, not the giver's username.`,
     };
   }
 
-  return { ok: false, reason: `GitHub API error (${res.status}).` };
+  return {
+    ok: false,
+    reason: githubMessage
+      ? `GitHub API error (${res.status}): ${githubMessage}`
+      : `GitHub API error (${res.status}).`,
+  };
 }

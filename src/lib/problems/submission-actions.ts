@@ -160,6 +160,7 @@ async function mirrorOnly(submissionId: string) {
       solverToken: submission.solver.githubAccessToken,
       runtime: submission.problem.runtime,
       problemTitle: submission.problem.title,
+      attemptNumber: submission.attemptNumber,
     });
 
     if (!mirrorResult.ok) {

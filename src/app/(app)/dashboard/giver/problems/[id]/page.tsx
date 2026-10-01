@@ -7,7 +7,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { DraftActions } from "@/components/problems/draft-actions";
 import { FundDraftButton } from "@/components/problems/fund-draft-button";
-import { GiverSubmissionCard } from "@/components/problems/giver-submission-card";
+import { GiverSolverGroup } from "@/components/problems/giver-solver-group";
 import { StickyHeaderWatcher } from "@/components/problems/sticky-header-watcher";
 import type { ProblemStatus, ProblemType } from "@prisma/client";
 import { parseDescription, DESCRIPTION_SECTION_HEADERS } from "@/lib/problems/description-sections";
@@ -199,19 +199,46 @@ export default async function GiverProblemPage({
               </p>
             </div>
           ) : (
-            <div className="flex flex-col gap-3">
-              {problem.submissions.map((submission) => (
-                <GiverSubmissionCard
-                  key={submission.id}
-                  submission={submission}
-                  problemId={problem.id}
-                  giverId={problem.giverId}
-                  freeReviewsLeft={freeReviewsLeft}
-                  giverGithubUsername={profile.githubUsername}
-                  problemCompleted={isCompleted}
-                />
-              ))}
-            </div>
+            (() => {
+              // Group by solver (product decision 2026-09-30) — a solver's
+              // several attempts previously rendered as unrelated-looking
+              // cards. problem.submissions is already ordered newest-first
+              // (see the query's orderBy below), so the first submission
+              // encountered per solverId is that solver's most recent one —
+              // used to order the groups themselves newest-activity-first.
+              const groups = new Map<
+                string,
+                { solverName: string; submissions: typeof problem.submissions }
+              >();
+              for (const submission of problem.submissions) {
+                const existing = groups.get(submission.solverId);
+                if (existing) {
+                  existing.submissions.push(submission);
+                } else {
+                  groups.set(submission.solverId, {
+                    solverName: submission.solver.name,
+                    submissions: [submission],
+                  });
+                }
+              }
+
+              return (
+                <div className="flex flex-col gap-4">
+                  {Array.from(groups.entries()).map(([solverId, group]) => (
+                    <GiverSolverGroup
+                      key={solverId}
+                      solverName={group.solverName}
+                      submissions={group.submissions}
+                      problemId={problem.id}
+                      giverId={problem.giverId}
+                      freeReviewsLeft={freeReviewsLeft}
+                      giverGithubUsername={profile.githubUsername}
+                      problemCompleted={isCompleted}
+                    />
+                  ))}
+                </div>
+              );
+            })()
           )}
         </section>
       )}

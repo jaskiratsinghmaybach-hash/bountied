@@ -48,6 +48,14 @@ export default async function ProblemDetailPage({
           status: true,
           sandboxOutput: true,
           sandboxError: true,
+          notificationLinks: {
+            select: {
+              notification: {
+                select: { id: true, body: true, createdAt: true, sender: { select: { name: true } } },
+              },
+            },
+            orderBy: { createdAt: "desc" },
+          },
           sandboxExitCode: true,
           writeup: true,
           attemptNumber: true,
@@ -212,6 +220,31 @@ export default async function ProblemDetailPage({
                     <pre className="text-xs font-mono text-foreground bg-surface-raised rounded-md p-4 overflow-x-auto whitespace-pre-wrap max-h-64 overflow-y-auto border border-border">
                       {s.sandboxOutput}
                     </pre>
+                  </div>
+                )}
+
+                {/* Messages from the giver referencing this attempt
+                    (product decision 2026-09-30) — the same notifications
+                    a solver sees in the header bell, surfaced here too so
+                    they don't have to rely on remembering/finding the
+                    bell item to keep track of what the giver said about
+                    THIS specific attempt. */}
+                {s.notificationLinks.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-border/50 flex flex-col gap-2">
+                    <p className="text-[11px] text-foreground-muted uppercase tracking-wide">
+                      Messages from the giver
+                    </p>
+                    {s.notificationLinks.map(({ notification: n }) => (
+                      <div key={n.id} className="rounded-md bg-surface-raised p-3">
+                        <p className="text-xs text-foreground-muted mb-1">
+                          {n.sender?.name ?? "Bountied"} ·{" "}
+                          <span className="font-mono">{new Date(n.createdAt).toLocaleString()}</span>
+                        </p>
+                        <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                          {n.body}
+                        </p>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

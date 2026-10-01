@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Bell } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +19,7 @@ type NotificationItem = {
   readAt: Date | null;
   senderId: string | null;
   sender: { name: string } | null;
+  submission: { problemId: string } | null;
 };
 
 /**
@@ -102,22 +104,43 @@ export function HeaderNotifications({
           </div>
         ) : (
           <ul className="max-h-80 overflow-y-auto">
-            {items.map((n) => (
-              <li
-                key={n.id}
-                className="border-b border-border px-4 py-3 last:border-b-0"
-              >
-                <p className="text-xs text-foreground-muted mb-1">
-                  {n.sender?.name ?? "Bountied"}
-                </p>
-                <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
-                  {n.body}
-                </p>
-                <p className="text-[11px] text-foreground-muted mt-1 font-mono">
-                  {new Date(n.createdAt).toLocaleString()}
-                </p>
-              </li>
-            ))}
+            {items.map((n) => {
+              const content = (
+                <>
+                  <p className="text-xs text-foreground-muted mb-1">
+                    {n.sender?.name ?? "Bountied"}
+                  </p>
+                  <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                    {n.body}
+                  </p>
+                  <p className="text-[11px] text-foreground-muted mt-1 font-mono">
+                    {new Date(n.createdAt).toLocaleString()}
+                  </p>
+                </>
+              );
+
+              // Only a notification tied to a submission can deep-link
+              // anywhere (product decision 2026-09-30) — a platform
+              // notification with no submission isn't clickable, it's
+              // just informational.
+              return n.submission ? (
+                <li key={n.id} className="border-b border-border last:border-b-0">
+                  <Link
+                    href={`/problems/${n.submission.problemId}`}
+                    className="block px-4 py-3 hover:bg-surface-raised transition-colors"
+                  >
+                    {content}
+                  </Link>
+                </li>
+              ) : (
+                <li
+                  key={n.id}
+                  className="border-b border-border px-4 py-3 last:border-b-0"
+                >
+                  {content}
+                </li>
+              );
+            })}
           </ul>
         )}
       </PopoverContent>

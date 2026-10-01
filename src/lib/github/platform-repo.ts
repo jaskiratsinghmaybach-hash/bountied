@@ -57,8 +57,28 @@ function headers(token: string): HeadersInit {
  * intentional — see the note on createPlatformRepo below. The repo stays
  * private forever regardless, so guessing the name grants nothing.
  */
-export function repoNameForSubmission(submissionId: string): string {
-  return `sub-${submissionId}`;
+/**
+ * attemptNumber is appended as "-attempt-N" (product decision 2026-09-30)
+ * so a Giver browsing bountied-repositories on GitHub directly can tell
+ * two attempts from the same solver apart without cross-referencing
+ * Bountied itself — see the screenshots that prompted this: repo names
+ * were previously indistinguishable raw CUIDs with no way to tell which
+ * attempt was which just by looking at GitHub. Not "-#N": GitHub
+ * repository names only permit letters, digits, hyphens, underscores and
+ * periods — "#" is rejected outright, so every repo creation would have
+ * started failing had this used the literal character requested.
+ *
+ * The submissionId segment is still the FULL id, not a shortened/sliced
+ * version — uniqueness here is load-bearing (createPlatformRepo adopts
+ * an existing repo on a 422 name collision, assuming that collision
+ * means "this exact submission partially succeeded before," which would
+ * be WRONG and would hand one submission's mirror to a different one if
+ * two different submissionIds ever produced the same shortened name).
+ * Full CUIDs are unique by construction; nothing here may trade that
+ * away for a shorter cosmetic name.
+ */
+export function repoNameForSubmission(submissionId: string, attemptNumber: number): string {
+  return `sub-${submissionId}-attempt-${attemptNumber}`;
 }
 
 /**

@@ -38,7 +38,15 @@ export async function Header() {
   const notifications = user
     ? await prisma.notification.findMany({
         where: { recipientId: user.id },
-        include: { sender: { select: { name: true } } },
+        include: {
+          sender: { select: { name: true } },
+          // submission.problemId is what lets a click on the notification
+          // take the recipient straight to the bounty page it's about
+          // (product decision 2026-09-30) — a platform notification with
+          // no submissionId simply has no link, which the UI treats as
+          // "not clickable" rather than erroring.
+          submission: { select: { problemId: true } },
+        },
         orderBy: { createdAt: "desc" },
         take: 30,
       })
