@@ -79,12 +79,40 @@ export async function grantGiverRepoAccess(params: {
   // sent them chasing the wrong fix (re-authing their own GitHub
   // connection, which this endpoint never even uses — see this file's
   // top doc comment on why only PLATFORM_GITHUB_TOKEN matters here).
-  // GitHub's response body (the "message" field) is the actual reason;
-  // surface that instead of inventing one.
+  //
+  // Surfacing just the top-level "message" field (first fix,
+  // 2026-09-30) turned out to still be unhelpful in practice — GitHub's
+  // real 422 response for this is {"message": "Validation Failed",
+  // "errors": [{resource, field, code}], "documentation_url": "..."}.
+  // The useful detail lives in errors[], not message — "Validation
+  // Failed" alone (confirmed live: a real "Retry invite" attempt showed
+  // exactly this and nothing more useful) tells a giver nothing actionable.
+  // Build the real reason from errors[] when present.
   let githubMessage: string | null = null;
+  let githubDocsUrl: string | null = null;
   try {
-    const body = (await res.json()) as { message?: string };
-    githubMessage = typeof body.message === "string" ? body.message : null;
+    const body = (await res.json()) as {
+      message?: string;
+      errors?: Array<{ resource?: string; field?: string; code?: string; message?: string }>;
+      documentation_url?: string;
+    };
+    githubDocsUrl = typeof body.documentation_url === "string" ? body.documentation_url : null;
+
+    if (Array.isArray(body.errors) && body.errors.length > 0) {
+      const detail = body.errors
+        .map((e) => {
+          if (e.message) return e.message;
+          const parts = [e.resource, e.field, e.code].filter(Boolean);
+          return parts.length > 0 ? parts.join(" ") : null;
+        })
+        .filter((s): s is string => !!s)
+        .join("; ");
+      githubMessage = detail
+        ? `${body.message ?? "Validation failed"}: ${detail}`
+        : (body.message ?? null);
+    } else {
+      githubMessage = typeof body.message === "string" ? body.message : null;
+    }
   } catch {
     // Non-JSON or empty body — fall through to the generic message below.
   }
@@ -106,10 +134,11 @@ export async function grantGiverRepoAccess(params: {
     };
   }
   if (res.status === 422) {
+    const docsSuffix = githubDocsUrl ? ` (${githubDocsUrl})` : "";
     return {
       ok: false,
       reason: githubMessage
-        ? `GitHub rejected the invite: ${githubMessage}`
+        ? `GitHub rejected the invite: ${githubMessage}${docsSuffix}`
         : `GitHub rejected the invite for an unspecified reason (422). This is usually a permission/scope issue on the platform's GitHub token, not the giver's username.`,
     };
   }
