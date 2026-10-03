@@ -3,23 +3,22 @@ const GITHUB_API = "https://api.github.com";
 
 /**
  * Thin wrapper over the GitHub REST API for repositories owned by the
- * PLATFORM's own GitHub account (https://github.com/bountied-repositories).
+ * PLATFORM's GitHub Organization (https://github.com/bountied-dev).
  *
  * These calls authenticate with PLATFORM_GITHUB_TOKEN — a PAT belonging to
- * the platform account — NOT with a solver's OAuth token. A solver's token
- * can only read their own repos; it can never create anything under the
+ * an owner/admin of the organization — NOT with a solver's OAuth token. A solver's
+ * token can only read their own repos; it can never create anything under the
  * platform account. The two tokens are used at different steps of the
  * mirror (see lib/github/mirror.ts) and must not be interchanged.
  *
- * bountied-repositories is a USER account, not an org, so repos are created
- * via POST /user/repos. If it is ever converted to an organization, this is
- * the only file that has to change (POST /orgs/{org}/repos).
+ * bountied-dev is an ORGANIZATION account, so repos are created
+ * via POST /orgs/{org}/repos.
  */
 
 export type PlatformRepo = {
-  /** "bountied-repositories/sub-abc123" */
+  /** "bountied-dev/sub-abc123" */
   fullName: string;
-  /** "https://github.com/bountied-repositories/sub-abc123" */
+  /** "https://github.com/bountied-dev/sub-abc123" */
   htmlUrl: string;
   /** Clone target — the same URL with .git; credentials are injected at push time. */
   cloneUrl: string;
@@ -35,7 +34,7 @@ function platformToken(): string | null {
 }
 
 export function platformOwner(): string {
-  return process.env.PLATFORM_GITHUB_OWNER ?? "bountied-repositories";
+  return process.env.PLATFORM_GITHUB_OWNER ?? "bountied-dev";
 }
 
 function headers(token: string): HeadersInit {
@@ -59,7 +58,7 @@ function headers(token: string): HeadersInit {
  */
 /**
  * attemptNumber is appended as "-attempt-N" (product decision 2026-09-30)
- * so a Giver browsing bountied-repositories on GitHub directly can tell
+ * so a Giver browsing bountied-dev on GitHub directly can tell
  * two attempts from the same solver apart without cross-referencing
  * Bountied itself — see the screenshots that prompted this: repo names
  * were previously indistinguishable raw CUIDs with no way to tell which
@@ -82,7 +81,7 @@ export function repoNameForSubmission(submissionId: string, attemptNumber: numbe
 }
 
 /**
- * Creates a new PRIVATE repo under the platform account.
+ * Creates a new PRIVATE repo under the platform organization account.
  *
  * PRIVATE FOREVER (revised 2026-08-09) — not just until release. This repo
  * previously became public via publishPlatformRepo() on escrow release,
@@ -90,10 +89,10 @@ export function repoNameForSubmission(submissionId: string, attemptNumber: numbe
  * from the submission id, which is visible elsewhere in the app, so any
  * public repo was enumerable by anyone who had used the platform, not just
  * the giver who paid. That function has been removed. The only reveal
- * mechanism now is a per-repo, per-giver collaborator invite — see
- * lib/github/grant-access.ts, called only from lib/escrow/release.ts after
- * escrow actually releases. Do not add a function that flips a mirror
- * repo's visibility to public; there is no correct reason to.
+ * mechanism now is a per-repo, per-giver collaborator invite with read-only
+ * ("pull") permissions — see lib/github/grant-access.ts, called only from
+ * lib/escrow/release.ts after escrow actually releases. Do not add a function
+ * that flips a mirror repo's visibility to public; there is no correct reason to.
  *
  * auto_init is false so the repo has zero commits, which is what an
  * initial `git push --all` into it requires (an auto-initialised repo has
@@ -113,20 +112,34 @@ export async function createPlatformRepo(
     };
   }
 
-  const res = await fetch(`${GITHUB_API}/user/repos`, {
+  const owner = platformOwner();
+  const repoPayload = {
+    name,
+    description: description ?? "Submitted solution mirrored by Bountied.",
+    private: true,
+    auto_init: false,
+    has_issues: false,
+    has_wiki: false,
+    has_projects: false,
+  };
+
+  // Try creating in organization first (POST /orgs/{org}/repos)
+  let res = await fetch(`${GITHUB_API}/orgs/${owner}/repos`, {
     method: "POST",
     headers: headers(token),
-    body: JSON.stringify({
-      name,
-      description: description ?? "Submitted solution mirrored by Bountied.",
-      private: true,
-      auto_init: false,
-      has_issues: false,
-      has_wiki: false,
-      has_projects: false,
-    }),
+    body: JSON.stringify(repoPayload),
     cache: "no-store",
   });
+
+  // If owner is not an org (404), fallback to user account (POST /user/repos)
+  if (res.status === 404) {
+    res = await fetch(`${GITHUB_API}/user/repos`, {
+      method: "POST",
+      headers: headers(token),
+      body: JSON.stringify(repoPayload),
+      cache: "no-store",
+    });
+  }
 
   if (res.status === 401 || res.status === 403) {
     return {

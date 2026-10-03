@@ -24,7 +24,7 @@ const GITHUB_API = "https://api.github.com";
  * same submission/giver pair is always safe.
  */
 export type GrantAccessResult =
-  | { ok: true; alreadyCollaborator: boolean }
+  | { ok: true; alreadyCollaborator: boolean; reason?: undefined }
   | { ok: false; reason: string };
 
 function platformToken(): string | null {
@@ -42,7 +42,7 @@ function headers(token: string): HeadersInit {
 }
 
 export async function grantGiverRepoAccess(params: {
-  /** "bountied-repositories/sub-abc123" — the platform-owned mirror, never the solver's original repo. */
+  /** "bountied-dev/sub-abc123" — the platform-owned mirror, never the solver's original repo. */
   platformRepoFullName: string;
   giverGithubUsername: string;
 }): Promise<GrantAccessResult> {
@@ -53,12 +53,18 @@ export async function grantGiverRepoAccess(params: {
     return { ok: false, reason: "PLATFORM_GITHUB_TOKEN is not configured." };
   }
 
+  // Grant read-only ("pull") access.
+  // Because the platform repository is hosted under a GitHub Organization (bountied-dev),
+  // GitHub supports explicit read-only permission ("pull").
+  // We strictly enforce "pull" and NEVER fall back to push/write access, ensuring that
+  // the giver can only clone/read the code and cannot push modifications, thus preserving
+  // the platform's mirror as the immutable source of truth.
   const res = await fetch(
     `${GITHUB_API}/repos/${platformRepoFullName}/collaborators/${giverGithubUsername}`,
     {
       method: "PUT",
       headers: headers(token),
-      body: JSON.stringify({ permission: "pull" }), // read-only — giver never needs write access
+      body: JSON.stringify({ permission: "pull" }),
       cache: "no-store",
     }
   );
@@ -69,38 +75,25 @@ export async function grantGiverRepoAccess(params: {
   if (res.status === 201) return { ok: true, alreadyCollaborator: false };
   if (res.status === 204) return { ok: true, alreadyCollaborator: true };
 
-  // Every failure branch below used to guess at WHY from the status code
-  // alone (e.g. assuming 422 always means "bad username") rather than
-  // reading GitHub's own error body. That guess was actively misleading
-  // in a real case: a 422 on this endpoint, per GitHub's docs, means
-  // "validation failed" generically — most often a scope/permission
-  // problem on PLATFORM_GITHUB_TOKEN, NOT a malformed username — but the
-  // old message told the giver to go re-check their own username, which
-  // sent them chasing the wrong fix (re-authing their own GitHub
-  // connection, which this endpoint never even uses — see this file's
-  // top doc comment on why only PLATFORM_GITHUB_TOKEN matters here).
-  //
-  // Surfacing just the top-level "message" field (first fix,
-  // 2026-09-30) turned out to still be unhelpful in practice — GitHub's
-  // real 422 response for this is {"message": "Validation Failed",
-  // "errors": [{resource, field, code}], "documentation_url": "..."}.
-  // The useful detail lives in errors[], not message — "Validation
-  // Failed" alone (confirmed live: a real "Retry invite" attempt showed
-  // exactly this and nothing more useful) tells a giver nothing actionable.
-  // Build the real reason from errors[] when present.
+  // Parse GitHub error body if available
   let githubMessage: string | null = null;
   let githubDocsUrl: string | null = null;
   try {
     const body = (await res.json()) as {
       message?: string;
-      errors?: Array<{ resource?: string; field?: string; code?: string; message?: string }>;
+      errors?:
+        | Array<{ resource?: string; field?: string; code?: string; message?: string }>
+        | string;
       documentation_url?: string;
     };
     githubDocsUrl = typeof body.documentation_url === "string" ? body.documentation_url : null;
 
-    if (Array.isArray(body.errors) && body.errors.length > 0) {
+    if (typeof body.errors === "string") {
+      githubMessage = body.errors;
+    } else if (Array.isArray(body.errors) && body.errors.length > 0) {
       const detail = body.errors
         .map((e) => {
+          if (typeof e === "string") return e;
           if (e.message) return e.message;
           const parts = [e.resource, e.field, e.code].filter(Boolean);
           return parts.length > 0 ? parts.join(" ") : null;

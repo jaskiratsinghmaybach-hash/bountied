@@ -31,6 +31,7 @@ export async function POST(req: Request) {
       solverToken: submission.solver.githubAccessToken,
       runtime: submission.problem.runtime,
       problemTitle: submission.problem.title,
+      attemptNumber: submission.attemptNumber ?? 1,
     });
 
     if (!mirrorResult.ok) {
