@@ -1,0 +1,942 @@
+diff --git a/src/lib/sandbox/runtimes.ts b/src/lib/sandbox/runtimes.ts
+index 2d6ac64..8398f03 100644
+--- a/src/lib/sandbox/runtimes.ts
++++ b/src/lib/sandbox/runtimes.ts
+@@ -1,5 +1,6 @@
+ import type { Runtime } from "@prisma/client";
+-import type { ManifestDependency } from "./bountied-manifest";
++import { validateEntrypoint } from "./bountied-manifest";
++import type { BountiedManifest, ManifestDependency } from "./bountied-manifest";
+ 
+ /**
+  * Single source of truth for what each Runtime actually needs to execute.
+@@ -74,7 +75,7 @@ export type RuntimeConfig = {
+   /**
+    * Builds the install invocation for this runtime's package manager from
+    * the parsed bountied.json dependency list. Called once, before the
+-   * giver's runCommand, whenever bountied.json is present in the submitted
++   * evaluation step, whenever bountied.json is present in the submitted
+    * code (regardless of whether `dependencies` is empty — a runtime can
+    * choose to no-op on empty rather than skip the step entirely, e.g. if
+    * it also wants to react to other manifest fields later). null means no
+@@ -85,8 +86,61 @@ export type RuntimeConfig = {
+   installRetry: InstallRetryConfig | null;
+   /** File extension used for single-file uploads in the submission form. */
+   fileExtension: string;
++  /**
++   * Builds the evaluation command for this runtime from the Solver's
++   * parsed, validated manifest. This is the ONLY function in the system
++   * permitted to produce the string that reaches sandbox.commands.run for
++   * the "evaluate the submission" step. No raw text from a Giver or a
++   * Solver is ever executed: the command is a fixed per-runtime template,
++   * and the only manifest-derived value interpolated is `entrypoint`, as
++   * a path argument, after validateEntrypoint().
++   *
++   * The caller (parseBountiedManifest) has already validated `entrypoint`;
++   * resolveEntrypoint() re-checks it right before interpolation and throws
++   * rather than building a command from an unvalidated value (fail closed).
++   * A throw here must be treated as an evaluation error, never swallowed.
++   */
++  buildEvaluationCommand: (manifest: BountiedManifest) => string;
+ };
+ 
++/**
++ * Returns the validated entrypoint to interpolate, or this runtime's
++ * explicit default. Throws if the manifest carries an entrypoint that
++ * fails validation — a manifest produced by parseBountiedManifest can
++ * never trigger this; it only guards against a future caller constructing
++ * a BountiedManifest by hand.
++ */
++function resolveEntrypoint(manifest: BountiedManifest, runtimeDefault: string): string {
++  const candidate = manifest.entrypoint ?? runtimeDefault;
++  const checked = validateEntrypoint(candidate);
++  if (!checked.ok || checked.value === undefined) {
++    throw new Error("Refusing to build an evaluation command from an invalid entrypoint.");
++  }
++  return checked.value;
++}
++
++/**
++ * Explicit per-runtime defaults (not left implicit): used when bountied.json
++ * omits executionMode / entrypoint.
++ *   PYTHON: mode "test"  -> pytest; mode "run" with no entrypoint -> main.py
++ *   NODE:   mode "test"  -> npm test; mode "run" with no entrypoint -> index.js
++ */
++const PYTHON_DEFAULT_ENTRYPOINT = "main.py";
++const NODE_DEFAULT_ENTRYPOINT = "index.js";
++
++/**
++ * `python -m pytest` (not bare `pytest`) so the repo root is on sys.path
++ * and tests can import top-level modules. `--tb=no` suppresses tracebacks:
++ * pytest tracebacks and assertion diffs print lines of source, which would
++ * otherwise reach the Giver pre-release as Review Evidence (see
++ * lib/sandbox/review-evidence.ts and the trust-boundary note in
++ * docs/review-engine-architecture.md §6). `-q` keeps the summary line terse.
++ * NOTE: pytest is NOT preinstalled in the python:3.11-slim sandbox template —
++ * a Solver must list it under bountied.json dependencies (or the template
++ * must be rebuilt with it), otherwise test mode fails with "No module named pytest".
++ */
++const PYTHON_TEST_COMMAND = "python -m pytest -q --tb=no -p no:cacheprovider";
++
+ /**
+  * Package/header/compiler → apt package mapping for the common cases that
+  * cause a pip install to fail on a lean base image. Deliberately a short,
+@@ -197,6 +251,14 @@ export const RUNTIME_REGISTRY: Record<Runtime, RuntimeConfig> = {
+     },
+     installRetry: PYTHON_INSTALL_RETRY,
+     fileExtension: ".py",
++    // Python has no separate mandatory build step, so "build-test" behaves
++    // exactly like "test" here (documented, not an accidental divergence).
++    buildEvaluationCommand: (manifest) => {
++      if (manifest.executionMode === "run") {
++        return `python ${resolveEntrypoint(manifest, PYTHON_DEFAULT_ENTRYPOINT)}`;
++      }
++      return PYTHON_TEST_COMMAND; // "test", "build-test", or unspecified
++    },
+   },
+   NODE: {
+     label: "Node.js",
+@@ -224,6 +286,16 @@ export const RUNTIME_REGISTRY: Record<Runtime, RuntimeConfig> = {
+     // field may need to move from RuntimeConfig to a per-language lookup
+     // instead of assuming one extension per Runtime.
+     fileExtension: ".js",
++    // Plain Node has no mandatory build step, so "build-test" behaves
++    // exactly like "test" here. When TypeScript is enabled, "build-test"
++    // is where its fixed compile step belongs — extend THIS builder, never
++    // accept a build command from the manifest.
++    buildEvaluationCommand: (manifest) => {
++      if (manifest.executionMode === "run") {
++        return `node ${resolveEntrypoint(manifest, NODE_DEFAULT_ENTRYPOINT)}`;
++      }
++      return "npm test"; // "test", "build-test", or unspecified
++    },
+   },
+ };
+ 
+diff --git a/src/lib/sandbox/review-evidence.ts b/src/lib/sandbox/review-evidence.ts
+new file mode 100644
+index 0000000..fe638be
+--- /dev/null
++++ b/src/lib/sandbox/review-evidence.ts
+@@ -0,0 +1,53 @@
++import type { ExecutionResult } from "./execute";
++
++/**
++ * What a Giver is allowed to see from a sandbox evaluation BEFORE escrow
++ * release. This is the explicit contract the review UI renders against —
++ * not "whatever the process printed" (docs/review-engine-architecture.md §6).
++ *
++ * TRUST BOUNDARY: the platform chooses the command, but the command still
++ * executes Solver-controlled code, so its stdout/stderr is UNTRUSTED DATA.
++ * `output` is bounded and is NOT a sanitized or classified-safe channel: a
++ * Solver's program can print arbitrary text (including its own source or
++ * environment), and a test runner's own diagnostics can include source
++ * snippets. Runtime adapters therefore prefer terse, traceback-free
++ * invocations (see PYTHON_TEST_COMMAND in runtimes.ts), and structured
++ * fields (status, exitCode) are the primary evidence. Do not widen what is
++ * rendered from `output` without classifying it as safe first.
++ *
++ * `testSummary` (parsed pass/fail counts) is intentionally not implemented
++ * yet: with no runtime parser it falls back to the bounded raw `output`.
++ * If added, remember the counts are derived from Solver-controlled output.
++ *
++ * Storage: this maps onto the existing Submission.sandboxOutput /
++ * sandboxExitCode / sandboxError columns (no schema churn) — what changed
++ * is WHAT populates them: bounded output from a fixed platform command.
++ */
++export type ReviewEvidence = {
++  exitCode: number | null;
++  status: "passed" | "failed" | "error";
++  /** Bounded; carries a "[truncated …]" marker when the cap is hit. Empty for "error". */
++  output: string;
++};
++
++/** Cap for stored/shown evaluation output (stdout + stderr combined). */
++export const EVIDENCE_OUTPUT_MAX_CHARS = 10_000;
++
++function bound(text: string, max = EVIDENCE_OUTPUT_MAX_CHARS): string {
++  if (text.length <= max) return text;
++  return text.slice(0, max) + `\n\n[output truncated — ${text.length - max} more characters]`;
++}
++
++export function buildReviewEvidence(result: ExecutionResult): ReviewEvidence {
++  if (!result.ok) {
++    // Never ran to completion (clone/install/infra). The human-readable
++    // reason travels separately as sandboxError; no process output exists.
++    return { exitCode: null, status: "error", output: "" };
++  }
++  const combined = result.stdout + (result.stderr ? "\n" + result.stderr : "");
++  return {
++    exitCode: result.exitCode,
++    status: result.exitCode === 0 ? "passed" : "failed",
++    output: bound(combined),
++  };
++}
+diff --git a/prisma/migrations/20261003120000_problem_run_command_nullable/migration.sql b/prisma/migrations/20261003120000_problem_run_command_nullable/migration.sql
+new file mode 100644
+index 0000000..4232d10
+--- /dev/null
++++ b/prisma/migrations/20261003120000_problem_run_command_nullable/migration.sql
+@@ -0,0 +1,7 @@
++-- Review Engine fix (docs/review-engine-architecture.md §8, step 1 ONLY).
++-- Problem.runCommand was a Giver-authored free-text field that was executed
++-- verbatim inside the Solver's cloned repo. Nothing reads or writes it now;
++-- make it nullable so new Problems no longer need a value. Existing rows are
++-- left untouched. The column is intentionally NOT dropped here — that is a
++-- separate cleanup migration once nothing references it.
++ALTER TABLE "Problem" ALTER COLUMN "runCommand" DROP NOT NULL;
+diff --git a/prisma/schema.prisma b/prisma/schema.prisma
+index 57c620c..c74e287 100644
+--- a/prisma/schema.prisma
++++ b/prisma/schema.prisma
+@@ -96,7 +96,11 @@ model Problem {
+   completedAt       DateTime?
+   inviteeIds        String[]      @default([])
+   runtime           Runtime       @default(PYTHON)
+-  runCommand        String
++  // DEPRECATED + INERT (review-engine fix, see docs/review-engine-architecture.md §8):
++  // nothing reads or writes this any more — evaluation commands are built by
++  // the runtime adapter (lib/sandbox/runtimes.ts) from the Solver's bountied.json.
++  // Historical rows keep their value; drop the column in a separate later migration.
++  runCommand        String?
+   freeReviewsUsed   Int           @default(0)
+   language          String?       @default("python")
+   scope             String?
+@@ -108,8 +112,8 @@ model Problem {
+   // Optional Solver-environment fence (product decision 2026-09-02) — set
+   // by the Giver, defaults to null (fully open, zero extra friction for
+   // the ~95% of Givers who never touch this). Constrains what packages a
+-  // Solver's requirements.txt may contain; never touches runCommand or
+-  // runtime, which stay the Giver's exclusive contract. Shape (validated
++  // Solver's requirements.txt may contain; never touches runtime, which
++  // stays the Giver's exclusive contract. Shape (validated
+   // in lib/sandbox/bountied-manifest.ts, not enforced by Postgres):
+   //   { maxDependencies?: number, allowedPackages?: string[], bannedPackages?: string[] }
+   dependencyPolicy Json?
+diff --git a/src/app/(app)/dashboard/giver/problems/[id]/edit/page.tsx b/src/app/(app)/dashboard/giver/problems/[id]/edit/page.tsx
+index c41c3bd..df28dfb 100644
+--- a/src/app/(app)/dashboard/giver/problems/[id]/edit/page.tsx
++++ b/src/app/(app)/dashboard/giver/problems/[id]/edit/page.tsx
+@@ -58,7 +58,6 @@ export default async function EditProblemPage({
+           deadline: problem.deadline
+             ? problem.deadline.toISOString().split("T")[0]
+             : null,
+-          runCommand: problem.runCommand,
+           language: problem.language,
+           scope: problem.scope,
+           addons: problem.addons,
+diff --git a/src/app/(app)/dashboard/giver/problems/[id]/page.tsx b/src/app/(app)/dashboard/giver/problems/[id]/page.tsx
+index 1b3fd38..2fe053f 100644
+--- a/src/app/(app)/dashboard/giver/problems/[id]/page.tsx
++++ b/src/app/(app)/dashboard/giver/problems/[id]/page.tsx
+@@ -153,18 +153,6 @@ export default async function GiverProblemPage({
+           </div>
+         )}
+ 
+-        <div className="mb-5">
+-          <p className="text-xs text-foreground-muted uppercase tracking-wide mb-2">
+-            Sandbox run command
+-          </p>
+-          <code className="block rounded-md border border-accent/25 bg-primary/5 px-3 py-2.5 text-sm font-mono text-foreground">
+-            {problem.runCommand}
+-          </code>
+-          <p className="text-[11px] text-foreground-muted mt-1.5">
+-            The sandbox runs this exact command against every submitted repo.
+-          </p>
+-        </div>
+-
+         <div className="mb-4">
+           <DescriptionSections description={problem.description} />
+         </div>
+diff --git a/src/app/(app)/problems/[id]/page.tsx b/src/app/(app)/problems/[id]/page.tsx
+index 4c84db3..45b8169 100644
+--- a/src/app/(app)/problems/[id]/page.tsx
++++ b/src/app/(app)/problems/[id]/page.tsx
+@@ -96,18 +96,6 @@ export default async function ProblemDetailPage({
+         ))}
+       </div>
+ 
+-      <div className="mb-6">
+-        <p className="text-xs text-foreground-muted uppercase tracking-wide mb-2">
+-          Sandbox run command
+-        </p>
+-        <code className="block rounded-md border border-accent/25 bg-primary/5 px-3 py-2.5 text-sm font-mono text-foreground">
+-          {problem.runCommand}
+-        </code>
+-        <p className="text-[11px] text-foreground-muted mt-1.5">
+-          Your repo must pass when the sandbox runs this command.
+-        </p>
+-      </div>
+-
+       <div className="rounded-lg border border-border bg-surface p-6 mb-6">
+         <DescriptionSections description={problem.description} />
+       </div>
+@@ -262,7 +250,6 @@ export default async function ProblemDetailPage({
+             prompt={buildManifestPrompt({
+               languageId: problem.language ?? "python",
+               scopeId: problem.scope,
+-              runCommand: problem.runCommand,
+             })}
+           />
+           <SubmissionForm
+diff --git a/src/app/api/sandbox/run/route.ts b/src/app/api/sandbox/run/route.ts
+index c11e3da..4677982 100644
+--- a/src/app/api/sandbox/run/route.ts
++++ b/src/app/api/sandbox/run/route.ts
+@@ -1,6 +1,7 @@
+ import { NextResponse } from "next/server";
+ import { prisma } from "@/lib/db";
+ import { executeSubmission } from "@/lib/sandbox/execute";
++import { buildReviewEvidence } from "@/lib/sandbox/review-evidence";
+ 
+ export async function POST(req: Request) {
+   let submissionId: string | undefined;
+@@ -34,11 +35,13 @@ export async function POST(req: Request) {
+     const result = await executeSubmission({
+       repoUrl: submission.platformRepoUrl,
+       githubToken: process.env.PLATFORM_GITHUB_TOKEN || "",
+-      runCommand: submission.problem.runCommand,
+       runtime: submission.problem.runtime,
+     });
+ 
+-    // Save logs and exit code
++    // Save bounded review evidence (lib/sandbox/review-evidence.ts). The
++    // evaluation command was built by the runtime adapter from the Solver's
++    // validated bountied.json — Problem.runCommand is no longer read.
++    const evidence = buildReviewEvidence(result);
+     const isSuccess = result.ok && result.exitCode === 0;
+     // Failure status mapping (product decision 2026-09-02): a dependency
+     // install failure gets its own status distinct from clone/infra
+@@ -54,8 +57,8 @@ export async function POST(req: Request) {
+     const updatedSubmission = await prisma.submission.update({
+       where: { id: submission.id },
+       data: {
+-        sandboxOutput: result.ok ? result.stdout + (result.stderr ? '\n' + result.stderr : '') : null,
+-        sandboxExitCode: result.ok ? result.exitCode : null,
++        sandboxOutput: result.ok ? evidence.output : null,
++        sandboxExitCode: evidence.exitCode,
+         sandboxError: result.ok ? null : result.reason,
+         sandboxRanAt: new Date(),
+         status: isSuccess ? "UNDER_REVIEW" : failureStatus,
+diff --git a/src/components/problems/bounty-flow/bounty-flow.tsx b/src/components/problems/bounty-flow/bounty-flow.tsx
+index 72930c7..0df8c8d 100644
+--- a/src/components/problems/bounty-flow/bounty-flow.tsx
++++ b/src/components/problems/bounty-flow/bounty-flow.tsx
+@@ -14,7 +14,6 @@ import { FieldLogs } from "./workspace/field-logs";
+ import { AddonsSection } from "./workspace/addons-section";
+ import { FieldTags } from "./workspace/field-tags";
+ import { FieldDeadline, type DeadlinePreset } from "./workspace/field-deadline";
+-import { FieldRunCommand } from "./workspace/field-run-command";
+ import { FieldBountyAmount } from "./workspace/field-bounty-amount";
+ import { SaveStatusIndicator } from "./workspace/save-status-indicator";
+ import { Pill } from "./pill";
+@@ -32,7 +31,6 @@ export type ExistingProblem = {
+   tags: string[];
+   bountyAmount: number | null;
+   deadline: string | null;
+-  runCommand: string;
+   language: string | null;
+   scope: string | null;
+   addons: string[];
+@@ -88,7 +86,6 @@ export function BountyFlow({ existingProblem, githubConnected = true, header }:
+   const [tags, setTags] = useState(existingProblem?.tags.join(", ") ?? "");
+   const [deadlinePreset, setDeadlinePreset] = useState<DeadlinePreset | null>(existingProblem?.deadline ? "custom" : null);
+   const [deadlineCustom, setDeadlineCustom] = useState(existingProblem?.deadline ? existingProblem.deadline.split("T")[0] : "");
+-  const [runCommand, setRunCommand] = useState(existingProblem?.runCommand ?? "python main.py");
+   const [bountyAmount, setBountyAmount] = useState(existingProblem?.bountyAmount ? String(existingProblem.bountyAmount) : "");
+ 
+   const [layoutMode, setLayoutMode] = useState<"pills" | "workspace">(isEditing ? "workspace" : "pills");
+@@ -96,10 +93,10 @@ export function BountyFlow({ existingProblem, githubConnected = true, header }:
+ 
+   const isWorkspace = layoutMode === "workspace";
+ 
+-  const stateRef = useRef({ type, language, scope, customScope, addons, title, desc, repos, screenshots, logs, tags, deadlineCustom, runCommand, bountyAmount });
++  const stateRef = useRef({ type, language, scope, customScope, addons, title, desc, repos, screenshots, logs, tags, deadlineCustom, bountyAmount });
+   useEffect(() => {
+-    stateRef.current = { type, language, scope, customScope, addons, title, desc, repos, screenshots, logs, tags, deadlineCustom, runCommand, bountyAmount };
+-  }, [type, language, scope, customScope, addons, title, desc, repos, screenshots, logs, tags, deadlineCustom, runCommand, bountyAmount]);
++    stateRef.current = { type, language, scope, customScope, addons, title, desc, repos, screenshots, logs, tags, deadlineCustom, bountyAmount };
++  }, [type, language, scope, customScope, addons, title, desc, repos, screenshots, logs, tags, deadlineCustom, bountyAmount]);
+ 
+   const saveTimer = useRef<NodeJS.Timeout>(null);
+ 
+@@ -126,7 +123,6 @@ export function BountyFlow({ existingProblem, githubConnected = true, header }:
+       formData.append("logs", s.logs);
+       formData.append("tags", s.tags);
+       if (s.deadlineCustom) formData.append("deadline", s.deadlineCustom);
+-      formData.append("runCommand", s.runCommand);
+       formData.append("bountyAmount", s.bountyAmount);
+ 
+       try {
+@@ -149,7 +145,7 @@ export function BountyFlow({ existingProblem, githubConnected = true, header }:
+     return () => {
+       if (saveTimer.current) clearTimeout(saveTimer.current);
+     };
+-  }, [type, language, scope, customScope, addons, title, desc, repos, screenshots, logs, tags, deadlineCustom, runCommand, bountyAmount, isWorkspace, isEditing, triggerAutoSave]);
++  }, [type, language, scope, customScope, addons, title, desc, repos, screenshots, logs, tags, deadlineCustom, bountyAmount, isWorkspace, isEditing, triggerAutoSave]);
+ 
+   const resolvedScopeLabel = scope === "custom" ? customScope : (language && scope ? getScopeDef(language, scope)?.label ?? scope : "");
+ 
+@@ -260,7 +256,6 @@ export function BountyFlow({ existingProblem, githubConnected = true, header }:
+               </div>
+               <FieldTags value={tags} onChange={setTags} />
+               <FieldDeadline preset={deadlinePreset} onPresetChange={setDeadlinePreset} customDate={deadlineCustom} onCustomDateChange={setDeadlineCustom} />
+-              <FieldRunCommand value={runCommand} onChange={setRunCommand} languageId={language} />
+             </>
+           }
+           rightPanel={
+diff --git a/src/components/problems/bounty-flow/workspace/field-run-command.tsx b/src/components/problems/bounty-flow/workspace/field-run-command.tsx
+deleted file mode 100644
+index c046f10..0000000
+--- a/src/components/problems/bounty-flow/workspace/field-run-command.tsx
++++ /dev/null
+@@ -1,37 +0,0 @@
+-import { Input } from "@/components/ui/input";
+-
+-const RUN_COMMAND_PLACEHOLDERS: Record<string, string> = {
+-  python: "python main.py",
+-  nodejs: "node index.js",
+-  typescript: "npx tsx index.ts",
+-};
+-
+-type FieldRunCommandProps = {
+-  value: string;
+-  onChange: (val: string) => void;
+-  languageId?: string | null;
+-};
+-export function FieldRunCommand({ value, onChange, languageId }: FieldRunCommandProps) {
+-  const placeholder =
+-    (languageId && RUN_COMMAND_PLACEHOLDERS[languageId]) || "python main.py";
+-  return (
+-    <div>
+-      <label htmlFor="bounty-runCommand" className="block text-xs font-medium uppercase tracking-wide text-foreground-muted mb-2">
+-        Run command
+-      </label>
+-      <Input
+-        id="bounty-runCommand"
+-        name="runCommand"
+-        required
+-        value={value}
+-        onChange={(e) => onChange(e.target.value)}
+-        placeholder={placeholder}
+-        className="w-full bg-surface border-border focus-visible:ring-2 focus-visible:ring-white/20 focus-visible:border-border-strong focus-visible:outline-none transition-colors font-mono"
+-      />
+-      <p className="text-[11px] text-foreground-muted mt-2 leading-relaxed">
+-        The exact command your sandbox will run on every submitted repo.
+-        Solvers see this before submitting so they know what to expect.
+-      </p>
+-    </div>
+-  );
+-}
+diff --git a/src/lib/problems/create-actions.ts b/src/lib/problems/create-actions.ts
+index 17cc840..433788b 100644
+--- a/src/lib/problems/create-actions.ts
++++ b/src/lib/problems/create-actions.ts
+@@ -38,7 +38,6 @@ type ParsedFields =
+       bountyAmount: number | null;
+       isFree: boolean;
+       deadline: Date | null;
+-      runCommand: string;
+       language: string | null;
+       runtime: Runtime;
+     };
+@@ -51,7 +50,6 @@ function parseFields(formData: FormData): ParsedFields {
+   const tagsRaw = String(formData.get("tags") ?? "");
+   const bountyAmountRaw = String(formData.get("bountyAmount") ?? "").trim();
+   const deadlineRaw = String(formData.get("deadline") ?? "").trim();
+-  const runCommand = String(formData.get("runCommand") ?? "").trim();
+   const language = String(formData.get("language") ?? "").trim() || null;
+ 
+   if (!title || title.length < 5) {
+@@ -85,10 +83,6 @@ function parseFields(formData: FormData): ParsedFields {
+     bountyAmount = Math.round(parsed * 100) / 100;
+   }
+ 
+-  if (!runCommand) {
+-    return { error: "Enter the run command (e.g. python main.py or node index.js)." };
+-  }
+-
+   // Runtime is derived from the Giver's language selection, not assumed —
+   // see getRuntimeForLanguage's doc comment for why language and Runtime
+   // are different axes (e.g. both "typescript" and "nodejs" map to the
+@@ -108,7 +102,7 @@ function parseFields(formData: FormData): ParsedFields {
+     return { error: "Invalid deadline." };
+   }
+ 
+-  return { title, description, type, tags, bountyAmount, isFree, deadline, runCommand, language, runtime };
++  return { title, description, type, tags, bountyAmount, isFree, deadline, language, runtime };
+ }
+ 
+ /**
+@@ -154,7 +148,6 @@ export async function createProblem(
+       type: parsed.type,
+       tags: parsed.tags,
+       bountyAmount: parsed.bountyAmount,
+-      runCommand: parsed.runCommand,
+       runtime: parsed.runtime,
+       language: parsed.language,
+       giverId: user.id,
+@@ -236,7 +229,6 @@ export async function updateProblem(
+       type: parsed.type,
+       tags: parsed.tags,
+       bountyAmount: parsed.bountyAmount,
+-      runCommand: parsed.runCommand,
+       runtime: parsed.runtime,
+       language: parsed.language,
+       deadline: parsed.deadline,
+@@ -395,7 +387,6 @@ export async function autoSaveProblem(
+   const tagsRaw = String(formData.get("tags") ?? "");
+   const bountyAmountRaw = String(formData.get("bountyAmount") ?? "").trim();
+   const deadlineRaw = String(formData.get("deadline") ?? "").trim();
+-  const runCommand = String(formData.get("runCommand") ?? "").trim();
+   const repoUrlsRaw = String(formData.get("referenceRepoUrls") ?? "[]");
+   const screenshotUrlsRaw = String(formData.get("screenshotUrls") ?? "[]");
+   const addonsRaw = String(formData.get("addons") ?? "[]");
+@@ -437,7 +428,6 @@ export async function autoSaveProblem(
+           ...(typeValid ? { type } : {}),
+           tags,
+           bountyAmount,
+-          runCommand: runCommand || existing.runCommand,
+           runtime,
+           deadline,
+           language,
+@@ -456,7 +446,6 @@ export async function autoSaveProblem(
+           type: typeValid ? type : ProblemType.OPEN_FREE,
+           tags,
+           bountyAmount,
+-          runCommand: runCommand || "python main.py",
+           runtime,
+           giverId: user.id,
+           deadline,
+diff --git a/src/lib/problems/manifest-template.ts b/src/lib/problems/manifest-template.ts
+index 6fc4cb2..b45bcd0 100644
+--- a/src/lib/problems/manifest-template.ts
++++ b/src/lib/problems/manifest-template.ts
+@@ -31,10 +31,13 @@ import { getLanguageDef, getScopeDef } from "@/components/problems/bounty-flow/f
+  * lib/sandbox/bountied-manifest.ts's doc comment on why the schema stays
+  * understandable to a Solver rather than trying to cover every possible
+  * runtime-specific field up front). Fields beyond `dependencies` are
+- * carried here so the skeleton is forward-compatible with execution modes
+- * beyond today's single batch-run mode, but only `runtime`/`dependencies`
+- * are consumed anywhere today (see lib/sandbox/runtimes.ts,
+- * lib/sandbox/bountied-manifest.ts).
++ * carried here so the skeleton is forward-compatible. `dependencies`,
++ * `entrypoint` and `executionMode` are consumed (see
++ * lib/sandbox/bountied-manifest.ts); `entrypoint`/`executionMode` are
++ * STRUCTURED METADATA that select a fixed, platform-owned evaluation
++ * command (RuntimeConfig.buildEvaluationCommand in lib/sandbox/runtimes.ts)
++ * — they are never executed as text, and bountied.json has no field that
++ * accepts a command.
+  */
+ export type BountiedManifestSkeleton = {
+   runtime: {
+@@ -42,6 +45,10 @@ export type BountiedManifestSkeleton = {
+     version: string;
+   };
+   dependencies: Record<string, string>;
++  /** Relative path to the program's entry file; only used when executionMode is "run". */
++  entrypoint: string;
++  /** "test" | "build-test" | "run" — see buildManifestPrompt. */
++  executionMode: "test" | "build-test" | "run";
+ };
+ 
+ /**
+@@ -60,6 +67,13 @@ const RUNTIME_VERSION_DEFAULTS: Record<string, string> = {
+   typescript: "20", // TypeScript compiles to/runs on the same Node runtime — not enabled yet (see flow-data.ts), kept here so the skeleton is correct the moment it is.
+ };
+ 
++/** Per-language starting entrypoint for the skeleton (a hint the Solver's AI adjusts). */
++const ENTRYPOINT_DEFAULTS: Record<string, string> = {
++  python: "main.py",
++  nodejs: "index.js",
++  typescript: "index.js",
++};
++
+ export function buildManifestSkeleton(languageId: string): BountiedManifestSkeleton {
+   const label = getLanguageDef(languageId)?.label ?? languageId;
+   return {
+@@ -68,6 +82,8 @@ export function buildManifestSkeleton(languageId: string): BountiedManifestSkele
+       version: RUNTIME_VERSION_DEFAULTS[languageId] ?? "latest",
+     },
+     dependencies: {},
++    entrypoint: ENTRYPOINT_DEFAULTS[languageId] ?? "main.py",
++    executionMode: "test",
+   };
+ }
+ 
+@@ -101,9 +117,8 @@ export function renderManifestSkeleton(languageId: string): string {
+ export function buildManifestPrompt(params: {
+   languageId: string;
+   scopeId: string | null;
+-  runCommand: string;
+ }): string {
+-  const { languageId, scopeId, runCommand } = params;
++  const { languageId, scopeId } = params;
+   const languageLabel = getLanguageDef(languageId)?.label ?? languageId;
+   const scopeLabel = scopeId ? getScopeDef(languageId, scopeId)?.label ?? null : null;
+   const skeleton = renderManifestSkeleton(languageId);
+@@ -128,6 +143,8 @@ export function buildManifestPrompt(params: {
+     "",
+     `- "runtime.version": the actual ${languageLabel} version this project targets (check for a version file, lockfile, or config if present; otherwise infer from syntax/features used).`,
+     `- "dependencies": an object of "package name": "version" for every external dependency this code actually imports. Use the package's real published name (the name you'd install it by), not the name it's imported as, if they differ. Leave it as {} if the project only uses the standard library.`,
++    `- "executionMode": how the platform should evaluate this project. This is NOT a command — never write a shell command anywhere in this file. Use "test" if the repository has an automated test suite (the platform runs the standard test runner for ${languageLabel} itself; if the tests need a test-runner package, list it under "dependencies"). Use "run" if there are no tests and the project is simply a program to execute. Use "build-test" only if the project needs a build step before its tests.`,
++    `- "entrypoint": the relative path of the file that starts the program (for example "main.py" or "src/index.js"). Only used when "executionMode" is "run". It must be a plain relative file path — no spaces, no shell characters, no "..", not starting with "/" or "-".`,
+     scopeLine,
+     "",
+     "Once you've filled it in, place the result at the root of my repository as bountied.json.",
+diff --git a/src/lib/sandbox/bountied-manifest.ts b/src/lib/sandbox/bountied-manifest.ts
+index a23b42f..b1b536a 100644
+--- a/src/lib/sandbox/bountied-manifest.ts
++++ b/src/lib/sandbox/bountied-manifest.ts
+@@ -51,17 +51,37 @@ export type ManifestDependency = {
+   version: string | null;
+ };
+ 
++/**
++ * How the Solver's project should be evaluated. This is NOT a command: it
++ * selects one of the FIXED, per-runtime command templates built by
++ * RuntimeConfig.buildEvaluationCommand (lib/sandbox/runtimes.ts). No text
++ * from bountied.json is ever executed as a shell string.
++ */
++export const EXECUTION_MODES = ["test", "build-test", "run"] as const;
++export type ExecutionMode = (typeof EXECUTION_MODES)[number];
++
+ /**
+  * The normalized shape lib/sandbox/execute.ts and lib/sandbox/runtimes.ts
+- * actually consume. Intentionally a small subset of the full bountied.json
+- * concept described in product discussions (entrypoint/build/test/run
+- * commands, ports, etc.) — this module only owns the dependency-policy
+- * surface. Fields beyond `dependencies` are parsed defensively (see
+- * parseBountiedManifest) so a Solver's manifest can carry forward-looking
+- * fields without breaking parsing, but only `dependencies` is used today.
++ * actually consume. Fields beyond `dependencies` are parsed defensively
++ * (see parseBountiedManifest) so a Solver's manifest can carry
++ * forward-looking fields without breaking parsing.
++ *
++ * Security (docs/review-engine-architecture.md): both new fields are
++ * Solver-authored and therefore untrusted. They are STRUCTURED METADATA,
++ * never a command — `entrypoint` is validated as a plain relative path
++ * and only ever interpolated as a path argument by a runtime adapter;
++ * `executionMode` is a closed enum that selects a platform-owned template.
+  */
+ export type BountiedManifest = {
+   dependencies: ManifestDependency[];
++  /**
++   * Relative path to the program's entry file ("main.py", "src/index.js").
++   * Validated by validateEntrypoint() — never shell text. Only consulted
++   * when the resolved mode is "run".
++   */
++  entrypoint?: string;
++  /** Omitted = the runtime adapter's explicit per-runtime default. */
++  executionMode?: ExecutionMode;
+ };
+ 
+ export type PolicyCheckResult =
+@@ -125,6 +145,51 @@ function normalizePackageName(name: string): string {
+   return name.trim().toLowerCase().replace(/[-_.]+/g, "-");
+ }
+ 
++const ENTRYPOINT_MAX_LENGTH = 200;
++/**
++ * Plain relative path only: an optional "./" prefix, then a first character
++ * that is a letter/digit/underscore (so no leading "-", which a program
++ * could read as an option flag, and no leading "/"), then letters, digits,
++ * "_", ".", "/", "-". No whitespace, quotes, backslashes, ";", "|", "&",
++ * "$", backticks, parentheses, or any other shell metacharacter can match.
++ */
++const ENTRYPOINT_PATTERN = /^(?:\.\/)?[A-Za-z0-9_][A-Za-z0-9_./-]*$/;
++
++/** Flat shape (not a discriminated union) so it narrows correctly even under this repo's `strict: false`. */
++export type EntrypointValidation = {
++  ok: boolean;
++  /** Present when ok. */
++  value?: string;
++  /** Present when !ok. */
++  reason?: string;
++};
++
++/**
++ * The single validator for a Solver-declared entrypoint. Called by
++ * parseBountiedManifest (so an invalid value is a parse error, same
++ * severity as malformed JSON) and re-checked by the runtime adapter
++ * immediately before interpolation (defense in depth — never skip either).
++ * Error reasons deliberately do not echo the offending value.
++ */
++export function validateEntrypoint(raw: unknown): EntrypointValidation {
++  const rule =
++    'bountied.json "entrypoint" must be a plain relative file path such as ' +
++    '"main.py" or "src/index.js".';
++  if (typeof raw !== "string" || raw.length === 0) {
++    return { ok: false, reason: rule };
++  }
++  if (raw.length > ENTRYPOINT_MAX_LENGTH) {
++    return { ok: false, reason: `${rule} (too long)` };
++  }
++  if (!ENTRYPOINT_PATTERN.test(raw)) {
++    return { ok: false, reason: `${rule} (unsupported characters)` };
++  }
++  if (raw.split("/").some((segment) => segment === "..")) {
++    return { ok: false, reason: `${rule} (must not contain "..")` };
++  }
++  return { ok: true, value: raw };
++}
++
+ /**
+  * Parses a bountied.json body into a BountiedManifest. Deliberately
+  * defensive rather than a strict schema-validate-and-throw: a Solver's
+@@ -179,7 +244,29 @@ export function parseBountiedManifest(bountiedJsonText: string): {
+   // depsRaw absent entirely = zero dependencies (a stdlib-only solution),
+   // not an error — same as an empty requirements.txt was before.
+ 
+-  return { manifest: { dependencies }, parseError: null };
++  const manifest: BountiedManifest = { dependencies };
++
++  // entrypoint / executionMode: structured metadata, never a command. An
++  // invalid value is a PARSE ERROR (rejected before the evaluation step
++  // ever builds a command), not something silently dropped — fail closed.
++  if (obj.entrypoint !== undefined && obj.entrypoint !== null) {
++    const checked = validateEntrypoint(obj.entrypoint);
++    if (!checked.ok) return { manifest: null, parseError: checked.reason ?? "Invalid entrypoint." };
++    manifest.entrypoint = checked.value;
++  }
++
++  if (obj.executionMode !== undefined && obj.executionMode !== null) {
++    const mode = obj.executionMode;
++    if (typeof mode !== "string" || !(EXECUTION_MODES as readonly string[]).includes(mode)) {
++      return {
++        manifest: null,
++        parseError: `bountied.json "executionMode" must be one of: ${EXECUTION_MODES.join(", ")}.`,
++      };
++    }
++    manifest.executionMode = mode as ExecutionMode;
++  }
++
++  return { manifest, parseError: null };
+ }
+ 
+ /**
+diff --git a/src/lib/sandbox/execute.ts b/src/lib/sandbox/execute.ts
+index 77179d7..9c630f6 100644
+--- a/src/lib/sandbox/execute.ts
++++ b/src/lib/sandbox/execute.ts
+@@ -2,6 +2,7 @@ import { Sandbox } from "e2b";
+ import type { Runtime } from "@prisma/client";
+ import { getRuntimeConfig, isRuntimeReady } from "./runtimes";
+ import { parseBountiedManifest } from "./bountied-manifest";
++import type { BountiedManifest } from "./bountied-manifest";
+ 
+ /** The one manifest file every runtime reads dependencies from — see
+  * lib/sandbox/bountied-manifest.ts (product decision 2026-09-26). */
+@@ -15,7 +16,7 @@ const EXECUTION_TIMEOUT_MS = 30_000;
+ // runaway guard; this is only the outer envelope so a legitimate retry
+ // sequence doesn't get killed by sandbox lifetime before it finishes.
+ const SANDBOX_LIFETIME_MS = EXECUTION_TIMEOUT_MS * 5;
+-const MAX_OUTPUT_CHARS = 50_000;
++const MAX_OUTPUT_CHARS = 10_000;
+ 
+ /**
+  * Lets the caller (the API route) map a failure onto the right
+@@ -47,9 +48,14 @@ export type ExecutionResult =
+     };
+ 
+ /**
+- * Runs a solver's submitted GitHub repo inside an ephemeral E2B sandbox
+- * using the exact command the GIVER specified on the Problem — never a
+- * command the solver controls.
++ * Runs a solver's submitted GitHub repo inside an ephemeral E2B sandbox.
++ *
++ * NO raw text from a Giver or a Solver is ever executed. The evaluation
++ * command is produced solely by the runtime adapter
++ * (RuntimeConfig.buildEvaluationCommand in lib/sandbox/runtimes.ts) from
++ * the Solver's parsed, validated bountied.json — a fixed per-runtime
++ * template, never user text. Problem.runCommand (legacy) is not read.
++ * See docs/review-engine-architecture.md.
+  *
+  * Security model (see product decisions 2026-08-02/03):
+  *  - GitHub token is used for the git clone step only (server-side,
+@@ -71,11 +77,10 @@ export type ExecutionResult =
+  */
+ export async function executeSubmission(params: {
+   runtime: Runtime;
+-  runCommand: string;
+   repoUrl: string;
+   githubToken: string;
+ }): Promise<ExecutionResult> {
+-  const { runtime, runCommand, repoUrl, githubToken } = params;
++  const { runtime, repoUrl, githubToken } = params;
+ 
+   if (!isRuntimeReady(runtime)) {
+     return {
+@@ -137,9 +142,32 @@ export async function executeSubmission(params: {
+       };
+     }
+ 
+-    // 2. Install dependencies if the solver included bountied.json.
+-    //
+-    // Retry ladder (product decision 2026-09-02): a lean base image can't
++    // 2. Read + parse bountied.json (always — the evaluation step needs it
++    //    too, not just the install step). Absent = zero dependencies and
++    //    the runtime adapter's defaults.
++    const manifestCheck = await sandbox.commands.run(
++      `cat "${workDir}/${MANIFEST_FILE_NAME}" 2>/dev/null || echo "__MISSING__"`,
++      { timeoutMs: 5_000 }
++    );
++    const manifestText = manifestCheck.stdout;
++    const hasManifest = manifestText.trim() !== "__MISSING__";
++
++    let manifest: BountiedManifest = { dependencies: [] };
++    if (hasManifest) {
++      const parsed = parseBountiedManifest(manifestText);
++      if (parsed.parseError || !parsed.manifest) {
++        // Includes an invalid entrypoint/executionMode: rejected here, before
++        // the evaluation command is ever built — same severity as malformed JSON.
++        return {
++          ok: false,
++          kind: "dependency-install",
++          reason: `bountied.json could not be parsed: ${parsed.parseError ?? "invalid manifest"}.`,
++        };
++      }
++      manifest = parsed.manifest;
++    }
++
++    // Install dependencies. Retry ladder (product decision 2026-09-02): a lean base image can't
+     // have every system lib every package might need preinstalled without
+     // bloating every single boot. So on failure we classify WHY it failed
+     // before deciding what to do:
+@@ -154,95 +182,79 @@ export async function executeSubmission(params: {
+     // NOT used here — see runtimes.ts doc comment on why that's reserved
+     // as a last resort the platform doesn't currently need to reach for
+     // to solve the common cases above.
+-    if (config.installCommand) {
+-      const manifestCheck = await sandbox.commands.run(
+-        `cat "${workDir}/${MANIFEST_FILE_NAME}" 2>/dev/null || echo "__MISSING__"`,
+-        { timeoutMs: 5_000 }
++    if (config.installCommand && hasManifest) {
++      const install = await sandbox.commands.run(
++        config.installCommand(manifest.dependencies),
++        { cwd: workDir, timeoutMs: EXECUTION_TIMEOUT_MS }
+       );
+-      const manifestText = manifestCheck.stdout;
+-      const hasManifest = manifestText.trim() !== "__MISSING__";
+ 
+-      if (hasManifest) {
+-        const { manifest, parseError } = parseBountiedManifest(manifestText);
+-        if (parseError || !manifest) {
+-          return {
+-            ok: false,
+-            kind: "dependency-install",
+-            reason: `bountied.json could not be parsed: ${parseError ?? "invalid manifest"}.`,
+-          };
+-        }
++      if (install.exitCode !== 0) {
++        const retry = config.installRetry;
++        const classification = retry?.classifyFailure(install.stderr) ?? "unretryable";
+ 
+-        const install = await sandbox.commands.run(
+-          config.installCommand(manifest.dependencies),
+-          { cwd: workDir, timeoutMs: EXECUTION_TIMEOUT_MS }
+-        );
++        if (retry && classification === "missing-system-lib") {
++          const aptPackages = retry.resolveAptPackages(install.stderr);
+ 
+-        if (install.exitCode !== 0) {
+-          const retry = config.installRetry;
+-          const classification = retry?.classifyFailure(install.stderr) ?? "unretryable";
++          if (aptPackages.length > 0) {
++            // Best-effort update — some base images have a stale apt
++            // cache; if `update` itself fails we still attempt install,
++            // since the cache may already be good enough.
++            await sandbox.commands
++              .run(retry.aptUpdateCommand, { timeoutMs: EXECUTION_TIMEOUT_MS })
++              .catch(() => {});
+ 
+-          if (retry && classification === "missing-system-lib") {
+-            const aptPackages = retry.resolveAptPackages(install.stderr);
++            const aptInstall = await sandbox.commands.run(
++              retry.aptInstallCommand(aptPackages),
++              { timeoutMs: EXECUTION_TIMEOUT_MS }
++            );
+ 
+-            if (aptPackages.length > 0) {
+-              // Best-effort update — some base images have a stale apt
+-              // cache; if `update` itself fails we still attempt install,
+-              // since the cache may already be good enough.
+-              await sandbox.commands
+-                .run(retry.aptUpdateCommand, { timeoutMs: EXECUTION_TIMEOUT_MS })
+-                .catch(() => {});
+-
+-              const aptInstall = await sandbox.commands.run(
+-                retry.aptInstallCommand(aptPackages),
+-                { timeoutMs: EXECUTION_TIMEOUT_MS }
++            if (aptInstall.exitCode === 0) {
++              const retryInstall = await sandbox.commands.run(
++                config.installCommand(manifest.dependencies),
++                { cwd: workDir, timeoutMs: EXECUTION_TIMEOUT_MS }
+               );
+ 
+-              if (aptInstall.exitCode === 0) {
+-                const retryInstall = await sandbox.commands.run(
+-                  config.installCommand(manifest.dependencies),
+-                  { cwd: workDir, timeoutMs: EXECUTION_TIMEOUT_MS }
+-                );
+-
+-                if (retryInstall.exitCode !== 0) {
+-                  return {
+-                    ok: false,
+-                    kind: "dependency-install",
+-                    reason: `Dependency install failed even after installing ${aptPackages.join(", ")} (exit ${retryInstall.exitCode}):\n${truncate(retryInstall.stderr)}`,
+-                  };
+-                }
+-                // Retry succeeded — fall through to step 3 as normal.
+-              } else {
++              if (retryInstall.exitCode !== 0) {
+                 return {
+                   ok: false,
+                   kind: "dependency-install",
+-                  reason: `Dependency install failed (missing system library) and the automatic fix (${aptPackages.join(", ")}) also failed:\n${truncate(aptInstall.stderr, 1000)}`,
++                  reason: `Dependency install failed even after installing ${aptPackages.join(", ")} (exit ${retryInstall.exitCode}):\n${truncate(retryInstall.stderr)}`,
+                 };
+               }
++              // Retry succeeded — fall through to step 3 as normal.
+             } else {
+-              // Classified as a system-lib issue but we don't know which
+-              // apt package fixes it — nothing to retry with.
+               return {
+                 ok: false,
+                 kind: "dependency-install",
+-                reason: `Dependency install failed (exit ${install.exitCode}):\n${truncate(install.stderr)}`,
++                reason: `Dependency install failed (missing system library) and the automatic fix (${aptPackages.join(", ")}) also failed:\n${truncate(aptInstall.stderr, 1000)}`,
+               };
+             }
+           } else {
+-            // Not retry-worthy — bad package name/version conflict/etc.
++            // Classified as a system-lib issue but we don't know which
++            // apt package fixes it — nothing to retry with.
+             return {
+               ok: false,
+               kind: "dependency-install",
+               reason: `Dependency install failed (exit ${install.exitCode}):\n${truncate(install.stderr)}`,
+             };
+           }
++        } else {
++          // Not retry-worthy — bad package name/version conflict/etc.
++          return {
++            ok: false,
++            kind: "dependency-install",
++            reason: `Dependency install failed (exit ${install.exitCode}):\n${truncate(install.stderr)}`,
++          };
+         }
+       }
+     }
+ 
+-    // 3. Run the GIVER's exact command — this is the trust boundary.
++    // 3. Evaluate. The command comes ONLY from the runtime adapter, built
++    //    from the validated manifest — never from Giver or Solver text.
++    const evaluationCommand = config.buildEvaluationCommand(manifest);
+     let run: { stdout: string; stderr: string; exitCode: number };
+     try {
+-      run = await sandbox.commands.run(runCommand, {
++      run = await sandbox.commands.run(evaluationCommand, {
+         cwd: workDir,
+         timeoutMs: EXECUTION_TIMEOUT_MS,
+       });

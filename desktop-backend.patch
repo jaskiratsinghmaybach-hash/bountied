@@ -1,0 +1,1545 @@
+diff --git a/docs/desktop-pairing.md b/docs/desktop-pairing.md
+new file mode 100644
+index 0000000..dae718d
+--- /dev/null
++++ b/docs/desktop-pairing.md
+@@ -0,0 +1,62 @@
++# Bountied Desktop: device pairing
++
++The website is the account authority. The Desktop app never sees a password or a
++Supabase token; it holds a revocable **device session** that the website issued.
++
++## Flow
++
++```
++Desktop                          Website (signed-in browser)              Server
++   |  1. Connect click                                                        |
++   |--- POST /api/desktop/pair/start {codeChallenge, deviceName, ...} ------->|
++   |<-- {pairingId} ----------------------------------------------------------|
++   |  2. opens  {site}/desktop/connect?req=<pairingId>                        |
++   |                                 shows account + device, user clicks      |
++   |                                 "Authorize this device"  --------------->|
++   |                                 <-- one-time 16-char code (shown once) --|
++   |  3. user copies the code and pastes it into the app                      |
++   |--- POST /api/desktop/pair/exchange {pairingId, code, codeVerifier} ----->|
++   |<-- {accessToken (15 min), refreshToken, user} ---------------------------|
++   |  4. ... POST /api/desktop/session/refresh rotates both tokens ...        |
++   |  5. Integrations page lists the device; Revoke kills it on the next call |
++```
++
++Deviation from the original plan, deliberate: pairing is **started from the app**,
++not from a code generated cold on the website. That is what lets the code be bound to
++one specific app instance (PKCE), so a code phished onto an attacker's machine is useless.
++The website's "Connect Bountied Desktop" entry point is therefore: open the app, click Connect.
++
++## Properties (all covered by `desktop-pairing-e2e.ts`, run against real Postgres)
++
++| Property | How |
++|---|---|
++| Code is single use | `consumedAt` flipped by one atomic conditional UPDATE; 6 simultaneous redemptions -> 1 session |
++| Code is short-lived | 3 min from authorization, never past the 5 min request lifetime; generated only on click |
++| Code is high entropy | 16 symbols from a 32-symbol alphabet (80 bits), unbiased, no look-alike characters |
++| A stolen/phished code is useless | Redeeming also requires the PKCE verifier, which never leaves the originating app |
++| Brute force | Per-pairing (5 wrong guesses burns the request), per-IP, per-account, plus request-start and authorize limits; one generic error for every failure |
++| DB leak is not enough | Codes and tokens are stored as HMAC-SHA256 hashes keyed by `DESKTOP_AUTH_SECRET` |
++| Short-lived access | 15 min opaque token, looked up (and revocation-checked) on every request |
++| Refresh rotation + theft detection | Refresh token rotates every use; replaying any previously-rotated token revokes the whole session |
++| Revocation | Integrations -> Revoke takes effect on the very next request; refresh dies too |
++| Re-pair on failure | Any renewal failure clears local state and returns the app to the pairing screen |
++| Renewal is capped | Sliding 30-day refresh window, hard 180-day limit per pairing |
++
++## Setup
++
++1. Add to the web app's environment (local `.env` and your host):
++   `DESKTOP_AUTH_SECRET` - at least 32 random characters. Generate one with
++   `node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"`.
++   Rotating it invalidates every device session and in-flight pairing (users re-pair).
++2. `npx prisma migrate deploy` then `npx prisma generate`.
++3. `NEXT_PUBLIC_SITE_URL` is already used by the app; the desktop app opens
++   `{BOUNTIED_API_URL}/desktop/connect`, so both must point at the same origin.
++
++## Known limits / follow-ups
++
++- Rate-limit client IP comes from `X-Forwarded-For`. Behind Vercel that is correct; if you
++  self-host, make your proxy overwrite (not append to) that header.
++- A refresh response lost in transit forces a re-pair (the retry looks like a replay).
++- The OS keychain stores the refresh token; there is no extra at-rest encryption beyond that.
++- `RateLimitBucket` rows are swept opportunistically, not by a scheduled job.
++- The Integrations device list does not auto-refresh; reload the page after revoking elsewhere.
+diff --git a/prisma/migrations/20261004120000_desktop_device_pairing/migration.sql b/prisma/migrations/20261004120000_desktop_device_pairing/migration.sql
+new file mode 100644
+index 0000000..28d4744
+--- /dev/null
++++ b/prisma/migrations/20261004120000_desktop_device_pairing/migration.sql
+@@ -0,0 +1,82 @@
++-- Bountied Desktop device pairing (see docs/desktop-pairing.md).
++
++-- CreateTable
++CREATE TABLE "DevicePairing" (
++    "id" TEXT NOT NULL,
++    "codeChallenge" TEXT NOT NULL,
++    "deviceName" TEXT NOT NULL,
++    "platform" TEXT NOT NULL,
++    "appVersion" TEXT NOT NULL,
++    "startIp" TEXT,
++    "userId" TEXT,
++    "codeHash" TEXT,
++    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    "expiresAt" TIMESTAMP(3) NOT NULL,
++    "authorizedAt" TIMESTAMP(3),
++    "codeExpiresAt" TIMESTAMP(3),
++    "consumedAt" TIMESTAMP(3),
++    "failedAttempts" INTEGER NOT NULL DEFAULT 0,
++
++    CONSTRAINT "DevicePairing_pkey" PRIMARY KEY ("id")
++);
++
++-- CreateTable
++CREATE TABLE "DeviceSession" (
++    "id" TEXT NOT NULL,
++    "userId" TEXT NOT NULL,
++    "deviceName" TEXT NOT NULL,
++    "platform" TEXT NOT NULL,
++    "appVersion" TEXT NOT NULL,
++    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    "lastSeenAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    "lastIp" TEXT,
++    "accessTokenHash" TEXT NOT NULL,
++    "accessExpiresAt" TIMESTAMP(3) NOT NULL,
++    "refreshTokenHash" TEXT NOT NULL,
++    "prevRefreshTokenHashes" TEXT[] DEFAULT ARRAY[]::TEXT[],
++    "refreshExpiresAt" TIMESTAMP(3) NOT NULL,
++    "absoluteExpiresAt" TIMESTAMP(3) NOT NULL,
++    "revokedAt" TIMESTAMP(3),
++    "revokedReason" TEXT,
++
++    CONSTRAINT "DeviceSession_pkey" PRIMARY KEY ("id")
++);
++
++-- CreateTable
++CREATE TABLE "RateLimitBucket" (
++    "key" TEXT NOT NULL,
++    "count" INTEGER NOT NULL,
++    "resetAt" TIMESTAMP(3) NOT NULL,
++
++    CONSTRAINT "RateLimitBucket_pkey" PRIMARY KEY ("key")
++);
++
++-- CreateIndex
++CREATE UNIQUE INDEX "DevicePairing_codeHash_key" ON "DevicePairing"("codeHash");
++
++-- CreateIndex
++CREATE INDEX "DevicePairing_userId_idx" ON "DevicePairing"("userId");
++
++-- CreateIndex
++CREATE INDEX "DevicePairing_expiresAt_idx" ON "DevicePairing"("expiresAt");
++
++-- CreateIndex
++CREATE UNIQUE INDEX "DeviceSession_accessTokenHash_key" ON "DeviceSession"("accessTokenHash");
++
++-- CreateIndex
++CREATE UNIQUE INDEX "DeviceSession_refreshTokenHash_key" ON "DeviceSession"("refreshTokenHash");
++
++-- CreateIndex
++CREATE INDEX "DeviceSession_userId_revokedAt_idx" ON "DeviceSession"("userId", "revokedAt");
++
++-- CreateIndex
++CREATE INDEX "DeviceSession_prevRefreshTokenHashes_idx" ON "DeviceSession" USING GIN ("prevRefreshTokenHashes");
++
++-- CreateIndex
++CREATE INDEX "RateLimitBucket_resetAt_idx" ON "RateLimitBucket"("resetAt");
++
++-- AddForeignKey
++ALTER TABLE "DevicePairing" ADD CONSTRAINT "DevicePairing_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
++
++-- AddForeignKey
++ALTER TABLE "DeviceSession" ADD CONSTRAINT "DeviceSession_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+diff --git a/prisma/schema.prisma b/prisma/schema.prisma
+index c74e287..9bd85e0 100644
+--- a/prisma/schema.prisma
++++ b/prisma/schema.prisma
+@@ -40,6 +40,8 @@ model User {
+   badges              UserBadge[]
+   notificationsReceived Notification[] @relation("NotificationRecipient")
+   notificationsSent   Notification[]  @relation("NotificationSender")
++  deviceSessions      DeviceSession[]
++  devicePairings      DevicePairing[]
+ 
+   @@index([email])
+ }
+@@ -357,3 +359,66 @@ enum SubmissionStatus {
+   // paid sandbox execution in api/sandbox/run/route.ts.
+   MIRRORING
+ }
++
++// ── Bountied Desktop device pairing (docs/desktop-pairing.md) ──────────────
++// The website is the account authority. A Desktop app starts a pairing
++// request, the signed-in user authorizes it in the browser, the website
++// issues a single-use 16-char code, and the app exchanges that code (plus a
++// PKCE verifier) for a revocable device session. Secrets are stored only as
++// HMAC-SHA256 hashes; plaintext codes/tokens are never persisted.
++
++model DevicePairing {
++  id             String    @id // 128-bit random, base64url: the "device request id"
++  codeChallenge  String // base64url(SHA-256(code_verifier)); the verifier never leaves the app
++  deviceName     String
++  platform       String
++  appVersion     String
++  startIp        String?
++  userId         String? // set when the signed-in user authorizes
++  codeHash       String?   @unique // HMAC of the one-time code (never the code itself)
++  createdAt      DateTime  @default(now())
++  expiresAt      DateTime // whole request dies here (~5 min)
++  authorizedAt   DateTime?
++  codeExpiresAt  DateTime? // the code dies here (<= expiresAt)
++  consumedAt     DateTime? // single use: set atomically on successful exchange
++  failedAttempts Int       @default(0)
++  user           User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
++
++  @@index([userId])
++  @@index([expiresAt])
++}
++
++model DeviceSession {
++  id                   String    @id @default(cuid())
++  userId               String
++  deviceName           String
++  platform             String
++  appVersion           String
++  createdAt            DateTime  @default(now())
++  lastSeenAt           DateTime  @default(now())
++  lastIp               String?
++  accessTokenHash      String    @unique
++  accessExpiresAt      DateTime // short-lived (~15 min)
++  refreshTokenHash     String    @unique
++  // Hashes of refresh tokens this session has already rotated away from (bounded to the
++  // most recent 100). Presenting one of these again = replay = likely theft -> revoke.
++  prevRefreshTokenHashes String[] @default([])
++  refreshExpiresAt     DateTime // sliding
++  absoluteExpiresAt    DateTime // hard cap: the device must re-pair after this
++  revokedAt            DateTime?
++  revokedReason        String?
++  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
++
++  @@index([userId, revokedAt])
++  @@index([prevRefreshTokenHashes], type: Gin)
++}
++
++// Fixed-window counters for pairing/refresh abuse limits. DB-backed because
++// the web app runs on serverless instances with no shared memory.
++model RateLimitBucket {
++  key     String   @id
++  count   Int
++  resetAt DateTime
++
++  @@index([resetAt])
++}
+diff --git a/src/app/(app)/desktop/connect/page.tsx b/src/app/(app)/desktop/connect/page.tsx
+new file mode 100644
+index 0000000..4e39416
+--- /dev/null
++++ b/src/app/(app)/desktop/connect/page.tsx
+@@ -0,0 +1,68 @@
++import { redirect } from "next/navigation";
++import { headers } from "next/headers";
++import { createClient } from "@/lib/supabase/server";
++import { prisma } from "@/lib/db";
++import { getPairingForReview } from "@/lib/desktop/pairing";
++import { clientIp } from "@/lib/desktop/ratelimit";
++import { AuthorizeCard } from "@/components/desktop/authorize-card";
++
++export const dynamic = "force-dynamic";
++
++const NOT_VALID =
++  "This connection request is no longer valid. Open Bountied Desktop and choose Connect to start again.";
++
++export default async function ConnectDesktopPage({
++  searchParams,
++}: {
++  searchParams: Promise<{ req?: string }>;
++}) {
++  const { req } = await searchParams;
++
++  const supabase = await createClient();
++  const { data: { user } } = await supabase.auth.getUser();
++  if (!user) {
++    const back = `/desktop/connect?req=${encodeURIComponent(req ?? "")}`;
++    redirect(`/login?redirectedFrom=${encodeURIComponent(back)}`);
++  }
++  const profile = await prisma.user.findUnique({ where: { id: user.id } });
++  if (!profile) redirect("/login");
++  if (!profile.role) redirect("/onboarding");
++
++  const pairing = req ? await getPairingForReview(req, profile.id) : null;
++  const usable = pairing && !pairing.consumedAt && pairing.expiresAt > new Date();
++  const alreadyIssued = usable && pairing.userId === profile.id && pairing.authorizedAt;
++
++  // Helps the user spot a request that did not originate on their own machine.
++  const browserIp = clientIp(await headers());
++  const differentNetwork = Boolean(pairing?.startIp && browserIp !== "unknown" && pairing.startIp !== browserIp);
++
++  return (
++    <main className="flex-1 flex items-center justify-center px-6 py-16">
++      <div className="w-full max-w-md">
++        {!usable ? (
++          <div className="rounded-lg border border-border bg-surface p-6">
++            <h1 className="text-lg font-semibold tracking-tight mb-2">Request not available</h1>
++            <p className="text-sm text-foreground-muted">{NOT_VALID}</p>
++          </div>
++        ) : alreadyIssued ? (
++          <div className="rounded-lg border border-border bg-surface p-6">
++            <h1 className="text-lg font-semibold tracking-tight mb-2">Code already generated</h1>
++            <p className="text-sm text-foreground-muted">
++              For your security a code is shown only once. If you didn&apos;t copy it, return to Bountied
++              Desktop and choose Connect to start a new request.
++            </p>
++          </div>
++        ) : (
++          <AuthorizeCard
++            pairingId={pairing.id}
++            account={{ name: profile.name, email: profile.email }}
++            device={{ name: pairing.deviceName, platform: pairing.platform, appVersion: pairing.appVersion }}
++            requestedAt={pairing.createdAt.toISOString()}
++            requestExpiresAt={pairing.expiresAt.toISOString()}
++            differentNetwork={differentNetwork}
++          />
++        )}
++      </div>
++    </main>
++  );
++}
+diff --git a/src/app/api/desktop/account/route.ts b/src/app/api/desktop/account/route.ts
+new file mode 100644
+index 0000000..0319c7a
+--- /dev/null
++++ b/src/app/api/desktop/account/route.ts
+@@ -0,0 +1,14 @@
++import { NextResponse } from "next/server";
++import { getDesktopUser, unauthorized } from "@/lib/desktop/auth";
++
++export async function GET(req: Request) {
++  const user = await getDesktopUser(req);
++  if (!user) return unauthorized();
++  return NextResponse.json({
++    id: user.id,
++    name: user.name,
++    email: user.email,
++    role: user.role,
++    creditBalance: user.creditBalance.toNumber(),
++  });
++}
+diff --git a/src/app/api/desktop/pair/exchange/route.ts b/src/app/api/desktop/pair/exchange/route.ts
+new file mode 100644
+index 0000000..be61263
+--- /dev/null
++++ b/src/app/api/desktop/pair/exchange/route.ts
+@@ -0,0 +1,20 @@
++import { clientIp } from "@/lib/desktop/ratelimit";
++import { json, rateLimited, readSmallJson } from "@/lib/desktop/http";
++import { exchangeCode } from "@/lib/desktop/pairing";
++
++/**
++ * Step 3 (unauthenticated): redeem the one-time code. Every failure reason
++ * returns the SAME response so the endpoint can't be used to learn whether a
++ * pairing exists, is expired, or was close.
++ */
++export async function POST(req: Request) {
++  const body = await readSmallJson(req);
++  if (!body) return json({ error: "Invalid or expired code", code: "invalid_code" }, 400);
++
++  const r = await exchangeCode({
++    pairingId: body.pairingId, code: body.code, codeVerifier: body.codeVerifier, ip: clientIp(req.headers),
++  });
++  if (r.kind === "rate_limited") return rateLimited(r.retryAfterSec);
++  if (r.kind === "invalid") return json({ error: "Invalid or expired code", code: "invalid_code" }, 400);
++  return json(r.tokens);
++}
+diff --git a/src/app/api/desktop/pair/start/route.ts b/src/app/api/desktop/pair/start/route.ts
+new file mode 100644
+index 0000000..2d25e3e
+--- /dev/null
++++ b/src/app/api/desktop/pair/start/route.ts
+@@ -0,0 +1,22 @@
++import { clientIp } from "@/lib/desktop/ratelimit";
++import { json, rateLimited, readSmallJson } from "@/lib/desktop/http";
++import { PAIRING } from "@/lib/desktop/config";
++import { startPairing } from "@/lib/desktop/pairing";
++
++/**
++ * Step 1 (unauthenticated): the Desktop app announces itself and commits to a
++ * PKCE challenge. Returns an opaque pairing id; the app opens
++ * {site}/desktop/connect?req=<id> in the user's browser.
++ */
++export async function POST(req: Request) {
++  const body = await readSmallJson(req);
++  if (!body) return json({ error: "Bad request" }, 400);
++
++  const r = await startPairing({
++    codeChallenge: body.codeChallenge, deviceName: body.deviceName,
++    platform: body.platform, appVersion: body.appVersion, ip: clientIp(req.headers),
++  });
++  if (r.kind === "rate_limited") return rateLimited(r.retryAfterSec);
++  if (r.kind === "bad_request") return json({ error: "Bad request" }, 400);
++  return json({ pairingId: r.pairingId, expiresAt: r.expiresAt.toISOString(), expiresInSec: PAIRING.requestTtlSec });
++}
+diff --git a/src/app/api/desktop/problems/[id]/submissions/route.ts b/src/app/api/desktop/problems/[id]/submissions/route.ts
+new file mode 100644
+index 0000000..333d4c4
+--- /dev/null
++++ b/src/app/api/desktop/problems/[id]/submissions/route.ts
+@@ -0,0 +1,42 @@
++import { NextResponse } from "next/server";
++import { prisma } from "@/lib/db";
++import { forbidden, getDesktopUser, unauthorized } from "@/lib/desktop/auth";
++
++/**
++ * Submissions for one of the caller's problems.
++ *
++ * ZERO-SOURCE RULE: repoUrl and platformRepoUrl point at the Solver's code,
++ * so they are returned ONLY when Submission.isRevealed is true (set solely by
++ * acceptSubmissionAndRelease). Before release the Giver gets metadata and
++ * review evidence only.
++ */
++export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
++  const user = await getDesktopUser(req);
++  if (!user) return unauthorized();
++  const { id } = await params;
++
++  const problem = await prisma.problem.findUnique({ where: { id }, select: { giverId: true, status: true } });
++  if (!problem) return NextResponse.json({ error: "Problem not found" }, { status: 404 });
++  if (problem.giverId !== user.id) return forbidden();
++
++  const submissions = await prisma.submission.findMany({
++    where: { problemId: id },
++    orderBy: { submittedAt: "desc" },
++    select: {
++      id: true, status: true, attemptNumber: true, submittedAt: true, writeup: true,
++      isRevealed: true, sandboxExitCode: true, sandboxRanAt: true,
++      repoUrl: true, platformRepoUrl: true,
++      solver: { select: { name: true } },
++    },
++  });
++
++  return NextResponse.json({
++    problemStatus: problem.status,
++    submissions: submissions.map(({ repoUrl, platformRepoUrl, solver, ...s }) => ({
++      ...s,
++      solverName: solver.name,
++      repoUrl: s.isRevealed ? repoUrl : null,
++      platformRepoUrl: s.isRevealed ? platformRepoUrl : null,
++    })),
++  });
++}
+diff --git a/src/app/api/desktop/problems/route.ts b/src/app/api/desktop/problems/route.ts
+new file mode 100644
+index 0000000..c9f3db6
+--- /dev/null
++++ b/src/app/api/desktop/problems/route.ts
+@@ -0,0 +1,33 @@
++import { NextResponse } from "next/server";
++import { prisma } from "@/lib/db";
++import { getDesktopUser, unauthorized } from "@/lib/desktop/auth";
++import { FREE_REVIEWS_PER_PROBLEM, REVIEW_COST_USD } from "@/lib/reviews/pricing";
++
++/** Problems the authenticated user posted, with submission counts. */
++export async function GET(req: Request) {
++  const user = await getDesktopUser(req);
++  if (!user) return unauthorized();
++
++  const problems = await prisma.problem.findMany({
++    where: { giverId: user.id, status: { not: "DRAFT" } },
++    orderBy: { updatedAt: "desc" },
++    select: {
++      id: true, title: true, status: true, runtime: true, language: true,
++      bountyAmount: true, currency: true, deadline: true, updatedAt: true, freeReviewsUsed: true,
++      _count: { select: { submissions: true } },
++    },
++  });
++
++  return NextResponse.json({
++    problems: problems.map((p) => ({
++      id: p.id, title: p.title, status: p.status, runtime: p.runtime,
++      language: p.language, currency: p.currency,
++      bountyAmount: p.bountyAmount?.toNumber() ?? null,
++      deadline: p.deadline, updatedAt: p.updatedAt,
++      submissionCount: p._count.submissions,
++      // Server-owned pricing so the client never hard-codes what a review costs.
++      freeReviewsRemaining: Math.max(0, FREE_REVIEWS_PER_PROBLEM - p.freeReviewsUsed),
++    })),
++    reviewCostUsd: REVIEW_COST_USD,
++  });
++}
+diff --git a/src/app/api/desktop/sandbox/run/route.ts b/src/app/api/desktop/sandbox/run/route.ts
+new file mode 100644
+index 0000000..61b607c
+--- /dev/null
++++ b/src/app/api/desktop/sandbox/run/route.ts
+@@ -0,0 +1,42 @@
++import { NextResponse } from "next/server";
++import { prisma } from "@/lib/db";
++import { forbidden, getDesktopUser, unauthorized } from "@/lib/desktop/auth";
++import { triggerSubmissionReview } from "@/lib/reviews/actions";
++import { runAndRecordSubmission } from "@/lib/sandbox/run-submission";
++
++/**
++ * Billed sandbox review, initiated by the problem's Giver. Identity comes
++ * from the verified Bearer token — never from the request body.
++ */
++export async function POST(req: Request) {
++  const user = await getDesktopUser(req);
++  if (!user) return unauthorized();
++
++  const body = await req.json().catch(() => null);
++  const submissionId = typeof body?.submissionId === "string" ? body.submissionId : null;
++  if (!submissionId) return NextResponse.json({ error: "Missing submissionId" }, { status: 400 });
++
++  const submission = await prisma.submission.findUnique({
++    where: { id: submissionId },
++    select: { status: true, problem: { select: { giverId: true } } },
++  });
++  if (!submission) return NextResponse.json({ error: "Submission not found" }, { status: 404 });
++  if (submission.problem.giverId !== user.id) return forbidden();
++  if (submission.status === "RUNNING") {
++    return NextResponse.json({ error: "A review is already running" }, { status: 409 });
++  }
++
++  try {
++    await triggerSubmissionReview(submissionId, user.id); // charges credit / consumes a free review
++  } catch (e) {
++    const msg = e instanceof Error ? e.message : "";
++    if (msg === "INSUFFICIENT_FUNDS") {
++      return NextResponse.json({ error: "Insufficient credit for a review" }, { status: 402 });
++    }
++    return NextResponse.json({ error: "Could not start review" }, { status: 400 });
++  }
++
++  const outcome = await runAndRecordSubmission(submissionId);
++  if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: outcome.status ?? 500 });
++  return NextResponse.json({ success: true, status: outcome.submission.status });
++}
+diff --git a/src/app/api/desktop/session/refresh/route.ts b/src/app/api/desktop/session/refresh/route.ts
+new file mode 100644
+index 0000000..63ca008
+--- /dev/null
++++ b/src/app/api/desktop/session/refresh/route.ts
+@@ -0,0 +1,18 @@
++import { clientIp } from "@/lib/desktop/ratelimit";
++import { json, rateLimited, readSmallJson } from "@/lib/desktop/http";
++import { refreshSession } from "@/lib/desktop/pairing";
++
++/**
++ * Rotates the refresh token and issues a new short-lived access token. Any
++ * failure (revoked, expired, unknown, replayed old token) is a flat 401: the
++ * app must send the user back through pairing.
++ */
++export async function POST(req: Request) {
++  const body = await readSmallJson(req);
++  if (!body) return json({ error: "Session ended", code: "pairing_required" }, 401);
++
++  const r = await refreshSession({ refreshToken: body.refreshToken, ip: clientIp(req.headers) });
++  if (r.kind === "rate_limited") return rateLimited(r.retryAfterSec);
++  if (r.kind === "invalid") return json({ error: "Session ended", code: "pairing_required" }, 401);
++  return json({ accessToken: r.accessToken, refreshToken: r.refreshToken, expiresIn: r.expiresIn });
++}
+diff --git a/src/app/api/desktop/session/revoke/route.ts b/src/app/api/desktop/session/revoke/route.ts
+new file mode 100644
+index 0000000..ce94229
+--- /dev/null
++++ b/src/app/api/desktop/session/revoke/route.ts
+@@ -0,0 +1,11 @@
++import { getDesktopAuth, unauthorized } from "@/lib/desktop/auth";
++import { json } from "@/lib/desktop/http";
++import { revokeSession } from "@/lib/desktop/pairing";
++
++/** The Desktop app signing itself out. */
++export async function POST(req: Request) {
++  const auth = await getDesktopAuth(req);
++  if (!auth) return unauthorized();
++  await revokeSession(auth.sessionId, auth.user.id, "signed_out_on_device");
++  return json({ ok: true });
++}
+diff --git a/src/app/api/desktop/submissions/[id]/evidence/route.ts b/src/app/api/desktop/submissions/[id]/evidence/route.ts
+new file mode 100644
+index 0000000..b27bbed
+--- /dev/null
++++ b/src/app/api/desktop/submissions/[id]/evidence/route.ts
+@@ -0,0 +1,26 @@
++import { NextResponse } from "next/server";
++import { prisma } from "@/lib/db";
++import { forbidden, getDesktopUser, unauthorized } from "@/lib/desktop/auth";
++
++/** Bounded review evidence (see lib/sandbox/review-evidence.ts) for one submission. */
++export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
++  const user = await getDesktopUser(req);
++  if (!user) return unauthorized();
++  const { id } = await params;
++
++  const s = await prisma.submission.findUnique({
++    where: { id },
++    select: {
++      status: true, isRevealed: true, sandboxOutput: true, sandboxExitCode: true,
++      sandboxError: true, sandboxRanAt: true, problem: { select: { giverId: true } },
++    },
++  });
++  if (!s) return NextResponse.json({ error: "Submission not found" }, { status: 404 });
++  if (s.problem.giverId !== user.id) return forbidden();
++
++  return NextResponse.json({
++    status: s.status, isRevealed: s.isRevealed,
++    exitCode: s.sandboxExitCode, output: s.sandboxOutput,
++    error: s.sandboxError, ranAt: s.sandboxRanAt,
++  });
++}
+diff --git a/src/app/api/desktop/submissions/accept/route.ts b/src/app/api/desktop/submissions/accept/route.ts
+new file mode 100644
+index 0000000..473404f
+--- /dev/null
++++ b/src/app/api/desktop/submissions/accept/route.ts
+@@ -0,0 +1,24 @@
++import { NextResponse } from "next/server";
++import { getDesktopUser, unauthorized } from "@/lib/desktop/auth";
++import { acceptSubmissionAndRelease } from "@/lib/escrow/release";
++
++/**
++ * Accept + release escrow. acceptSubmissionAndRelease is the ONLY writer of
++ * isRevealed/escrow state and re-checks actingGiverId === Problem.giverId
++ * itself; we pass the TOKEN-derived user id, never a client-supplied one.
++ */
++export async function POST(req: Request) {
++  const user = await getDesktopUser(req);
++  if (!user) return unauthorized();
++
++  const body = await req.json().catch(() => null);
++  const problemId = typeof body?.problemId === "string" ? body.problemId : null;
++  const submissionId = typeof body?.submissionId === "string" ? body.submissionId : null;
++  if (!problemId || !submissionId) {
++    return NextResponse.json({ error: "Missing problemId or submissionId" }, { status: 400 });
++  }
++
++  const result = await acceptSubmissionAndRelease({ problemId, submissionId, actingGiverId: user.id });
++  if (!result.ok) return NextResponse.json({ error: (result as { reason: string }).reason }, { status: 400 });
++  return NextResponse.json({ ok: true });
++}
+diff --git a/src/components/desktop/authorize-card.tsx b/src/components/desktop/authorize-card.tsx
+new file mode 100644
+index 0000000..12e78e1
+--- /dev/null
++++ b/src/components/desktop/authorize-card.tsx
+@@ -0,0 +1,161 @@
++"use client";
++
++import { useEffect, useState, useTransition } from "react";
++import { Check, Copy, Monitor, ShieldAlert, TriangleAlert } from "lucide-react";
++import { Button } from "@/components/ui/button";
++import { authorizeDesktopAction, denyDesktopAction } from "@/lib/desktop/actions";
++
++type Props = {
++  pairingId: string;
++  account: { name: string; email: string };
++  device: { name: string; platform: string; appVersion: string };
++  requestedAt: string;
++  requestExpiresAt: string;
++  differentNetwork: boolean;
++};
++
++const PLATFORM_LABEL: Record<string, string> = { windows: "Windows", macos: "macOS", linux: "Linux" };
++
++function useCountdown(iso: string | null) {
++  const [left, setLeft] = useState<number | null>(null);
++  useEffect(() => {
++    if (!iso) return;
++    const tick = () => setLeft(Math.max(0, Math.round((new Date(iso).getTime() - Date.now()) / 1000)));
++    tick();
++    const id = setInterval(tick, 1000);
++    return () => clearInterval(id);
++  }, [iso]);
++  return left;
++}
++const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
++
++export function AuthorizeCard({ pairingId, account, device, requestedAt, requestExpiresAt, differentNetwork }: Props) {
++  const [pending, start] = useTransition();
++  const [error, setError] = useState<string | null>(null);
++  const [issued, setIssued] = useState<{ code: string; expiresAt: string } | null>(null);
++  const [denied, setDenied] = useState(false);
++  const [copied, setCopied] = useState(false);
++
++  const requestLeft = useCountdown(issued ? null : requestExpiresAt);
++  const codeLeft = useCountdown(issued?.expiresAt ?? null);
++
++  async function copy() {
++    if (!issued) return;
++    try {
++      await navigator.clipboard.writeText(issued.code);
++      setCopied(true);
++      setTimeout(() => setCopied(false), 2000);
++    } catch {
++      setError("Couldn't copy automatically. Select the code and copy it manually.");
++    }
++  }
++
++  if (denied) {
++    return (
++      <div className="rounded-lg border border-border bg-surface p-6">
++        <h1 className="text-lg font-semibold tracking-tight mb-2">Connection cancelled</h1>
++        <p className="text-sm text-foreground-muted">That request was cancelled and can no longer be used. You can close this tab.</p>
++      </div>
++    );
++  }
++
++  if (issued) {
++    const expired = codeLeft === 0;
++    return (
++      <div className="rounded-lg border border-border bg-surface p-6">
++        <h1 className="text-lg font-semibold tracking-tight mb-1">Your pairing code</h1>
++        <p className="text-sm text-foreground-muted mb-5">
++          Copy this code and paste it into Bountied Desktop. It works once.
++        </p>
++
++        <div
++          className={`rounded-md border border-border bg-background px-4 py-5 text-center font-mono text-2xl tracking-[0.18em] select-all ${expired ? "opacity-40 line-through" : ""}`}
++          aria-label="Pairing code"
++        >
++          {issued.code}
++        </div>
++
++        <div className="mt-3 flex items-center justify-between text-xs text-foreground-muted">
++          <span>{expired ? "Expired. Start again from the app." : `Expires in ${codeLeft === null ? "…" : mmss(codeLeft)}`}</span>
++          <Button type="button" size="sm" variant="outline" onClick={copy} disabled={expired}>
++            {copied ? <Check /> : <Copy />} {copied ? "Copied" : "Copy code"}
++          </Button>
++        </div>
++        {error && <p className="mt-3 text-xs text-destructive">{error}</p>}
++
++        <p className="mt-5 text-xs text-foreground-muted leading-5">
++          Never share this code with anyone. Bountied staff will never ask for it. Only paste it into the
++          Bountied Desktop app you opened yourself.
++        </p>
++      </div>
++    );
++  }
++
++  const requestedLabel = new Date(requestedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
++
++  return (
++    <div className="rounded-lg border border-border bg-surface p-6">
++      <div className="flex items-center gap-3 mb-5">
++        <Monitor size={20} className="text-foreground-muted" />
++        <h1 className="text-lg font-semibold tracking-tight">Connect Bountied Desktop</h1>
++      </div>
++
++      <dl className="space-y-3 text-sm mb-5">
++        <div className="flex justify-between gap-4">
++          <dt className="text-foreground-muted">Account</dt>
++          <dd className="text-right"><span className="font-medium">{account.name}</span><br /><span className="text-xs text-foreground-muted">{account.email}</span></dd>
++        </div>
++        <div className="flex justify-between gap-4">
++          <dt className="text-foreground-muted">Device</dt>
++          <dd className="text-right font-medium">{device.name}</dd>
++        </div>
++        <div className="flex justify-between gap-4">
++          <dt className="text-foreground-muted">System</dt>
++          <dd className="text-right">{PLATFORM_LABEL[device.platform] ?? device.platform} · app v{device.appVersion}</dd>
++        </div>
++        <div className="flex justify-between gap-4">
++          <dt className="text-foreground-muted">Requested</dt>
++          <dd className="text-right">{requestedLabel}{requestLeft !== null && ` · ${requestLeft === 0 ? "expired" : `${mmss(requestLeft)} left`}`}</dd>
++        </div>
++      </dl>
++
++      {differentNetwork && (
++        <div className="mb-4 flex gap-2 rounded-md border border-border bg-background p-3 text-xs text-foreground-muted">
++          <TriangleAlert size={14} className="mt-0.5 shrink-0" />
++          <span>This request came from a different network than this browser. Continue only if you started it yourself on another connection.</span>
++        </div>
++      )}
++
++      <div className="mb-5 flex gap-2 rounded-md border border-border bg-background p-3 text-xs text-foreground-muted">
++        <ShieldAlert size={14} className="mt-0.5 shrink-0" />
++        <span>Only continue if you just clicked <strong className="text-foreground">Connect</strong> in Bountied Desktop on a computer you control. If someone sent you this link, cancel.</span>
++      </div>
++
++      {error && <p className="mb-3 text-xs text-destructive" role="alert">{error}</p>}
++
++      <div className="flex gap-2">
++        <Button
++          className="flex-1"
++          disabled={pending || requestLeft === 0}
++          onClick={() => {
++            setError(null);
++            start(async () => {
++              const r = await authorizeDesktopAction(pairingId);
++              if (r.ok && r.code && r.codeExpiresAt) setIssued({ code: r.code, expiresAt: r.codeExpiresAt });
++              else setError(r.error ?? "Something went wrong. Try again.");
++            });
++          }}
++        >
++          {pending ? "Authorizing…" : "Authorize this device"}
++        </Button>
++        <Button
++          variant="outline"
++          disabled={pending}
++          onClick={() => start(async () => { await denyDesktopAction(pairingId); setDenied(true); })}
++        >
++          Cancel
++        </Button>
++      </div>
++    </div>
++  );
++}
+diff --git a/src/components/desktop/desktop-devices-card.tsx b/src/components/desktop/desktop-devices-card.tsx
+new file mode 100644
+index 0000000..bf55a5d
+--- /dev/null
++++ b/src/components/desktop/desktop-devices-card.tsx
+@@ -0,0 +1,77 @@
++"use client";
++
++import { useState, useTransition } from "react";
++import { Monitor } from "lucide-react";
++import { Button } from "@/components/ui/button";
++import { revokeDesktopDeviceAction } from "@/lib/desktop/actions";
++
++export type DeviceRow = {
++  id: string; deviceName: string; platform: string; appVersion: string;
++  createdAt: string; lastSeenAt: string; lastIp: string | null;
++};
++
++const PLATFORM_LABEL: Record<string, string> = { windows: "Windows", macos: "macOS", linux: "Linux" };
++
++function ago(iso: string): string {
++  const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
++  if (s < 90) return "just now";
++  if (s < 3600) return `${Math.round(s / 60)} min ago`;
++  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
++  return `${Math.round(s / 86400)} d ago`;
++}
++
++export function DesktopDevicesCard({ devices }: { devices: DeviceRow[] }) {
++  const [pending, start] = useTransition();
++  const [confirming, setConfirming] = useState<string | null>(null);
++  const [error, setError] = useState<string | null>(null);
++
++  return (
++    <div className="rounded-lg border border-border bg-surface p-5">
++      <div className="flex items-start gap-4">
++        <Monitor size={20} className="text-foreground shrink-0 mt-0.5" />
++        <div className="flex-1">
++          <p className="text-sm font-medium text-foreground mb-1">Bountied Desktop</p>
++          <p className="text-xs text-foreground-muted">
++            Computers connected to your account. Revoking a device signs it out immediately; it has to
++            pair again to get back in. To connect a new one, open Bountied Desktop and choose Connect.
++          </p>
++        </div>
++      </div>
++
++      {error && <p className="mt-3 text-xs text-destructive" role="alert">{error}</p>}
++
++      {devices.length === 0 ? (
++        <p className="mt-4 text-xs text-foreground-muted">No desktop devices connected.</p>
++      ) : (
++        <ul className="mt-4 divide-y divide-border border-t border-border">
++          {devices.map((d) => (
++            <li key={d.id} className="flex items-center justify-between gap-4 py-3">
++              <div className="min-w-0">
++                <p className="text-sm font-medium truncate">{d.deviceName}</p>
++                <p className="text-xs text-foreground-muted">
++                  {PLATFORM_LABEL[d.platform] ?? d.platform} · v{d.appVersion} · connected {new Date(d.createdAt).toLocaleDateString()} · active {ago(d.lastSeenAt)}
++                  {d.lastIp ? ` · ${d.lastIp}` : ""}
++                </p>
++              </div>
++              {confirming === d.id ? (
++                <div className="flex gap-2 shrink-0">
++                  <Button size="sm" variant="destructive" disabled={pending}
++                    onClick={() => start(async () => {
++                      const r = await revokeDesktopDeviceAction(d.id);
++                      if (!r.ok) setError("Couldn't revoke that device. Refresh and try again.");
++                      setConfirming(null);
++                    })}>
++                    {pending ? "Revoking…" : "Confirm revoke"}
++                  </Button>
++                  <Button size="sm" variant="outline" onClick={() => setConfirming(null)}>Keep</Button>
++                </div>
++              ) : (
++                <Button size="sm" variant="outline" className="shrink-0" onClick={() => setConfirming(d.id)}>Revoke</Button>
++              )}
++            </li>
++          ))}
++        </ul>
++      )}
++    </div>
++  );
++}
+diff --git a/src/lib/desktop/actions.ts b/src/lib/desktop/actions.ts
+new file mode 100644
+index 0000000..adb444c
+--- /dev/null
++++ b/src/lib/desktop/actions.ts
+@@ -0,0 +1,44 @@
++"use server";
++
++import { headers } from "next/headers";
++import { revalidatePath } from "next/cache";
++import { createClient } from "@/lib/supabase/server";
++import { prisma } from "@/lib/db";
++import { formatCode } from "./crypto";
++import { clientIp } from "./ratelimit";
++import { authorizePairing, denyPairing, revokeSession } from "./pairing";
++
++async function currentUserId(): Promise<string | null> {
++  const supabase = await createClient();
++  const { data: { user } } = await supabase.auth.getUser();
++  if (!user) return null;
++  const profile = await prisma.user.findUnique({ where: { id: user.id }, select: { id: true } });
++  return profile?.id ?? null;
++}
++
++/** Flat shape so it narrows under this repo's `strict: false`. */
++export type AuthorizeActionResult = { ok: boolean; code?: string; codeExpiresAt?: string; error?: string };
++
++/** The user clicked "Authorize" on /desktop/connect. Returns the one-time code, shown once. */
++export async function authorizeDesktopAction(pairingId: string): Promise<AuthorizeActionResult> {
++  const userId = await currentUserId();
++  if (!userId) return { ok: false, error: "Please sign in again." };
++
++  const r = await authorizePairing(String(pairingId), userId, clientIp(await headers()));
++  if (r.kind === "rate_limited") return { ok: false, error: `Too many attempts. Try again in ${r.retryAfterSec}s.` };
++  if (r.kind === "invalid") return { ok: false, error: "This request expired or was already used. Start again from Bountied Desktop." };
++  return { ok: true, code: formatCode(r.code), codeExpiresAt: r.codeExpiresAt.toISOString() };
++}
++
++export async function denyDesktopAction(pairingId: string): Promise<void> {
++  const userId = await currentUserId();
++  if (userId) await denyPairing(String(pairingId), userId);
++}
++
++export async function revokeDesktopDeviceAction(sessionId: string): Promise<{ ok: boolean }> {
++  const userId = await currentUserId();
++  if (!userId) return { ok: false };
++  const ok = await revokeSession(String(sessionId), userId, "revoked_from_website");
++  revalidatePath("/integrations");
++  return { ok };
++}
+diff --git a/src/lib/desktop/auth.ts b/src/lib/desktop/auth.ts
+new file mode 100644
+index 0000000..b225040
+--- /dev/null
++++ b/src/lib/desktop/auth.ts
+@@ -0,0 +1,49 @@
++import { NextResponse } from "next/server";
++import { prisma } from "@/lib/db";
++import { SESSION } from "./config";
++import { hmac } from "./crypto";
++import { clientIp } from "./ratelimit";
++
++/**
++ * Bearer auth for the Bountied Desktop client (/api/desktop/*).
++ *
++ * The token is an opaque, short-lived device access token issued by the
++ * pairing flow (lib/desktop/pairing.ts) - NOT a Supabase token. It is looked
++ * up by HMAC on every request, so revoking a device in Integrations takes
++ * effect on the very next call. Identity comes only from this lookup, never
++ * from anything in the request body or URL.
++ */
++export async function getDesktopAuth(req: Request) {
++  const match = /^Bearer\s+(\S{20,200})$/i.exec(req.headers.get("authorization") ?? "");
++  if (!match) return null;
++
++  const now = new Date();
++  const session = await prisma.deviceSession.findUnique({
++    where: { accessTokenHash: hmac("access", match[1]) },
++    include: { user: true },
++  });
++  if (
++    !session || session.revokedAt ||
++    session.accessExpiresAt <= now || session.absoluteExpiresAt <= now
++  ) return null;
++
++  if (now.getTime() - session.lastSeenAt.getTime() > SESSION.lastSeenThrottleSec * 1000) {
++    const ip = clientIp(req.headers);
++    void prisma.deviceSession
++      .update({ where: { id: session.id }, data: { lastSeenAt: now, lastIp: ip === "unknown" ? undefined : ip } })
++      .catch(() => {});
++  }
++  return { user: session.user, sessionId: session.id };
++}
++
++export async function getDesktopUser(req: Request) {
++  return (await getDesktopAuth(req))?.user ?? null;
++}
++
++const noStore = { "Cache-Control": "no-store" };
++
++export const unauthorized = () =>
++  NextResponse.json({ error: "Not authenticated" }, { status: 401, headers: noStore });
++
++export const forbidden = () =>
++  NextResponse.json({ error: "Not authorized" }, { status: 403, headers: noStore });
+diff --git a/src/lib/desktop/config.ts b/src/lib/desktop/config.ts
+new file mode 100644
+index 0000000..77af365
+--- /dev/null
++++ b/src/lib/desktop/config.ts
+@@ -0,0 +1,34 @@
++/**
++ * Bountied Desktop pairing: every tunable in one place so the security
++ * posture is reviewable at a glance. See docs/desktop-pairing.md.
++ */
++export const PAIRING = {
++  /** Whole pairing request (desktop "Connect" click -> code redeemed). */
++  requestTtlSec: 5 * 60,
++  /** The one-time code, counted from the moment the user authorizes. Never outlives the request. */
++  codeTtlSec: 3 * 60,
++  /** Wrong attempts allowed against ONE pairing before it is burned. */
++  maxFailedPerPairing: 5,
++  codeLength: 16,
++} as const;
++
++export const SESSION = {
++  accessTtlSec: 15 * 60,
++  /** Sliding: every successful refresh pushes this out. */
++  refreshTtlSec: 30 * 24 * 60 * 60,
++  /** Hard cap from first pairing; after this the device must pair again. */
++  absoluteTtlSec: 180 * 24 * 60 * 60,
++  /** Don't write lastSeenAt on every request. */
++  lastSeenThrottleSec: 60,
++} as const;
++
++/** Fixed windows. `key` prefixes are independent so one axis can't mask another. */
++export const LIMITS = {
++  startPerIp: { limit: 10, windowSec: 60 * 60 },
++  authorizePerUser: { limit: 6, windowSec: 10 * 60 },
++  authorizePerIp: { limit: 20, windowSec: 10 * 60 },
++  failedExchangePerIp: { limit: 20, windowSec: 15 * 60 },
++  failedExchangePerAccount: { limit: 10, windowSec: 15 * 60 },
++  exchangeAttemptsPerIp: { limit: 60, windowSec: 15 * 60 },
++  refreshPerIp: { limit: 120, windowSec: 15 * 60 },
++} as const;
+diff --git a/src/lib/desktop/crypto.ts b/src/lib/desktop/crypto.ts
+new file mode 100644
+index 0000000..effb48f
+--- /dev/null
++++ b/src/lib/desktop/crypto.ts
+@@ -0,0 +1,83 @@
++import { createHmac, randomBytes, timingSafeEqual, createHash } from "node:crypto";
++import { PAIRING } from "./config";
++
++/**
++ * All stored secrets (pairing codes, access tokens, refresh tokens) are
++ * HMAC-SHA256 hashed with a server-side key, so a database leak alone is
++ * not enough to redeem a code or impersonate a device.
++ */
++function key(): Buffer {
++  const secret = process.env.DESKTOP_AUTH_SECRET;
++  if (!secret || secret.length < 32) {
++    // Fail closed: never fall back to a default key.
++    throw new Error("DESKTOP_AUTH_SECRET must be set to a random string of at least 32 characters.");
++  }
++  return Buffer.from(secret, "utf8");
++}
++
++export function hmac(purpose: "code" | "access" | "refresh", value: string): string {
++  return createHmac("sha256", key()).update(`${purpose}:`).update(value).digest("base64url");
++}
++
++/** 256-bit opaque token, base64url (43 chars). */
++export function newToken(): string {
++  return randomBytes(32).toString("base64url");
++}
++
++/** 128-bit identifier for a pairing request. */
++export function newPairingId(): string {
++  return randomBytes(16).toString("base64url");
++}
++
++/**
++ * Crockford-style base32 without I, L, O, U (no look-alikes). 32 symbols and
++ * a 256-value byte space, so `byte & 31` is perfectly uniform (no modulo
++ * bias). 16 symbols = 80 bits of entropy.
++ */
++const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
++
++export function newPairingCode(): string {
++  const bytes = randomBytes(PAIRING.codeLength);
++  let out = "";
++  for (let i = 0; i < PAIRING.codeLength; i++) out += ALPHABET[bytes[i] & 31];
++  return out;
++}
++
++/** "abcd-efgh ..." -> "ABCDEFGH..." and the usual look-alike fixes; null if not a well-formed code. */
++export function normalizeCode(input: unknown): string | null {
++  if (typeof input !== "string" || input.length > 64) return null;
++  const cleaned = input
++    .toUpperCase()
++    .replace(/[\s-]/g, "")
++    .replace(/O/g, "0")
++    .replace(/[IL]/g, "1");
++  if (cleaned.length !== PAIRING.codeLength) return null;
++  for (const ch of cleaned) if (!ALPHABET.includes(ch)) return null;
++  return cleaned;
++}
++
++export function formatCode(code: string): string {
++  return code.match(/.{1,4}/g)!.join("-");
++}
++
++export function safeEqual(a: string, b: string): boolean {
++  const x = Buffer.from(a);
++  const y = Buffer.from(b);
++  return x.length === y.length && timingSafeEqual(x, y);
++}
++
++/** RFC 7636 S256: base64url(SHA-256(verifier)). */
++export function pkceChallenge(verifier: string): string {
++  return createHash("sha256").update(verifier).digest("base64url");
++}
++
++const B64URL = /^[A-Za-z0-9_-]+$/;
++export function isPkceVerifier(v: unknown): v is string {
++  return typeof v === "string" && v.length >= 43 && v.length <= 128 && B64URL.test(v);
++}
++export function isPkceChallenge(v: unknown): v is string {
++  return typeof v === "string" && v.length === 43 && B64URL.test(v);
++}
++export function isPairingId(v: unknown): v is string {
++  return typeof v === "string" && v.length === 22 && B64URL.test(v);
++}
+diff --git a/src/lib/desktop/http.ts b/src/lib/desktop/http.ts
+new file mode 100644
+index 0000000..62a56ad
+--- /dev/null
++++ b/src/lib/desktop/http.ts
+@@ -0,0 +1,29 @@
++import { NextResponse } from "next/server";
++
++const noStore = { "Cache-Control": "no-store" };
++
++export function json(body: unknown, status = 200, extra: Record<string, string> = {}) {
++  return NextResponse.json(body, { status, headers: { ...noStore, ...extra } });
++}
++
++export function rateLimited(retryAfterSec: number) {
++  return json(
++    { error: `Too many attempts. Try again in ${retryAfterSec}s.`, code: "rate_limited", retryAfterSec },
++    429,
++    { "Retry-After": String(retryAfterSec) },
++  );
++}
++
++/** Small JSON bodies only: these endpoints are unauthenticated entry points. */
++export async function readSmallJson(req: Request): Promise<Record<string, unknown> | null> {
++  const len = Number(req.headers.get("content-length") ?? "0");
++  if (len > 4096) return null;
++  try {
++    const text = await req.text();
++    if (text.length > 4096) return null;
++    const v = JSON.parse(text);
++    return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
++  } catch {
++    return null;
++  }
++}
+diff --git a/src/lib/desktop/pairing.ts b/src/lib/desktop/pairing.ts
+new file mode 100644
+index 0000000..58f4f85
+--- /dev/null
++++ b/src/lib/desktop/pairing.ts
+@@ -0,0 +1,270 @@
++import { prisma } from "@/lib/db";
++import { LIMITS, PAIRING, SESSION } from "./config";
++import {
++  hmac, isPairingId, isPkceChallenge, isPkceVerifier, newPairingCode, newPairingId, newToken,
++  normalizeCode, pkceChallenge, safeEqual,
++} from "./crypto";
++import { hit, isBlocked, sweepExpired } from "./ratelimit";
++
++const sec = (n: number) => n * 1000;
++const clip = (v: unknown, max: number, fallback: string) =>
++  typeof v === "string" && v.trim() ? v.trim().replace(/[\u0000-\u001f\u007f]/g, "").slice(0, max) : fallback;
++
++export type RateLimited = { kind: "rate_limited"; retryAfterSec: number };
++
++// ── 1. Desktop starts a request ──────────────────────────────────────────────
++
++export async function startPairing(input: {
++  codeChallenge: unknown; deviceName: unknown; platform: unknown; appVersion: unknown; ip: string;
++}): Promise<{ kind: "ok"; pairingId: string; expiresAt: Date } | { kind: "bad_request" } | RateLimited> {
++  if (!isPkceChallenge(input.codeChallenge)) return { kind: "bad_request" };
++
++  const limited = await hit(`start:ip:${input.ip}`, LIMITS.startPerIp);
++  if (!limited.allowed) return { kind: "rate_limited", retryAfterSec: limited.retryAfterSec };
++
++  const pairingId = newPairingId();
++  const expiresAt = new Date(Date.now() + sec(PAIRING.requestTtlSec));
++  await prisma.devicePairing.create({
++    data: {
++      id: pairingId,
++      codeChallenge: input.codeChallenge,
++      deviceName: clip(input.deviceName, 60, "Unknown device"),
++      platform: clip(input.platform, 20, "unknown"),
++      appVersion: clip(input.appVersion, 20, "unknown"),
++      startIp: input.ip === "unknown" ? null : input.ip,
++      expiresAt,
++    },
++  });
++
++  // Housekeeping (best effort, never blocks the caller).
++  void prisma.devicePairing
++    .deleteMany({ where: { expiresAt: { lt: new Date(Date.now() - sec(24 * 3600)) } } })
++    .then(sweepExpired)
++    .catch(() => {});
++
++  return { kind: "ok", pairingId, expiresAt };
++}
++
++// ── 2. Signed-in user authorizes in the browser ──────────────────────────────
++
++/** What the authorize page may show. Never includes the challenge or code hash. */
++export async function getPairingForReview(pairingId: string, userId: string) {
++  if (!isPairingId(pairingId)) return null;
++  const p = await prisma.devicePairing.findUnique({
++    where: { id: pairingId },
++    select: {
++      id: true, deviceName: true, platform: true, appVersion: true, startIp: true,
++      createdAt: true, expiresAt: true, userId: true, consumedAt: true, authorizedAt: true,
++    },
++  });
++  if (!p) return null;
++  // A request already claimed by someone else must look identical to "not found".
++  if (p.userId && p.userId !== userId) return null;
++  return p;
++}
++
++export type AuthorizeResult =
++  | { kind: "ok"; code: string; codeExpiresAt: Date }
++  | { kind: "invalid" }
++  | RateLimited;
++
++export async function authorizePairing(pairingId: string, userId: string, ip: string): Promise<AuthorizeResult> {
++  if (!isPairingId(pairingId)) return { kind: "invalid" };
++
++  for (const [k, cfg] of [
++    [`authz:user:${userId}`, LIMITS.authorizePerUser],
++    [`authz:ip:${ip}`, LIMITS.authorizePerIp],
++  ] as const) {
++    const r = await hit(k, cfg);
++    if (!r.allowed) return { kind: "rate_limited", retryAfterSec: r.retryAfterSec };
++  }
++
++  const now = new Date();
++  const code = newPairingCode();
++  const requestRow = await prisma.devicePairing.findUnique({ where: { id: pairingId }, select: { expiresAt: true } });
++  if (!requestRow) return { kind: "invalid" };
++
++  const codeExpiresAt = new Date(Math.min(now.getTime() + sec(PAIRING.codeTtlSec), requestRow.expiresAt.getTime()));
++
++  // Atomic claim: only an unclaimed, unexpired, unconsumed request can be authorized, once.
++  const claimed = await prisma.devicePairing.updateMany({
++    where: { id: pairingId, userId: null, consumedAt: null, expiresAt: { gt: now } },
++    data: { userId, codeHash: hmac("code", code), authorizedAt: now, codeExpiresAt },
++  });
++  if (claimed.count !== 1) return { kind: "invalid" };
++  return { kind: "ok", code, codeExpiresAt };
++}
++
++export async function denyPairing(pairingId: string, userId: string): Promise<void> {
++  if (!isPairingId(pairingId)) return;
++  await prisma.devicePairing.updateMany({
++    where: { id: pairingId, consumedAt: null, OR: [{ userId: null }, { userId }] },
++    data: { expiresAt: new Date(0), codeHash: null },
++  });
++}
++
++// ── 3. Desktop redeems the code ──────────────────────────────────────────────
++
++export type SessionTokens = {
++  accessToken: string; refreshToken: string; expiresIn: number; sessionId: string;
++  user: { id: string; name: string; email: string };
++};
++
++export type ExchangeResult =
++  | { kind: "ok"; tokens: SessionTokens }
++  | { kind: "invalid" } // deliberately one answer for every failure reason
++  | RateLimited;
++
++function issueTokens() {
++  const accessToken = newToken();
++  const refreshToken = newToken();
++  return { accessToken, refreshToken, accessHash: hmac("access", accessToken), refreshHash: hmac("refresh", refreshToken) };
++}
++
++export async function exchangeCode(input: {
++  pairingId: unknown; code: unknown; codeVerifier: unknown; ip: string;
++}): Promise<ExchangeResult> {
++  const ipKey = `xchg:ip:${input.ip}`;
++
++  // Cheap gates first: total attempts and recorded failures per IP.
++  const all = await hit(`xchg-all:ip:${input.ip}`, LIMITS.exchangeAttemptsPerIp);
++  if (!all.allowed) return { kind: "rate_limited", retryAfterSec: all.retryAfterSec };
++  const ipBlocked = await isBlocked(ipKey, LIMITS.failedExchangePerIp);
++  if (!ipBlocked.allowed) return { kind: "rate_limited", retryAfterSec: ipBlocked.retryAfterSec };
++
++  const pairingId = isPairingId(input.pairingId) ? input.pairingId : null;
++  const pairing = pairingId
++    ? await prisma.devicePairing.findUnique({ where: { id: pairingId } })
++    : null;
++
++  // Per-account axis: attacker rotating IPs against one victim's requests still hits this.
++  const acctKey = pairing?.userId ? `xchg:acct:${pairing.userId}` : null;
++  if (acctKey) {
++    const b = await isBlocked(acctKey, LIMITS.failedExchangePerAccount);
++    if (!b.allowed) return { kind: "rate_limited", retryAfterSec: b.retryAfterSec };
++  }
++
++  const fail = async (): Promise<ExchangeResult> => {
++    await hit(ipKey, LIMITS.failedExchangePerIp);
++    if (acctKey) await hit(acctKey, LIMITS.failedExchangePerAccount);
++    if (pairing) {
++      // Per-pairing axis: burn the request after too many wrong guesses.
++      const updated = await prisma.devicePairing.update({
++        where: { id: pairing.id }, data: { failedAttempts: { increment: 1 } }, select: { failedAttempts: true },
++      });
++      if (updated.failedAttempts >= PAIRING.maxFailedPerPairing) {
++        await prisma.devicePairing.updateMany({
++          where: { id: pairing.id, consumedAt: null },
++          data: { expiresAt: new Date(0), codeHash: null },
++        });
++      }
++    }
++    return { kind: "invalid" };
++  };
++
++  const code = normalizeCode(input.code);
++  const now = new Date();
++  if (
++    !pairing || !code || !isPkceVerifier(input.codeVerifier) ||
++    !pairing.userId || !pairing.codeHash || !pairing.codeExpiresAt || pairing.consumedAt ||
++    pairing.expiresAt <= now || pairing.codeExpiresAt <= now ||
++    pairing.failedAttempts >= PAIRING.maxFailedPerPairing
++  ) return fail();
++
++  // Both must hold: the code is the one issued for this request, and the caller
++  // is the app instance that started it (it knows the PKCE verifier).
++  const codeOk = safeEqual(hmac("code", code), pairing.codeHash);
++  const verifierOk = safeEqual(pkceChallenge(input.codeVerifier), pairing.codeChallenge);
++  if (!codeOk || !verifierOk) return fail();
++
++  const t = issueTokens();
++  const user = await prisma.user.findUnique({ where: { id: pairing.userId }, select: { id: true, name: true, email: true } });
++  if (!user) return fail();
++
++  try {
++    const sessionId = await prisma.$transaction(async (tx) => {
++      // Single use, enforced by the database: exactly one caller can flip consumedAt.
++      const consumed = await tx.devicePairing.updateMany({
++        where: { id: pairing.id, consumedAt: null, codeHash: pairing.codeHash, expiresAt: { gt: now }, codeExpiresAt: { gt: now } },
++        data: { consumedAt: now, codeHash: null },
++      });
++      if (consumed.count !== 1) throw new Error("already_consumed");
++      const s = await tx.deviceSession.create({
++        data: {
++          userId: user.id, deviceName: pairing.deviceName, platform: pairing.platform, appVersion: pairing.appVersion,
++          lastIp: input.ip === "unknown" ? null : input.ip,
++          accessTokenHash: t.accessHash, accessExpiresAt: new Date(Date.now() + sec(SESSION.accessTtlSec)),
++          refreshTokenHash: t.refreshHash, refreshExpiresAt: new Date(Date.now() + sec(SESSION.refreshTtlSec)),
++          absoluteExpiresAt: new Date(Date.now() + sec(SESSION.absoluteTtlSec)),
++        },
++        select: { id: true },
++      });
++      return s.id;
++    });
++    return {
++      kind: "ok",
++      tokens: { accessToken: t.accessToken, refreshToken: t.refreshToken, expiresIn: SESSION.accessTtlSec, sessionId, user },
++    };
++  } catch {
++    return { kind: "invalid" };
++  }
++}
++
++// ── 4. Renewal (rotating refresh tokens with reuse detection) ────────────────
++
++export type RefreshResult =
++  | { kind: "ok"; accessToken: string; refreshToken: string; expiresIn: number }
++  | { kind: "invalid" } // revoked, expired, unknown, or reuse detected -> app must re-pair
++  | RateLimited;
++
++export async function refreshSession(input: { refreshToken: unknown; ip: string }): Promise<RefreshResult> {
++  const lim = await hit(`refresh:ip:${input.ip}`, LIMITS.refreshPerIp);
++  if (!lim.allowed) return { kind: "rate_limited", retryAfterSec: lim.retryAfterSec };
++
++  const presented = input.refreshToken;
++  if (typeof presented !== "string" || presented.length < 32 || presented.length > 128) return { kind: "invalid" };
++  const presentedHash = hmac("refresh", presented);
++  const now = new Date();
++
++  const current = await prisma.deviceSession.findUnique({ where: { refreshTokenHash: presentedHash } });
++  if (!current) {
++    // A token we already rotated away from being replayed = likely theft. Kill the session.
++    const reused = await prisma.deviceSession.findFirst({ where: { prevRefreshTokenHashes: { has: presentedHash } } });
++    if (reused && !reused.revokedAt) {
++      await prisma.deviceSession.update({
++        where: { id: reused.id }, data: { revokedAt: now, revokedReason: "refresh_token_reuse" },
++      });
++    }
++    return { kind: "invalid" };
++  }
++  if (current.revokedAt || current.refreshExpiresAt <= now || current.absoluteExpiresAt <= now) return { kind: "invalid" };
++
++  const t = issueTokens();
++  const newAccessExp = new Date(now.getTime() + sec(SESSION.accessTtlSec));
++  const newRefreshExp = new Date(Math.min(now.getTime() + sec(SESSION.refreshTtlSec), current.absoluteExpiresAt.getTime()));
++  const newIp = input.ip === "unknown" ? current.lastIp : input.ip;
++  // Raw SQL so the compare-and-swap AND the bounded history append happen in ONE atomic
++  // statement: two concurrent refreshes with the same token can't both win, and the
++  // history keeps only the most recent 100 rotated-away hashes.
++  const rotatedCount = await prisma.$executeRaw`
++    UPDATE "DeviceSession" SET
++      "accessTokenHash" = ${t.accessHash}, "accessExpiresAt" = ${newAccessExp},
++      "refreshTokenHash" = ${t.refreshHash}, "refreshExpiresAt" = ${newRefreshExp},
++      "prevRefreshTokenHashes" = (array_append(COALESCE("prevRefreshTokenHashes", ARRAY[]::TEXT[]), ${presentedHash}))
++        [GREATEST(1, COALESCE(cardinality("prevRefreshTokenHashes"), 0) + 2 - 100):],
++      "lastSeenAt" = ${now}, "lastIp" = ${newIp}
++    WHERE "id" = ${current.id} AND "refreshTokenHash" = ${presentedHash} AND "revokedAt" IS NULL`;
++  const rotated = { count: rotatedCount };
++  if (rotated.count !== 1) return { kind: "invalid" };
++  return { kind: "ok", accessToken: t.accessToken, refreshToken: t.refreshToken, expiresIn: SESSION.accessTtlSec };
++}
++
++// ── 5. Revocation ────────────────────────────────────────────────────────────
++
++export async function revokeSession(sessionId: string, userId: string, reason: string): Promise<boolean> {
++  const r = await prisma.deviceSession.updateMany({
++    where: { id: sessionId, userId, revokedAt: null },
++    data: { revokedAt: new Date(), revokedReason: reason },
++  });
++  return r.count === 1;
++}
+diff --git a/src/lib/desktop/ratelimit.ts b/src/lib/desktop/ratelimit.ts
+new file mode 100644
+index 0000000..917946c
+--- /dev/null
++++ b/src/lib/desktop/ratelimit.ts
+@@ -0,0 +1,47 @@
++import { prisma } from "@/lib/db";
++
++/**
++ * DB-backed fixed-window counters. The web app is serverless, so in-memory
++ * limits would reset on every cold start and differ per instance.
++ *
++ * Keys are namespaced by axis ("ip:", "acct:", "pair:" ...). Each axis is
++ * checked and incremented independently so that an attacker rotating one
++ * (e.g. IPs) is still stopped by another (the account or the pairing).
++ */
++export type Limit = { limit: number; windowSec: number };
++export type LimitState = { allowed: boolean; retryAfterSec: number };
++
++/** Count this event and report whether it is still within the limit. */
++export async function hit(key: string, cfg: Limit): Promise<LimitState> {
++  const rows = await prisma.$queryRaw<{ count: number; ttl: number }[]>`
++    INSERT INTO "RateLimitBucket" ("key", "count", "resetAt")
++    VALUES (${key}, 1, now() + make_interval(secs => ${cfg.windowSec}))
++    ON CONFLICT ("key") DO UPDATE SET
++      "count"   = CASE WHEN "RateLimitBucket"."resetAt" <= now() THEN 1 ELSE "RateLimitBucket"."count" + 1 END,
++      "resetAt" = CASE WHEN "RateLimitBucket"."resetAt" <= now() THEN now() + make_interval(secs => ${cfg.windowSec}) ELSE "RateLimitBucket"."resetAt" END
++    RETURNING "count", CEIL(EXTRACT(EPOCH FROM ("resetAt" - now())))::int AS ttl`;
++  const { count, ttl } = rows[0];
++  return { allowed: count <= cfg.limit, retryAfterSec: Math.max(1, ttl) };
++}
++
++/** Read-only: is this key already over its limit? (Used before doing work, with failures counted via hit().) */
++export async function isBlocked(key: string, cfg: Limit): Promise<LimitState> {
++  const rows = await prisma.$queryRaw<{ count: number; ttl: number }[]>`
++    SELECT "count", CEIL(EXTRACT(EPOCH FROM ("resetAt" - now())))::int AS ttl
++    FROM "RateLimitBucket" WHERE "key" = ${key} AND "resetAt" > now()`;
++  if (rows.length === 0) return { allowed: true, retryAfterSec: 0 };
++  return { allowed: rows[0].count < cfg.limit, retryAfterSec: Math.max(1, rows[0].ttl) };
++}
++
++/** Opportunistic cleanup so the table can't grow without bound. */
++export async function sweepExpired(): Promise<void> {
++  await prisma.$executeRaw`DELETE FROM "RateLimitBucket" WHERE "resetAt" < now() - interval '1 hour'`;
++}
++
++export function clientIp(headers: Headers): string {
++  // Behind Vercel/most proxies the first X-Forwarded-For hop is the client.
++  // If you self-host, make sure your proxy overwrites (not appends to) this header.
++  const xff = headers.get("x-forwarded-for");
++  const first = xff?.split(",")[0]?.trim();
++  return first || headers.get("x-real-ip")?.trim() || "unknown";
++}
+diff --git a/src/lib/sandbox/run-submission.ts b/src/lib/sandbox/run-submission.ts
+new file mode 100644
+index 0000000..5d76e73
+--- /dev/null
++++ b/src/lib/sandbox/run-submission.ts
+@@ -0,0 +1,69 @@
++import { prisma } from "@/lib/db";
++import { executeSubmission } from "@/lib/sandbox/execute";
++import { buildReviewEvidence } from "@/lib/sandbox/review-evidence";
++
++/** Flat shape (not a union) so it narrows under this repo's `strict: false`. */
++export type RunOutcome = {
++  ok: boolean;
++  submission?: Awaited<ReturnType<typeof prisma.submission.update>>;
++  status?: number;
++  error?: string;
++};
++
++/**
++ * Runs the sandbox evaluation for a submission and records bounded review
++ * evidence. Extracted verbatim from app/api/sandbox/run/route.ts so the web
++ * route and /api/desktop/sandbox/run share ONE implementation of the
++ * status mapping and evidence storage. AUTHORIZATION IS THE CALLER'S JOB.
++ */
++export async function runAndRecordSubmission(submissionId: string): Promise<RunOutcome> {
++  try {
++    const submission = await prisma.submission.findUnique({
++      where: { id: submissionId },
++      include: { problem: true },
++    });
++    if (!submission || !submission.platformRepoFullName || !submission.platformRepoUrl) {
++      return { ok: false, status: 400, error: "Submission or mirrored repo not ready" };
++    }
++
++    await prisma.submission.update({ where: { id: submission.id }, data: { status: "RUNNING" } });
++
++    const result = await executeSubmission({
++      repoUrl: submission.platformRepoUrl,
++      githubToken: process.env.PLATFORM_GITHUB_TOKEN || "",
++      runtime: submission.problem.runtime,
++    });
++
++    const evidence = buildReviewEvidence(result);
++    const isSuccess = result.ok && result.exitCode === 0;
++    // Cast: this repo runs `strict: false`, where the ok/!ok union doesn't narrow.
++    const failure = result.ok ? null : (result as { kind: string; reason: string });
++    const failureStatus =
++      failure?.kind === "dependency-install" ? "DEPENDENCY_INSTALL_FAILED" : "SANDBOX_FAILED";
++
++    const updated = await prisma.submission.update({
++      where: { id: submission.id },
++      data: {
++        sandboxOutput: result.ok ? evidence.output : null,
++        sandboxExitCode: evidence.exitCode,
++        sandboxError: failure ? failure.reason : null,
++        sandboxRanAt: new Date(),
++        status: isSuccess ? "UNDER_REVIEW" : failureStatus,
++      },
++    });
++    return { ok: true, submission: updated };
++  } catch (error) {
++    console.error("Sandbox execution error:", error);
++    await prisma.submission
++      .update({
++        where: { id: submissionId },
++        data: {
++          status: "SANDBOX_FAILED",
++          sandboxError: `Sandbox execution failed: ${error instanceof Error ? error.message : String(error)}`,
++          sandboxRanAt: new Date(),
++        },
++      })
++      .catch(() => {});
++    return { ok: false, status: 500, error: "Sandbox execution failed" };
++  }
++}

@@ -40,6 +40,8 @@ model User {
   badges              UserBadge[]
   notificationsReceived Notification[] @relation("NotificationRecipient")
   notificationsSent   Notification[]  @relation("NotificationSender")
+  deviceSessions      DeviceSession[]
+  devicePairings      DevicePairing[]
 
   @@index([email])
 }
@@ -96,7 +98,11 @@ model Problem {
   completedAt       DateTime?
   inviteeIds        String[]      @default([])
   runtime           Runtime       @default(PYTHON)
-  runCommand        String
+  // DEPRECATED + INERT (review-engine fix, see docs/review-engine-architecture.md §8):
+  // nothing reads or writes this any more — evaluation commands are built by
+  // the runtime adapter (lib/sandbox/runtimes.ts) from the Solver's bountied.json.
+  // Historical rows keep their value; drop the column in a separate later migration.
+  runCommand        String?
   freeReviewsUsed   Int           @default(0)
   language          String?       @default("python")
   scope             String?
@@ -108,8 +114,8 @@ model Problem {
   // Optional Solver-environment fence (product decision 2026-09-02) — set
   // by the Giver, defaults to null (fully open, zero extra friction for
   // the ~95% of Givers who never touch this). Constrains what packages a
-  // Solver's requirements.txt may contain; never touches runCommand or
-  // runtime, which stay the Giver's exclusive contract. Shape (validated
+  // Solver's requirements.txt may contain; never touches runtime, which
+  // stays the Giver's exclusive contract. Shape (validated
   // in lib/sandbox/bountied-manifest.ts, not enforced by Postgres):
   //   { maxDependencies?: number, allowedPackages?: string[], bannedPackages?: string[] }
   dependencyPolicy Json?
@@ -352,4 +358,67 @@ enum SubmissionStatus {
   // anything. MIRRORING is that free step; RUNNING now means only the
   // paid sandbox execution in api/sandbox/run/route.ts.
   MIRRORING
+}
+
+// ── Bountied Desktop device pairing (docs/desktop-pairing.md) ──────────────
+// The website is the account authority. A Desktop app starts a pairing
+// request, the signed-in user authorizes it in the browser, the website
+// issues a single-use 16-char code, and the app exchanges that code (plus a
+// PKCE verifier) for a revocable device session. Secrets are stored only as
+// HMAC-SHA256 hashes; plaintext codes/tokens are never persisted.
+
+model DevicePairing {
+  id             String    @id // 128-bit random, base64url: the "device request id"
+  codeChallenge  String // base64url(SHA-256(code_verifier)); the verifier never leaves the app
+  deviceName     String
+  platform       String
+  appVersion     String
+  startIp        String?
+  userId         String? // set when the signed-in user authorizes
+  codeHash       String?   @unique // HMAC of the one-time code (never the code itself)
+  createdAt      DateTime  @default(now())
+  expiresAt      DateTime // whole request dies here (~5 min)
+  authorizedAt   DateTime?
+  codeExpiresAt  DateTime? // the code dies here (<= expiresAt)
+  consumedAt     DateTime? // single use: set atomically on successful exchange
+  failedAttempts Int       @default(0)
+  user           User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model DeviceSession {
+  id                   String    @id @default(cuid())
+  userId               String
+  deviceName           String
+  platform             String
+  appVersion           String
+  createdAt            DateTime  @default(now())
+  lastSeenAt           DateTime  @default(now())
+  lastIp               String?
+  accessTokenHash      String    @unique
+  accessExpiresAt      DateTime // short-lived (~15 min)
+  refreshTokenHash     String    @unique
+  // Hashes of refresh tokens this session has already rotated away from (bounded to the
+  // most recent 100). Presenting one of these again = replay = likely theft -> revoke.
+  prevRefreshTokenHashes String[] @default([])
+  refreshExpiresAt     DateTime // sliding
+  absoluteExpiresAt    DateTime // hard cap: the device must re-pair after this
+  revokedAt            DateTime?
+  revokedReason        String?
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([prevRefreshTokenHashes], type: Gin)
+}
+
+// Fixed-window counters for pairing/refresh abuse limits. DB-backed because
+// the web app runs on serverless instances with no shared memory.
+model RateLimitBucket {
+  key     String   @id
+  count   Int
+  resetAt DateTime
+
+  @@index([resetAt])
 }

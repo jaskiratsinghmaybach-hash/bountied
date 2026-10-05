@@ -153,18 +153,6 @@ export default async function GiverProblemPage({
           </div>
         )}
 
-        <div className="mb-5">
-          <p className="text-xs text-foreground-muted uppercase tracking-wide mb-2">
-            Sandbox run command
-          </p>
-          <code className="block rounded-md border border-accent/25 bg-primary/5 px-3 py-2.5 text-sm font-mono text-foreground">
-            {problem.runCommand}
-          </code>
-          <p className="text-[11px] text-foreground-muted mt-1.5">
-            The sandbox runs this exact command against every submitted repo.
-          </p>
-        </div>
-
         <div className="mb-4">
           <DescriptionSections description={problem.description} />
         </div>

@@ -54,9 +54,16 @@ export async function signInWithEmail(formData: FormData): Promise<AuthActionRes
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) return { error: error.message };
-  if (data.user) {
+    if (data.user) {
     await syncUserFromSupabase(data.user);
-    redirect(await postAuthRedirectPath(data.user.id));
+    const next = await postAuthRedirectPath(data.user.id);
+    // Bountied Desktop pairing: return to the authorize page after login.
+    // Strict allowlist (exact path + a 22-char id) so this can never be an open redirect.
+    const back = String(formData.get("redirectedFrom") ?? "");
+    if (next !== "/onboarding" && /^\/desktop\/connect\?req=[A-Za-z0-9_-]{22}$/.test(back)) {
+      redirect(back);
+    }
+    redirect(next);
   }
 
   redirect("/dashboard");

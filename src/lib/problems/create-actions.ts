@@ -38,7 +38,6 @@ type ParsedFields =
       bountyAmount: number | null;
       isFree: boolean;
       deadline: Date | null;
-      runCommand: string;
       language: string | null;
       runtime: Runtime;
     };
@@ -51,7 +50,6 @@ function parseFields(formData: FormData): ParsedFields {
   const tagsRaw = String(formData.get("tags") ?? "");
   const bountyAmountRaw = String(formData.get("bountyAmount") ?? "").trim();
   const deadlineRaw = String(formData.get("deadline") ?? "").trim();
-  const runCommand = String(formData.get("runCommand") ?? "").trim();
   const language = String(formData.get("language") ?? "").trim() || null;
 
   if (!title || title.length < 5) {
@@ -85,10 +83,6 @@ function parseFields(formData: FormData): ParsedFields {
     bountyAmount = Math.round(parsed * 100) / 100;
   }
 
-  if (!runCommand) {
-    return { error: "Enter the run command (e.g. python main.py or node index.js)." };
-  }
-
   // Runtime is derived from the Giver's language selection, not assumed —
   // see getRuntimeForLanguage's doc comment for why language and Runtime
   // are different axes (e.g. both "typescript" and "nodejs" map to the
@@ -108,7 +102,7 @@ function parseFields(formData: FormData): ParsedFields {
     return { error: "Invalid deadline." };
   }
 
-  return { title, description, type, tags, bountyAmount, isFree, deadline, runCommand, language, runtime };
+  return { title, description, type, tags, bountyAmount, isFree, deadline, language, runtime };
 }
 
 /**
@@ -154,7 +148,6 @@ export async function createProblem(
       type: parsed.type,
       tags: parsed.tags,
       bountyAmount: parsed.bountyAmount,
-      runCommand: parsed.runCommand,
       runtime: parsed.runtime,
       language: parsed.language,
       giverId: user.id,
@@ -236,7 +229,6 @@ export async function updateProblem(
       type: parsed.type,
       tags: parsed.tags,
       bountyAmount: parsed.bountyAmount,
-      runCommand: parsed.runCommand,
       runtime: parsed.runtime,
       language: parsed.language,
       deadline: parsed.deadline,
@@ -395,7 +387,6 @@ export async function autoSaveProblem(
   const tagsRaw = String(formData.get("tags") ?? "");
   const bountyAmountRaw = String(formData.get("bountyAmount") ?? "").trim();
   const deadlineRaw = String(formData.get("deadline") ?? "").trim();
-  const runCommand = String(formData.get("runCommand") ?? "").trim();
   const repoUrlsRaw = String(formData.get("referenceRepoUrls") ?? "[]");
   const screenshotUrlsRaw = String(formData.get("screenshotUrls") ?? "[]");
   const addonsRaw = String(formData.get("addons") ?? "[]");
@@ -437,7 +428,6 @@ export async function autoSaveProblem(
           ...(typeValid ? { type } : {}),
           tags,
           bountyAmount,
-          runCommand: runCommand || existing.runCommand,
           runtime,
           deadline,
           language,
@@ -456,7 +446,6 @@ export async function autoSaveProblem(
           type: typeValid ? type : ProblemType.OPEN_FREE,
           tags,
           bountyAmount,
-          runCommand: runCommand || "python main.py",
           runtime,
           giverId: user.id,
           deadline,

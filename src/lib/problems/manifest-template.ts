@@ -31,10 +31,13 @@ import { getLanguageDef, getScopeDef } from "@/components/problems/bounty-flow/f
  * lib/sandbox/bountied-manifest.ts's doc comment on why the schema stays
  * understandable to a Solver rather than trying to cover every possible
  * runtime-specific field up front). Fields beyond `dependencies` are
- * carried here so the skeleton is forward-compatible with execution modes
- * beyond today's single batch-run mode, but only `runtime`/`dependencies`
- * are consumed anywhere today (see lib/sandbox/runtimes.ts,
- * lib/sandbox/bountied-manifest.ts).
+ * carried here so the skeleton is forward-compatible. `dependencies`,
+ * `entrypoint` and `executionMode` are consumed (see
+ * lib/sandbox/bountied-manifest.ts); `entrypoint`/`executionMode` are
+ * STRUCTURED METADATA that select a fixed, platform-owned evaluation
+ * command (RuntimeConfig.buildEvaluationCommand in lib/sandbox/runtimes.ts)
+ * — they are never executed as text, and bountied.json has no field that
+ * accepts a command.
  */
 export type BountiedManifestSkeleton = {
   runtime: {
@@ -42,6 +45,10 @@ export type BountiedManifestSkeleton = {
     version: string;
   };
   dependencies: Record<string, string>;
+  /** Relative path to the program's entry file; only used when executionMode is "run". */
+  entrypoint: string;
+  /** "test" | "build-test" | "run" — see buildManifestPrompt. */
+  executionMode: "test" | "build-test" | "run";
 };
 
 /**
@@ -60,6 +67,13 @@ const RUNTIME_VERSION_DEFAULTS: Record<string, string> = {
   typescript: "20", // TypeScript compiles to/runs on the same Node runtime — not enabled yet (see flow-data.ts), kept here so the skeleton is correct the moment it is.
 };
 
+/** Per-language starting entrypoint for the skeleton (a hint the Solver's AI adjusts). */
+const ENTRYPOINT_DEFAULTS: Record<string, string> = {
+  python: "main.py",
+  nodejs: "index.js",
+  typescript: "index.js",
+};
+
 export function buildManifestSkeleton(languageId: string): BountiedManifestSkeleton {
   const label = getLanguageDef(languageId)?.label ?? languageId;
   return {
@@ -68,6 +82,8 @@ export function buildManifestSkeleton(languageId: string): BountiedManifestSkele
       version: RUNTIME_VERSION_DEFAULTS[languageId] ?? "latest",
     },
     dependencies: {},
+    entrypoint: ENTRYPOINT_DEFAULTS[languageId] ?? "main.py",
+    executionMode: "test",
   };
 }
 
@@ -101,9 +117,8 @@ export function renderManifestSkeleton(languageId: string): string {
 export function buildManifestPrompt(params: {
   languageId: string;
   scopeId: string | null;
-  runCommand: string;
 }): string {
-  const { languageId, scopeId, runCommand } = params;
+  const { languageId, scopeId } = params;
   const languageLabel = getLanguageDef(languageId)?.label ?? languageId;
   const scopeLabel = scopeId ? getScopeDef(languageId, scopeId)?.label ?? null : null;
   const skeleton = renderManifestSkeleton(languageId);
@@ -128,6 +143,8 @@ export function buildManifestPrompt(params: {
     "",
     `- "runtime.version": the actual ${languageLabel} version this project targets (check for a version file, lockfile, or config if present; otherwise infer from syntax/features used).`,
     `- "dependencies": an object of "package name": "version" for every external dependency this code actually imports. Use the package's real published name (the name you'd install it by), not the name it's imported as, if they differ. Leave it as {} if the project only uses the standard library.`,
+    `- "executionMode": how the platform should evaluate this project. This is NOT a command — never write a shell command anywhere in this file. Use "test" if the repository has an automated test suite (the platform runs the standard test runner for ${languageLabel} itself; if the tests need a test-runner package, list it under "dependencies"). Use "run" if there are no tests and the project is simply a program to execute. Use "build-test" only if the project needs a build step before its tests.`,
+    `- "entrypoint": the relative path of the file that starts the program (for example "main.py" or "src/index.js"). Only used when "executionMode" is "run". It must be a plain relative file path — no spaces, no shell characters, no "..", not starting with "/" or "-".`,
     scopeLine,
     "",
     "Once you've filled it in, place the result at the root of my repository as bountied.json.",

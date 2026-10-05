@@ -14,7 +14,6 @@ import { FieldLogs } from "./workspace/field-logs";
 import { AddonsSection } from "./workspace/addons-section";
 import { FieldTags } from "./workspace/field-tags";
 import { FieldDeadline, type DeadlinePreset } from "./workspace/field-deadline";
-import { FieldRunCommand } from "./workspace/field-run-command";
 import { FieldBountyAmount } from "./workspace/field-bounty-amount";
 import { SaveStatusIndicator } from "./workspace/save-status-indicator";
 import { Pill } from "./pill";
@@ -32,7 +31,6 @@ export type ExistingProblem = {
   tags: string[];
   bountyAmount: number | null;
   deadline: string | null;
-  runCommand: string;
   language: string | null;
   scope: string | null;
   addons: string[];
@@ -88,7 +86,6 @@ export function BountyFlow({ existingProblem, githubConnected = true, header }: 
   const [tags, setTags] = useState(existingProblem?.tags.join(", ") ?? "");
   const [deadlinePreset, setDeadlinePreset] = useState<DeadlinePreset | null>(existingProblem?.deadline ? "custom" : null);
   const [deadlineCustom, setDeadlineCustom] = useState(existingProblem?.deadline ? existingProblem.deadline.split("T")[0] : "");
-  const [runCommand, setRunCommand] = useState(existingProblem?.runCommand ?? "python main.py");
   const [bountyAmount, setBountyAmount] = useState(existingProblem?.bountyAmount ? String(existingProblem.bountyAmount) : "");
 
   const [layoutMode, setLayoutMode] = useState<"pills" | "workspace">(isEditing ? "workspace" : "pills");
@@ -96,10 +93,10 @@ export function BountyFlow({ existingProblem, githubConnected = true, header }: 
 
   const isWorkspace = layoutMode === "workspace";
 
-  const stateRef = useRef({ type, language, scope, customScope, addons, title, desc, repos, screenshots, logs, tags, deadlineCustom, runCommand, bountyAmount });
+  const stateRef = useRef({ type, language, scope, customScope, addons, title, desc, repos, screenshots, logs, tags, deadlineCustom, bountyAmount });
   useEffect(() => {
-    stateRef.current = { type, language, scope, customScope, addons, title, desc, repos, screenshots, logs, tags, deadlineCustom, runCommand, bountyAmount };
-  }, [type, language, scope, customScope, addons, title, desc, repos, screenshots, logs, tags, deadlineCustom, runCommand, bountyAmount]);
+    stateRef.current = { type, language, scope, customScope, addons, title, desc, repos, screenshots, logs, tags, deadlineCustom, bountyAmount };
+  }, [type, language, scope, customScope, addons, title, desc, repos, screenshots, logs, tags, deadlineCustom, bountyAmount]);
 
   const saveTimer = useRef<NodeJS.Timeout>(null);
 
@@ -126,7 +123,6 @@ export function BountyFlow({ existingProblem, githubConnected = true, header }: 
       formData.append("logs", s.logs);
       formData.append("tags", s.tags);
       if (s.deadlineCustom) formData.append("deadline", s.deadlineCustom);
-      formData.append("runCommand", s.runCommand);
       formData.append("bountyAmount", s.bountyAmount);
 
       try {
@@ -149,7 +145,7 @@ export function BountyFlow({ existingProblem, githubConnected = true, header }: 
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
-  }, [type, language, scope, customScope, addons, title, desc, repos, screenshots, logs, tags, deadlineCustom, runCommand, bountyAmount, isWorkspace, isEditing, triggerAutoSave]);
+  }, [type, language, scope, customScope, addons, title, desc, repos, screenshots, logs, tags, deadlineCustom, bountyAmount, isWorkspace, isEditing, triggerAutoSave]);
 
   const resolvedScopeLabel = scope === "custom" ? customScope : (language && scope ? getScopeDef(language, scope)?.label ?? scope : "");
 
@@ -260,7 +256,6 @@ export function BountyFlow({ existingProblem, githubConnected = true, header }: 
               </div>
               <FieldTags value={tags} onChange={setTags} />
               <FieldDeadline preset={deadlinePreset} onPresetChange={setDeadlinePreset} customDate={deadlineCustom} onCustomDateChange={setDeadlineCustom} />
-              <FieldRunCommand value={runCommand} onChange={setRunCommand} languageId={language} />
             </>
           }
           rightPanel={

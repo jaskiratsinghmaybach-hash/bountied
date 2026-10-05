@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { executeSubmission } from "@/lib/sandbox/execute";
+import { buildReviewEvidence } from "@/lib/sandbox/review-evidence";
 
 export async function POST(req: Request) {
   let submissionId: string | undefined;
@@ -34,11 +35,13 @@ export async function POST(req: Request) {
     const result = await executeSubmission({
       repoUrl: submission.platformRepoUrl,
       githubToken: process.env.PLATFORM_GITHUB_TOKEN || "",
-      runCommand: submission.problem.runCommand,
       runtime: submission.problem.runtime,
     });
 
-    // Save logs and exit code
+    // Save bounded review evidence (lib/sandbox/review-evidence.ts). The
+    // evaluation command was built by the runtime adapter from the Solver's
+    // validated bountied.json — Problem.runCommand is no longer read.
+    const evidence = buildReviewEvidence(result);
     const isSuccess = result.ok && result.exitCode === 0;
     // Failure status mapping (product decision 2026-09-02): a dependency
     // install failure gets its own status distinct from clone/infra
@@ -54,8 +57,8 @@ export async function POST(req: Request) {
     const updatedSubmission = await prisma.submission.update({
       where: { id: submission.id },
       data: {
-        sandboxOutput: result.ok ? result.stdout + (result.stderr ? '\n' + result.stderr : '') : null,
-        sandboxExitCode: result.ok ? result.exitCode : null,
+        sandboxOutput: result.ok ? evidence.output : null,
+        sandboxExitCode: evidence.exitCode,
         sandboxError: result.ok ? null : result.reason,
         sandboxRanAt: new Date(),
         status: isSuccess ? "UNDER_REVIEW" : failureStatus,

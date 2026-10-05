@@ -96,18 +96,6 @@ export default async function ProblemDetailPage({
         ))}
       </div>
 
-      <div className="mb-6">
-        <p className="text-xs text-foreground-muted uppercase tracking-wide mb-2">
-          Sandbox run command
-        </p>
-        <code className="block rounded-md border border-accent/25 bg-primary/5 px-3 py-2.5 text-sm font-mono text-foreground">
-          {problem.runCommand}
-        </code>
-        <p className="text-[11px] text-foreground-muted mt-1.5">
-          Your repo must pass when the sandbox runs this command.
-        </p>
-      </div>
-
       <div className="rounded-lg border border-border bg-surface p-6 mb-6">
         <DescriptionSections description={problem.description} />
       </div>
@@ -262,7 +250,6 @@ export default async function ProblemDetailPage({
             prompt={buildManifestPrompt({
               languageId: problem.language ?? "python",
               scopeId: problem.scope,
-              runCommand: problem.runCommand,
             })}
           />
           <SubmissionForm

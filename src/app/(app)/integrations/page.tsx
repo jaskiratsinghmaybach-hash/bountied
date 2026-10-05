@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { ConnectGithubPrompt } from "@/components/auth/connect-github-prompt";
 import { GithubConnectedCard } from "@/components/auth/github-connected-card";
+import { DesktopDevicesCard } from "@/components/desktop/desktop-devices-card";
 
 export default async function IntegrationsPage() {
   const supabase = await createClient();
@@ -11,6 +12,12 @@ export default async function IntegrationsPage() {
 
   const profile = await prisma.user.findUnique({ where: { id: user.id } });
   if (!profile) redirect("/login");
+    const now = new Date();
+  const devices = await prisma.deviceSession.findMany({
+    where: { userId: profile.id, revokedAt: null, absoluteExpiresAt: { gt: now }, refreshExpiresAt: { gt: now } },
+    orderBy: { lastSeenAt: "desc" },
+    select: { id: true, deviceName: true, platform: true, appVersion: true, createdAt: true, lastSeenAt: true, lastIp: true },
+  });
 
   return (
     <main className="px-8 py-10 max-w-4xl">
@@ -37,6 +44,13 @@ export default async function IntegrationsPage() {
             </p>
           </div>
         </div>
+      </div>
+            <div className="mt-4">
+        <DesktopDevicesCard
+          devices={devices.map((d) => ({
+            ...d, createdAt: d.createdAt.toISOString(), lastSeenAt: d.lastSeenAt.toISOString(),
+          }))}
+        />
       </div>
     </main>
   );

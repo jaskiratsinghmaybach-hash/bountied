@@ -52,16 +52,36 @@ export type ManifestDependency = {
 };
 
 /**
+ * How the Solver's project should be evaluated. This is NOT a command: it
+ * selects one of the FIXED, per-runtime command templates built by
+ * RuntimeConfig.buildEvaluationCommand (lib/sandbox/runtimes.ts). No text
+ * from bountied.json is ever executed as a shell string.
+ */
+export const EXECUTION_MODES = ["test", "build-test", "run"] as const;
+export type ExecutionMode = (typeof EXECUTION_MODES)[number];
+
+/**
  * The normalized shape lib/sandbox/execute.ts and lib/sandbox/runtimes.ts
- * actually consume. Intentionally a small subset of the full bountied.json
- * concept described in product discussions (entrypoint/build/test/run
- * commands, ports, etc.) — this module only owns the dependency-policy
- * surface. Fields beyond `dependencies` are parsed defensively (see
- * parseBountiedManifest) so a Solver's manifest can carry forward-looking
- * fields without breaking parsing, but only `dependencies` is used today.
+ * actually consume. Fields beyond `dependencies` are parsed defensively
+ * (see parseBountiedManifest) so a Solver's manifest can carry
+ * forward-looking fields without breaking parsing.
+ *
+ * Security (docs/review-engine-architecture.md): both new fields are
+ * Solver-authored and therefore untrusted. They are STRUCTURED METADATA,
+ * never a command — `entrypoint` is validated as a plain relative path
+ * and only ever interpolated as a path argument by a runtime adapter;
+ * `executionMode` is a closed enum that selects a platform-owned template.
  */
 export type BountiedManifest = {
   dependencies: ManifestDependency[];
+  /**
+   * Relative path to the program's entry file ("main.py", "src/index.js").
+   * Validated by validateEntrypoint() — never shell text. Only consulted
+   * when the resolved mode is "run".
+   */
+  entrypoint?: string;
+  /** Omitted = the runtime adapter's explicit per-runtime default. */
+  executionMode?: ExecutionMode;
 };
 
 export type PolicyCheckResult =
@@ -125,6 +145,51 @@ function normalizePackageName(name: string): string {
   return name.trim().toLowerCase().replace(/[-_.]+/g, "-");
 }
 
+const ENTRYPOINT_MAX_LENGTH = 200;
+/**
+ * Plain relative path only: an optional "./" prefix, then a first character
+ * that is a letter/digit/underscore (so no leading "-", which a program
+ * could read as an option flag, and no leading "/"), then letters, digits,
+ * "_", ".", "/", "-". No whitespace, quotes, backslashes, ";", "|", "&",
+ * "$", backticks, parentheses, or any other shell metacharacter can match.
+ */
+const ENTRYPOINT_PATTERN = /^(?:\.\/)?[A-Za-z0-9_][A-Za-z0-9_./-]*$/;
+
+/** Flat shape (not a discriminated union) so it narrows correctly even under this repo's `strict: false`. */
+export type EntrypointValidation = {
+  ok: boolean;
+  /** Present when ok. */
+  value?: string;
+  /** Present when !ok. */
+  reason?: string;
+};
+
+/**
+ * The single validator for a Solver-declared entrypoint. Called by
+ * parseBountiedManifest (so an invalid value is a parse error, same
+ * severity as malformed JSON) and re-checked by the runtime adapter
+ * immediately before interpolation (defense in depth — never skip either).
+ * Error reasons deliberately do not echo the offending value.
+ */
+export function validateEntrypoint(raw: unknown): EntrypointValidation {
+  const rule =
+    'bountied.json "entrypoint" must be a plain relative file path such as ' +
+    '"main.py" or "src/index.js".';
+  if (typeof raw !== "string" || raw.length === 0) {
+    return { ok: false, reason: rule };
+  }
+  if (raw.length > ENTRYPOINT_MAX_LENGTH) {
+    return { ok: false, reason: `${rule} (too long)` };
+  }
+  if (!ENTRYPOINT_PATTERN.test(raw)) {
+    return { ok: false, reason: `${rule} (unsupported characters)` };
+  }
+  if (raw.split("/").some((segment) => segment === "..")) {
+    return { ok: false, reason: `${rule} (must not contain "..")` };
+  }
+  return { ok: true, value: raw };
+}
+
 /**
  * Parses a bountied.json body into a BountiedManifest. Deliberately
  * defensive rather than a strict schema-validate-and-throw: a Solver's
@@ -179,7 +244,29 @@ export function parseBountiedManifest(bountiedJsonText: string): {
   // depsRaw absent entirely = zero dependencies (a stdlib-only solution),
   // not an error — same as an empty requirements.txt was before.
 
-  return { manifest: { dependencies }, parseError: null };
+  const manifest: BountiedManifest = { dependencies };
+
+  // entrypoint / executionMode: structured metadata, never a command. An
+  // invalid value is a PARSE ERROR (rejected before the evaluation step
+  // ever builds a command), not something silently dropped — fail closed.
+  if (obj.entrypoint !== undefined && obj.entrypoint !== null) {
+    const checked = validateEntrypoint(obj.entrypoint);
+    if (!checked.ok) return { manifest: null, parseError: checked.reason ?? "Invalid entrypoint." };
+    manifest.entrypoint = checked.value;
+  }
+
+  if (obj.executionMode !== undefined && obj.executionMode !== null) {
+    const mode = obj.executionMode;
+    if (typeof mode !== "string" || !(EXECUTION_MODES as readonly string[]).includes(mode)) {
+      return {
+        manifest: null,
+        parseError: `bountied.json "executionMode" must be one of: ${EXECUTION_MODES.join(", ")}.`,
+      };
+    }
+    manifest.executionMode = mode as ExecutionMode;
+  }
+
+  return { manifest, parseError: null };
 }
 
 /**

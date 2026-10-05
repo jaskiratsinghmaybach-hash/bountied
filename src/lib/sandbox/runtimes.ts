@@ -1,5 +1,6 @@
 import type { Runtime } from "@prisma/client";
-import type { ManifestDependency } from "./bountied-manifest";
+import { validateEntrypoint } from "./bountied-manifest";
+import type { BountiedManifest, ManifestDependency } from "./bountied-manifest";
 
 /**
  * Single source of truth for what each Runtime actually needs to execute.
@@ -74,7 +75,7 @@ export type RuntimeConfig = {
   /**
    * Builds the install invocation for this runtime's package manager from
    * the parsed bountied.json dependency list. Called once, before the
-   * giver's runCommand, whenever bountied.json is present in the submitted
+   * evaluation step, whenever bountied.json is present in the submitted
    * code (regardless of whether `dependencies` is empty — a runtime can
    * choose to no-op on empty rather than skip the step entirely, e.g. if
    * it also wants to react to other manifest fields later). null means no
@@ -85,7 +86,60 @@ export type RuntimeConfig = {
   installRetry: InstallRetryConfig | null;
   /** File extension used for single-file uploads in the submission form. */
   fileExtension: string;
+  /**
+   * Builds the evaluation command for this runtime from the Solver's
+   * parsed, validated manifest. This is the ONLY function in the system
+   * permitted to produce the string that reaches sandbox.commands.run for
+   * the "evaluate the submission" step. No raw text from a Giver or a
+   * Solver is ever executed: the command is a fixed per-runtime template,
+   * and the only manifest-derived value interpolated is `entrypoint`, as
+   * a path argument, after validateEntrypoint().
+   *
+   * The caller (parseBountiedManifest) has already validated `entrypoint`;
+   * resolveEntrypoint() re-checks it right before interpolation and throws
+   * rather than building a command from an unvalidated value (fail closed).
+   * A throw here must be treated as an evaluation error, never swallowed.
+   */
+  buildEvaluationCommand: (manifest: BountiedManifest) => string;
 };
+
+/**
+ * Returns the validated entrypoint to interpolate, or this runtime's
+ * explicit default. Throws if the manifest carries an entrypoint that
+ * fails validation — a manifest produced by parseBountiedManifest can
+ * never trigger this; it only guards against a future caller constructing
+ * a BountiedManifest by hand.
+ */
+function resolveEntrypoint(manifest: BountiedManifest, runtimeDefault: string): string {
+  const candidate = manifest.entrypoint ?? runtimeDefault;
+  const checked = validateEntrypoint(candidate);
+  if (!checked.ok || checked.value === undefined) {
+    throw new Error("Refusing to build an evaluation command from an invalid entrypoint.");
+  }
+  return checked.value;
+}
+
+/**
+ * Explicit per-runtime defaults (not left implicit): used when bountied.json
+ * omits executionMode / entrypoint.
+ *   PYTHON: mode "test"  -> pytest; mode "run" with no entrypoint -> main.py
+ *   NODE:   mode "test"  -> npm test; mode "run" with no entrypoint -> index.js
+ */
+const PYTHON_DEFAULT_ENTRYPOINT = "main.py";
+const NODE_DEFAULT_ENTRYPOINT = "index.js";
+
+/**
+ * `python -m pytest` (not bare `pytest`) so the repo root is on sys.path
+ * and tests can import top-level modules. `--tb=no` suppresses tracebacks:
+ * pytest tracebacks and assertion diffs print lines of source, which would
+ * otherwise reach the Giver pre-release as Review Evidence (see
+ * lib/sandbox/review-evidence.ts and the trust-boundary note in
+ * docs/review-engine-architecture.md §6). `-q` keeps the summary line terse.
+ * NOTE: pytest is NOT preinstalled in the python:3.11-slim sandbox template —
+ * a Solver must list it under bountied.json dependencies (or the template
+ * must be rebuilt with it), otherwise test mode fails with "No module named pytest".
+ */
+const PYTHON_TEST_COMMAND = "python -m pytest -q --tb=no -p no:cacheprovider";
 
 /**
  * Package/header/compiler → apt package mapping for the common cases that
@@ -197,6 +251,14 @@ export const RUNTIME_REGISTRY: Record<Runtime, RuntimeConfig> = {
     },
     installRetry: PYTHON_INSTALL_RETRY,
     fileExtension: ".py",
+    // Python has no separate mandatory build step, so "build-test" behaves
+    // exactly like "test" here (documented, not an accidental divergence).
+    buildEvaluationCommand: (manifest) => {
+      if (manifest.executionMode === "run") {
+        return `python ${resolveEntrypoint(manifest, PYTHON_DEFAULT_ENTRYPOINT)}`;
+      }
+      return PYTHON_TEST_COMMAND; // "test", "build-test", or unspecified
+    },
   },
   NODE: {
     label: "Node.js",
@@ -224,6 +286,16 @@ export const RUNTIME_REGISTRY: Record<Runtime, RuntimeConfig> = {
     // field may need to move from RuntimeConfig to a per-language lookup
     // instead of assuming one extension per Runtime.
     fileExtension: ".js",
+    // Plain Node has no mandatory build step, so "build-test" behaves
+    // exactly like "test" here. When TypeScript is enabled, "build-test"
+    // is where its fixed compile step belongs — extend THIS builder, never
+    // accept a build command from the manifest.
+    buildEvaluationCommand: (manifest) => {
+      if (manifest.executionMode === "run") {
+        return `node ${resolveEntrypoint(manifest, NODE_DEFAULT_ENTRYPOINT)}`;
+      }
+      return "npm test"; // "test", "build-test", or unspecified
+    },
   },
 };
 

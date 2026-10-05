@@ -2,6 +2,7 @@ import { Sandbox } from "e2b";
 import type { Runtime } from "@prisma/client";
 import { getRuntimeConfig, isRuntimeReady } from "./runtimes";
 import { parseBountiedManifest } from "./bountied-manifest";
+import type { BountiedManifest } from "./bountied-manifest";
 
 /** The one manifest file every runtime reads dependencies from — see
  * lib/sandbox/bountied-manifest.ts (product decision 2026-09-26). */
@@ -15,7 +16,7 @@ const EXECUTION_TIMEOUT_MS = 30_000;
 // runaway guard; this is only the outer envelope so a legitimate retry
 // sequence doesn't get killed by sandbox lifetime before it finishes.
 const SANDBOX_LIFETIME_MS = EXECUTION_TIMEOUT_MS * 5;
-const MAX_OUTPUT_CHARS = 50_000;
+const MAX_OUTPUT_CHARS = 10_000;
 
 /**
  * Lets the caller (the API route) map a failure onto the right
@@ -47,9 +48,14 @@ export type ExecutionResult =
     };
 
 /**
- * Runs a solver's submitted GitHub repo inside an ephemeral E2B sandbox
- * using the exact command the GIVER specified on the Problem — never a
- * command the solver controls.
+ * Runs a solver's submitted GitHub repo inside an ephemeral E2B sandbox.
+ *
+ * NO raw text from a Giver or a Solver is ever executed. The evaluation
+ * command is produced solely by the runtime adapter
+ * (RuntimeConfig.buildEvaluationCommand in lib/sandbox/runtimes.ts) from
+ * the Solver's parsed, validated bountied.json — a fixed per-runtime
+ * template, never user text. Problem.runCommand (legacy) is not read.
+ * See docs/review-engine-architecture.md.
  *
  * Security model (see product decisions 2026-08-02/03):
  *  - GitHub token is used for the git clone step only (server-side,
@@ -71,11 +77,10 @@ export type ExecutionResult =
  */
 export async function executeSubmission(params: {
   runtime: Runtime;
-  runCommand: string;
   repoUrl: string;
   githubToken: string;
 }): Promise<ExecutionResult> {
-  const { runtime, runCommand, repoUrl, githubToken } = params;
+  const { runtime, repoUrl, githubToken } = params;
 
   if (!isRuntimeReady(runtime)) {
     return {
@@ -137,9 +142,32 @@ export async function executeSubmission(params: {
       };
     }
 
-    // 2. Install dependencies if the solver included bountied.json.
-    //
-    // Retry ladder (product decision 2026-09-02): a lean base image can't
+    // 2. Read + parse bountied.json (always — the evaluation step needs it
+    //    too, not just the install step). Absent = zero dependencies and
+    //    the runtime adapter's defaults.
+    const manifestCheck = await sandbox.commands.run(
+      `cat "${workDir}/${MANIFEST_FILE_NAME}" 2>/dev/null || echo "__MISSING__"`,
+      { timeoutMs: 5_000 }
+    );
+    const manifestText = manifestCheck.stdout;
+    const hasManifest = manifestText.trim() !== "__MISSING__";
+
+    let manifest: BountiedManifest = { dependencies: [] };
+    if (hasManifest) {
+      const parsed = parseBountiedManifest(manifestText);
+      if (parsed.parseError || !parsed.manifest) {
+        // Includes an invalid entrypoint/executionMode: rejected here, before
+        // the evaluation command is ever built — same severity as malformed JSON.
+        return {
+          ok: false,
+          kind: "dependency-install",
+          reason: `bountied.json could not be parsed: ${parsed.parseError ?? "invalid manifest"}.`,
+        };
+      }
+      manifest = parsed.manifest;
+    }
+
+    // Install dependencies. Retry ladder (product decision 2026-09-02): a lean base image can't
     // have every system lib every package might need preinstalled without
     // bloating every single boot. So on failure we classify WHY it failed
     // before deciding what to do:
@@ -154,95 +182,79 @@ export async function executeSubmission(params: {
     // NOT used here — see runtimes.ts doc comment on why that's reserved
     // as a last resort the platform doesn't currently need to reach for
     // to solve the common cases above.
-    if (config.installCommand) {
-      const manifestCheck = await sandbox.commands.run(
-        `cat "${workDir}/${MANIFEST_FILE_NAME}" 2>/dev/null || echo "__MISSING__"`,
-        { timeoutMs: 5_000 }
+    if (config.installCommand && hasManifest) {
+      const install = await sandbox.commands.run(
+        config.installCommand(manifest.dependencies),
+        { cwd: workDir, timeoutMs: EXECUTION_TIMEOUT_MS }
       );
-      const manifestText = manifestCheck.stdout;
-      const hasManifest = manifestText.trim() !== "__MISSING__";
 
-      if (hasManifest) {
-        const { manifest, parseError } = parseBountiedManifest(manifestText);
-        if (parseError || !manifest) {
-          return {
-            ok: false,
-            kind: "dependency-install",
-            reason: `bountied.json could not be parsed: ${parseError ?? "invalid manifest"}.`,
-          };
-        }
+      if (install.exitCode !== 0) {
+        const retry = config.installRetry;
+        const classification = retry?.classifyFailure(install.stderr) ?? "unretryable";
 
-        const install = await sandbox.commands.run(
-          config.installCommand(manifest.dependencies),
-          { cwd: workDir, timeoutMs: EXECUTION_TIMEOUT_MS }
-        );
+        if (retry && classification === "missing-system-lib") {
+          const aptPackages = retry.resolveAptPackages(install.stderr);
 
-        if (install.exitCode !== 0) {
-          const retry = config.installRetry;
-          const classification = retry?.classifyFailure(install.stderr) ?? "unretryable";
+          if (aptPackages.length > 0) {
+            // Best-effort update — some base images have a stale apt
+            // cache; if `update` itself fails we still attempt install,
+            // since the cache may already be good enough.
+            await sandbox.commands
+              .run(retry.aptUpdateCommand, { timeoutMs: EXECUTION_TIMEOUT_MS })
+              .catch(() => {});
 
-          if (retry && classification === "missing-system-lib") {
-            const aptPackages = retry.resolveAptPackages(install.stderr);
+            const aptInstall = await sandbox.commands.run(
+              retry.aptInstallCommand(aptPackages),
+              { timeoutMs: EXECUTION_TIMEOUT_MS }
+            );
 
-            if (aptPackages.length > 0) {
-              // Best-effort update — some base images have a stale apt
-              // cache; if `update` itself fails we still attempt install,
-              // since the cache may already be good enough.
-              await sandbox.commands
-                .run(retry.aptUpdateCommand, { timeoutMs: EXECUTION_TIMEOUT_MS })
-                .catch(() => {});
-
-              const aptInstall = await sandbox.commands.run(
-                retry.aptInstallCommand(aptPackages),
-                { timeoutMs: EXECUTION_TIMEOUT_MS }
+            if (aptInstall.exitCode === 0) {
+              const retryInstall = await sandbox.commands.run(
+                config.installCommand(manifest.dependencies),
+                { cwd: workDir, timeoutMs: EXECUTION_TIMEOUT_MS }
               );
 
-              if (aptInstall.exitCode === 0) {
-                const retryInstall = await sandbox.commands.run(
-                  config.installCommand(manifest.dependencies),
-                  { cwd: workDir, timeoutMs: EXECUTION_TIMEOUT_MS }
-                );
-
-                if (retryInstall.exitCode !== 0) {
-                  return {
-                    ok: false,
-                    kind: "dependency-install",
-                    reason: `Dependency install failed even after installing ${aptPackages.join(", ")} (exit ${retryInstall.exitCode}):\n${truncate(retryInstall.stderr)}`,
-                  };
-                }
-                // Retry succeeded — fall through to step 3 as normal.
-              } else {
+              if (retryInstall.exitCode !== 0) {
                 return {
                   ok: false,
                   kind: "dependency-install",
-                  reason: `Dependency install failed (missing system library) and the automatic fix (${aptPackages.join(", ")}) also failed:\n${truncate(aptInstall.stderr, 1000)}`,
+                  reason: `Dependency install failed even after installing ${aptPackages.join(", ")} (exit ${retryInstall.exitCode}):\n${truncate(retryInstall.stderr)}`,
                 };
               }
+              // Retry succeeded — fall through to step 3 as normal.
             } else {
-              // Classified as a system-lib issue but we don't know which
-              // apt package fixes it — nothing to retry with.
               return {
                 ok: false,
                 kind: "dependency-install",
-                reason: `Dependency install failed (exit ${install.exitCode}):\n${truncate(install.stderr)}`,
+                reason: `Dependency install failed (missing system library) and the automatic fix (${aptPackages.join(", ")}) also failed:\n${truncate(aptInstall.stderr, 1000)}`,
               };
             }
           } else {
-            // Not retry-worthy — bad package name/version conflict/etc.
+            // Classified as a system-lib issue but we don't know which
+            // apt package fixes it — nothing to retry with.
             return {
               ok: false,
               kind: "dependency-install",
               reason: `Dependency install failed (exit ${install.exitCode}):\n${truncate(install.stderr)}`,
             };
           }
+        } else {
+          // Not retry-worthy — bad package name/version conflict/etc.
+          return {
+            ok: false,
+            kind: "dependency-install",
+            reason: `Dependency install failed (exit ${install.exitCode}):\n${truncate(install.stderr)}`,
+          };
         }
       }
     }
 
-    // 3. Run the GIVER's exact command — this is the trust boundary.
+    // 3. Evaluate. The command comes ONLY from the runtime adapter, built
+    //    from the validated manifest — never from Giver or Solver text.
+    const evaluationCommand = config.buildEvaluationCommand(manifest);
     let run: { stdout: string; stderr: string; exitCode: number };
     try {
-      run = await sandbox.commands.run(runCommand, {
+      run = await sandbox.commands.run(evaluationCommand, {
         cwd: workDir,
         timeoutMs: EXECUTION_TIMEOUT_MS,
       });
