@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { forbidden, getDesktopUser, unauthorized } from "@/lib/desktop/auth";
-import { triggerSubmissionReview } from "@/lib/reviews/actions";
-import { runAndRecordSubmission } from "@/lib/sandbox/run-submission";
+import { getDesktopUser, unauthorized } from "@/lib/desktop/auth";
+import { ReviewError, startAndRunReview } from "@/lib/reviews/start-review";
 
 /**
- * Billed sandbox review, initiated by the problem's Giver. Identity comes
- * from the verified Bearer token — never from the request body.
+ * Billed sandbox review, initiated from Bountied Desktop. Identity comes from
+ * the verified device token - never from the request body. Ownership, status,
+ * charging and the run all happen inside startAndRunReview.
  */
 export async function POST(req: Request) {
   const user = await getDesktopUser(req);
@@ -16,27 +15,18 @@ export async function POST(req: Request) {
   const submissionId = typeof body?.submissionId === "string" ? body.submissionId : null;
   if (!submissionId) return NextResponse.json({ error: "Missing submissionId" }, { status: 400 });
 
-  const submission = await prisma.submission.findUnique({
-    where: { id: submissionId },
-    select: { status: true, problem: { select: { giverId: true } } },
-  });
-  if (!submission) return NextResponse.json({ error: "Submission not found" }, { status: 404 });
-  if (submission.problem.giverId !== user.id) return forbidden();
-  if (submission.status === "RUNNING") {
-    return NextResponse.json({ error: "A review is already running" }, { status: 409 });
-  }
-
   try {
-    await triggerSubmissionReview(submissionId, user.id); // charges credit / consumes a free review
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "";
-    if (msg === "INSUFFICIENT_FUNDS") {
-      return NextResponse.json({ error: "Insufficient credit for a review" }, { status: 402 });
+    const { outcome } = await startAndRunReview(submissionId, user.id);
+    if (!outcome.ok) {
+      return NextResponse.json({ error: outcome.error }, { status: outcome.status ?? 500 });
     }
-    return NextResponse.json({ error: "Could not start review" }, { status: 400 });
+    return NextResponse.json({ success: true, status: outcome.submission?.status });
+  } catch (e) {
+    if (e instanceof ReviewError) {
+      const status = { NOT_FOUND: 404, FORBIDDEN: 403, NOT_READY: 409, INSUFFICIENT_FUNDS: 402 }[e.code];
+      return NextResponse.json({ error: e.message, code: e.code }, { status });
+    }
+    console.error("Desktop sandbox review error:", e);
+    return NextResponse.json({ error: "Sandbox execution failed" }, { status: 500 });
   }
-
-  const outcome = await runAndRecordSubmission(submissionId);
-  if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: outcome.status ?? 500 });
-  return NextResponse.json({ success: true, status: outcome.submission.status });
 }

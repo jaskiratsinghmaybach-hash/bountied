@@ -3,6 +3,7 @@ import type { Runtime } from "@prisma/client";
 import { getRuntimeConfig, isRuntimeReady } from "./runtimes";
 import { parseBountiedManifest } from "./bountied-manifest";
 import type { BountiedManifest } from "./bountied-manifest";
+import { planClone, redactSecrets } from "./clone";
 
 /** The one manifest file every runtime reads dependencies from — see
  * lib/sandbox/bountied-manifest.ts (product decision 2026-09-26). */
@@ -99,23 +100,7 @@ export async function executeSubmission(params: {
     };
   }
 
-  // Build the authenticated clone URL server-side.
-  // Format: https://x-access-token:<token>@github.com/owner/repo.git
-  // This never leaves the server — it's used only inside the sandbox
-  // and is not visible to the giver's browser at any point.
-  let authenticatedUrl: string;
-  try {
-    const parsed = new URL(repoUrl);
-    // Ensure it's actually a GitHub URL before embedding our token in it
-    if (parsed.hostname !== "github.com") {
-      return { ok: false, kind: "clone", reason: "Only GitHub repo URLs are accepted." };
-    }
-    parsed.username = "x-access-token";
-    parsed.password = githubToken;
-    authenticatedUrl = parsed.toString();
-  } catch {
-    return { ok: false, kind: "clone", reason: "Invalid repo URL." };
-  }
+
 
   let sandbox: Sandbox | null = null;
 
@@ -126,21 +111,34 @@ export async function executeSubmission(params: {
 
     const workDir = "/home/user/submission";
 
-    // 1. Clone the solver's repo using the token-authenticated URL.
-    //    --depth 1 = shallow clone (only latest commit, much faster/cheaper).
-    //    If this fails, it means the token doesn't grant access to this
-    //    repo — the solver hasn't connected a GitHub account that has access.
-    const clone = await sandbox.commands.run(
-      `git clone --depth 1 "${authenticatedUrl}" "${workDir}"`,
-      { timeoutMs: EXECUTION_TIMEOUT_MS }
-    );
-    if (clone.exitCode !== 0) {
+    // 1. Clone the solver's repo. The token is NOT in the URL and is not written
+    //    anywhere in the sandbox: see lib/sandbox/clone.ts. --depth 1 = shallow
+    //    clone (only latest commit, much faster/cheaper).
+    //    If this fails, the token doesn't grant access to this repo.
+    const plan = planClone(repoUrl, workDir, githubToken);
+    if (!plan.ok || !plan.command) {
+      return { ok: false, kind: "clone", reason: plan.reason ?? "Invalid repo URL." };
+    }
+    // E2B's commands.run THROWS on a non-zero exit, so a failed clone must be
+    // caught here to get the friendly message (the old `exitCode !== 0` check
+    // never ran). Anything shown or stored is scrubbed of the token first.
+    try {
+      await sandbox.commands.run(plan.command, {
+        envs: plan.envs,
+        timeoutMs: EXECUTION_TIMEOUT_MS,
+      });
+    } catch (err) {
+      const detail = extractCommandResult(err)?.stderr ?? (err instanceof Error ? err.message : String(err));
       return {
         ok: false,
         kind: "clone",
-        reason: `Could not clone the repository. Make sure your GitHub account has access to this repo. (${truncate(clone.stderr, 300)})`,
+        reason: `Could not clone the repository. Make sure your GitHub account has access to this repo. (${truncate(redactSecrets(detail, githubToken), 300)})`,
       };
     }
+
+    // The Solver's code runs in this directory next. Drop the git metadata so
+    // nothing from the clone step is visible to it.
+    await sandbox.commands.run(`rm -rf "${workDir}/.git"`, { timeoutMs: 10_000 });
 
     // 2. Read + parse bountied.json (always — the evaluation step needs it
     //    too, not just the install step). Absent = zero dependencies and
@@ -277,7 +275,7 @@ export async function executeSubmission(params: {
       exitCode: run.exitCode,
     };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+        const message = redactSecrets(err instanceof Error ? err.message : String(err), githubToken);
     return {
       ok: false,
       kind: "infra",

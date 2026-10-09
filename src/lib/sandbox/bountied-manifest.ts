@@ -145,6 +145,36 @@ function normalizePackageName(name: string): string {
   return name.trim().toLowerCase().replace(/[-_.]+/g, "-");
 }
 
+
+/**
+ * Dependency names and versions come from the Solver's bountied.json and end
+ * up inside a shell command (`pip install ...` / `npm install ...`). They are
+ * validated here against strict allowlists - a value that doesn't match is a
+ * PARSE ERROR (fail closed), never silently dropped or "cleaned up" - and the
+ * install builders in runtimes.ts additionally single-quote every argument.
+ */
+const MAX_DEPENDENCIES = 100;
+// Runs on the already-normalized name (lowercased; "-", "_", "." collapsed to "-").
+// Optional npm scope + lowercase alphanumerics/hyphens. Must START with a letter/digit
+// (or "@scope/") so it can never be read as a command-line option like "--registry=...",
+// and has no ":" or "/" beyond the scope so it can't be a URL, git or file spec.
+const SAFE_PACKAGE_NAME = /^(@[a-z0-9][a-z0-9-]*\/)?[a-z0-9][a-z0-9-]*$/;
+// Version specifiers: digits/letters plus the range operators pip and npm use.
+// No spaces, quotes, "$", backticks, ";", "|", "&", ":", "/", "@", parentheses, braces.
+const SAFE_VERSION = /^[0-9A-Za-z.*+^~<>=!,_-]{1,64}$/;
+
+function isSafePackageName(name: string): boolean {
+  return name.length <= 214 && SAFE_PACKAGE_NAME.test(name);
+}
+function isSafeVersion(version: string): boolean {
+  return SAFE_VERSION.test(version);
+}
+/** Printable fragment of an untrusted value for an error message (never the raw text). */
+function safeLabel(value: unknown): string {
+  const text = typeof value === "string" ? value.replace(/[^A-Za-z0-9._@/-]/g, "?").slice(0, 40) : "?";
+  return text || "?";
+}
+
 const ENTRYPOINT_MAX_LENGTH = 200;
 /**
  * Plain relative path only: an optional "./" prefix, then a first character
@@ -221,28 +251,54 @@ export function parseBountiedManifest(bountiedJsonText: string): {
   const obj = raw as Record<string, unknown>;
   const depsRaw = obj.dependencies;
   const dependencies: ManifestDependency[] = [];
+  const rawEntries: Array<{ name: unknown; version: unknown }> = [];
 
   if (depsRaw && typeof depsRaw === "object" && !Array.isArray(depsRaw)) {
     for (const [name, version] of Object.entries(depsRaw as Record<string, unknown>)) {
-      if (typeof name !== "string" || name.trim().length === 0) continue;
-      dependencies.push({
-        name: normalizePackageName(name),
-        version: typeof version === "string" ? version.trim() : null,
-      });
+      rawEntries.push({ name, version });
     }
   } else if (Array.isArray(depsRaw)) {
     for (const entry of depsRaw) {
       if (!entry || typeof entry !== "object") continue;
       const e = entry as Record<string, unknown>;
-      if (typeof e.name !== "string" || e.name.trim().length === 0) continue;
-      dependencies.push({
-        name: normalizePackageName(e.name),
-        version: typeof e.version === "string" ? e.version.trim() : null,
-      });
+      rawEntries.push({ name: e.name, version: e.version });
     }
   }
   // depsRaw absent entirely = zero dependencies (a stdlib-only solution),
-  // not an error — same as an empty requirements.txt was before.
+  // not an error - same as an empty requirements.txt was before.
+
+  if (rawEntries.length > MAX_DEPENDENCIES) {
+    return {
+      manifest: null,
+      parseError: `bountied.json lists more than ${MAX_DEPENDENCIES} dependencies.`,
+    };
+  }
+
+  for (const { name, version } of rawEntries) {
+    if (typeof name !== "string" || name.trim().length === 0) continue; // blank entries stay ignored, as before
+    const cleanName = normalizePackageName(name);
+    if (!isSafePackageName(cleanName)) {
+      return {
+        manifest: null,
+        parseError: `bountied.json has a dependency name that isn't a valid package name (${safeLabel(name)}).`,
+      };
+    }
+    let cleanVersion: string | null = null;
+    if (typeof version === "string" && version.trim().length > 0) {
+      // Only spaces/tabs are forgiven (">= 2.0" means ">=2.0"). A newline or any other
+      // control character is NOT quietly merged into the version: it fails the check below.
+      cleanVersion = version.trim().replace(/[ \t]+/g, "");
+      if (!isSafeVersion(cleanVersion)) {
+        return {
+          manifest: null,
+          parseError:
+            `bountied.json has an unsupported version for "${safeLabel(name)}". ` +
+            `Versions may only contain letters, digits and . * + ^ ~ < > = ! , _ -`,
+        };
+      }
+    }
+    dependencies.push({ name: cleanName, version: cleanVersion });
+  }
 
   const manifest: BountiedManifest = { dependencies };
 

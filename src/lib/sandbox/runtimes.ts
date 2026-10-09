@@ -142,6 +142,16 @@ const NODE_DEFAULT_ENTRYPOINT = "index.js";
 const PYTHON_TEST_COMMAND = "python -m pytest -q --tb=no -p no:cacheprovider";
 
 /**
+ * POSIX single-quote a value for safe inclusion in a shell command. Inside
+ * single quotes nothing is interpreted (no $(...), backticks, globbing or
+ * variable expansion). Defense in depth: bountied-manifest.ts already rejects
+ * unsafe names/versions, but a command string is never built from unquoted text.
+ */
+function shq(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
  * Package/header/compiler → apt package mapping for the common cases that
  * cause a pip install to fail on a lean base image. Deliberately a short,
  * hand-maintained list of the failures that actually show up in practice
@@ -243,9 +253,9 @@ export const RUNTIME_REGISTRY: Record<Runtime, RuntimeConfig> = {
     installCommand: (deps) => {
       if (deps.length === 0) return "true"; // nothing declared — no-op, don't fail the step
       const specs = deps.map((d) => {
-        if (!d.version) return d.name;
+        if (!d.version) return shq(d.name);
         const v = /^[=<>~!]/.test(d.version) ? d.version : `==${d.version}`;
-        return `"${d.name}${v}"`;
+        return shq(`${d.name}${v}`);
       });
       return `pip install ${specs.join(" ")}`;
     },
@@ -275,7 +285,7 @@ export const RUNTIME_REGISTRY: Record<Runtime, RuntimeConfig> = {
     // exact version; npm does not need "==" the way pip does.
     installCommand: (deps) => {
       if (deps.length === 0) return "true"; // nothing declared — no-op, don't fail the step
-      const specs = deps.map((d) => (d.version ? `"${d.name}@${d.version}"` : d.name));
+            const specs = deps.map((d) => shq(d.version ? `${d.name}@${d.version}` : d.name));
       return `npm install ${specs.join(" ")}`;
     },
     installRetry: NODE_INSTALL_RETRY,

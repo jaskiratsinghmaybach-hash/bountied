@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { triggerSubmissionReview } from "@/lib/reviews/actions";
 import { FREE_REVIEWS_PER_PROBLEM } from "@/lib/reviews/pricing";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -17,14 +16,13 @@ const SKIP_CONFIRM_KEY = "bountied:review-skip-confirm";
 
 interface ReviewButtonProps {
   submissionId: string;
-  giverId: string;
+  giverId?: string;
   freeReviewsLeft: number;
   status: string;
 }
 
 export function ReviewButton({
   submissionId,
-  giverId,
   freeReviewsLeft,
   status,
 }: ReviewButtonProps) {
@@ -43,14 +41,18 @@ export function ReviewButton({
     setError(null);
 
     try {
-      await triggerSubmissionReview(submissionId, giverId);
-
+      // One request: the server checks you own this bounty, charges (or uses a
+      // free review) and runs the sandbox together.
       const res = await fetch("/api/sandbox/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ submissionId }),
       });
 
+      if (res.status === 402) {
+        setInsufficientFunds(true);
+        return;
+      }
       if (!res.ok) throw new Error("Sandbox execution failed");
 
       router.refresh();
