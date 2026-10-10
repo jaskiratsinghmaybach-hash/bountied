@@ -1,0 +1,405 @@
+/**
+ * Parses a solver's bountied.json — the platform's own environment manifest
+ * — and enforces the Giver's optional dependencyPolicy (Problem.dependencyPolicy)
+ * BEFORE any E2B sandbox boots.
+ *
+ * bountied.json replaces requirements.txt (and any other per-language
+ * dependency file) as the single manifest format every runtime submits,
+ * per product decision 2026-09-26: with only Python live and requirements.txt
+ * touching a handful of files, this was the last point at which switching
+ * was cheap — waiting until more runtimes existed would have meant either
+ * N per-language manifest formats or a painful later migration. A Solver's
+ * AI coding assistant is expected to inspect the repo and generate this
+ * file; the Solver copies the generated JSON into bountied.json at the repo
+ * root. See lib/sandbox/runtimes.ts for how a runtime turns the parsed
+ * manifest into an actual install command.
+ *
+ * Why the policy check has to run pre-boot: a policy violation is a $0
+ * rejection if caught here (one GitHub API call to read the file), vs. the
+ * cost of a full clone + sandbox boot if we let it through and failed
+ * later. See product decision 2026-09-02 — this is the cost-control half
+ * of the dependency work; lib/sandbox/execute.ts's apt-get retry ladder is
+ * the reliability half.
+ *
+ * This module NEVER decides pass/fail for whether packages will actually
+ * install — that's still lib/sandbox/execute.ts's job at sandbox time.
+ * This only decides whether the Solver is ALLOWED to try, per the Giver's
+ * stated fence, and gives execute.ts a normalized dependency list to
+ * install from.
+ */
+
+export type DependencyPolicy = {
+  /** 0 means "no external deps at all" — stdlib-only problems. */
+  maxDependencies?: number;
+  /** If set, ONLY these package names may appear — allowlist mode. */
+  allowedPackages?: string[];
+  /** Always rejected, regardless of allowlist mode. */
+  bannedPackages?: string[];
+};
+
+/**
+ * A single declared dependency. version is a free-form string (interpreted
+ * per-runtime — "2.x" for pip's loose matching, an exact semver for npm,
+ * etc.) rather than a parsed/validated version range: bountied.json has to
+ * span ecosystems with genuinely different versioning schemes, and
+ * validating each one's grammar here would tie this module to every
+ * runtime's package manager. installCommand (runtimes.ts) owns turning
+ * this into a real install invocation for its ecosystem.
+ */
+export type ManifestDependency = {
+  name: string;
+  version: string | null;
+};
+
+/**
+ * How the Solver's project should be evaluated. This is NOT a command: it
+ * selects one of the FIXED, per-runtime command templates built by
+ * RuntimeConfig.buildEvaluationCommand (lib/sandbox/runtimes.ts). No text
+ * from bountied.json is ever executed as a shell string.
+ */
+export const EXECUTION_MODES = ["test", "build-test", "run"] as const;
+export type ExecutionMode = (typeof EXECUTION_MODES)[number];
+
+/**
+ * The normalized shape lib/sandbox/execute.ts and lib/sandbox/runtimes.ts
+ * actually consume. Fields beyond `dependencies` are parsed defensively
+ * (see parseBountiedManifest) so a Solver's manifest can carry
+ * forward-looking fields without breaking parsing.
+ *
+ * Security (docs/review-engine-architecture.md): both new fields are
+ * Solver-authored and therefore untrusted. They are STRUCTURED METADATA,
+ * never a command — `entrypoint` is validated as a plain relative path
+ * and only ever interpolated as a path argument by a runtime adapter;
+ * `executionMode` is a closed enum that selects a platform-owned template.
+ */
+export type BountiedManifest = {
+  dependencies: ManifestDependency[];
+  /**
+   * Relative path to the program's entry file ("main.py", "src/index.js").
+   * Validated by validateEntrypoint() — never shell text. Only consulted
+   * when the resolved mode is "run".
+   */
+  entrypoint?: string;
+  /** Omitted = the runtime adapter's explicit per-runtime default. */
+  executionMode?: ExecutionMode;
+};
+
+export type PolicyCheckResult =
+  | { ok: true; packageNames: string[]; reason?: undefined; offendingPackages?: undefined }
+  | {
+      ok: false;
+      /** Human-readable reason shown to the solver — this becomes sandboxError. */
+      reason: string;
+      /** The specific package names that triggered the violation, for UI display. */
+      offendingPackages: string[];
+    };
+
+/**
+ * Narrows an unknown Json value (as read straight off Prisma's
+ * Problem.dependencyPolicy) into a DependencyPolicy, dropping anything
+ * malformed rather than throwing. A giver-set field that got corrupted or
+ * hand-edited in the DB should fail open (no policy applied) — not crash
+ * every review of that problem. Only reachable if someone bypasses the
+ * validation this module's own setDependencyPolicy() would otherwise apply
+ * before writing to the DB.
+ */
+export function parseDependencyPolicy(raw: unknown): DependencyPolicy | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+
+  const policy: DependencyPolicy = {};
+
+  if (typeof obj.maxDependencies === "number" && obj.maxDependencies >= 0) {
+    policy.maxDependencies = Math.floor(obj.maxDependencies);
+  }
+  if (Array.isArray(obj.allowedPackages)) {
+    const list = obj.allowedPackages.filter(
+      (p): p is string => typeof p === "string" && p.trim().length > 0
+    );
+    if (list.length > 0) policy.allowedPackages = list.map(normalizePackageName);
+  }
+  if (Array.isArray(obj.bannedPackages)) {
+    const list = obj.bannedPackages.filter(
+      (p): p is string => typeof p === "string" && p.trim().length > 0
+    );
+    if (list.length > 0) policy.bannedPackages = list.map(normalizePackageName);
+  }
+
+  const isEmpty =
+    policy.maxDependencies === undefined &&
+    policy.allowedPackages === undefined &&
+    policy.bannedPackages === undefined;
+
+  return isEmpty ? null : policy;
+}
+
+/**
+ * Package names across ecosystems are case-insensitive-ish in practice
+ * (pip's PEP 503 normalization treats "-", "_", "." as equivalent; npm
+ * scoped/unscoped names are lowercase by convention) — normalizing the
+ * same way for every runtime means a Giver banning "scikit-learn" isn't
+ * silently bypassed by "scikit_learn" in a bountied.json dependencies
+ * block, regardless of which runtime the problem targets.
+ */
+function normalizePackageName(name: string): string {
+  return name.trim().toLowerCase().replace(/[-_.]+/g, "-");
+}
+
+
+/**
+ * Dependency names and versions come from the Solver's bountied.json and end
+ * up inside a shell command (`pip install ...` / `npm install ...`). They are
+ * validated here against strict allowlists - a value that doesn't match is a
+ * PARSE ERROR (fail closed), never silently dropped or "cleaned up" - and the
+ * install builders in runtimes.ts additionally single-quote every argument.
+ */
+const MAX_DEPENDENCIES = 100;
+// Runs on the already-normalized name (lowercased; "-", "_", "." collapsed to "-").
+// Optional npm scope + lowercase alphanumerics/hyphens. Must START with a letter/digit
+// (or "@scope/") so it can never be read as a command-line option like "--registry=...",
+// and has no ":" or "/" beyond the scope so it can't be a URL, git or file spec.
+const SAFE_PACKAGE_NAME = /^(@[a-z0-9][a-z0-9-]*\/)?[a-z0-9][a-z0-9-]*$/;
+// Version specifiers: digits/letters plus the range operators pip and npm use.
+// No spaces, quotes, "$", backticks, ";", "|", "&", ":", "/", "@", parentheses, braces.
+const SAFE_VERSION = /^[0-9A-Za-z.*+^~<>=!,_-]{1,64}$/;
+
+function isSafePackageName(name: string): boolean {
+  return name.length <= 214 && SAFE_PACKAGE_NAME.test(name);
+}
+function isSafeVersion(version: string): boolean {
+  return SAFE_VERSION.test(version);
+}
+/** Printable fragment of an untrusted value for an error message (never the raw text). */
+function safeLabel(value: unknown): string {
+  const text = typeof value === "string" ? value.replace(/[^A-Za-z0-9._@/-]/g, "?").slice(0, 40) : "?";
+  return text || "?";
+}
+
+const ENTRYPOINT_MAX_LENGTH = 200;
+/**
+ * Plain relative path only: an optional "./" prefix, then a first character
+ * that is a letter/digit/underscore (so no leading "-", which a program
+ * could read as an option flag, and no leading "/"), then letters, digits,
+ * "_", ".", "/", "-". No whitespace, quotes, backslashes, ";", "|", "&",
+ * "$", backticks, parentheses, or any other shell metacharacter can match.
+ */
+const ENTRYPOINT_PATTERN = /^(?:\.\/)?[A-Za-z0-9_][A-Za-z0-9_./-]*$/;
+
+/** Flat shape (not a discriminated union) so it narrows correctly even under this repo's `strict: false`. */
+export type EntrypointValidation = {
+  ok: boolean;
+  /** Present when ok. */
+  value?: string;
+  /** Present when !ok. */
+  reason?: string;
+};
+
+/**
+ * The single validator for a Solver-declared entrypoint. Called by
+ * parseBountiedManifest (so an invalid value is a parse error, same
+ * severity as malformed JSON) and re-checked by the runtime adapter
+ * immediately before interpolation (defense in depth — never skip either).
+ * Error reasons deliberately do not echo the offending value.
+ */
+export function validateEntrypoint(raw: unknown): EntrypointValidation {
+  const rule =
+    'bountied.json "entrypoint" must be a plain relative file path such as ' +
+    '"main.py" or "src/index.js".';
+  if (typeof raw !== "string" || raw.length === 0) {
+    return { ok: false, reason: rule };
+  }
+  if (raw.length > ENTRYPOINT_MAX_LENGTH) {
+    return { ok: false, reason: `${rule} (too long)` };
+  }
+  if (!ENTRYPOINT_PATTERN.test(raw)) {
+    return { ok: false, reason: `${rule} (unsupported characters)` };
+  }
+  if (raw.split("/").some((segment) => segment === "..")) {
+    return { ok: false, reason: `${rule} (must not contain "..")` };
+  }
+  return { ok: true, value: raw };
+}
+
+/**
+ * Parses a bountied.json body into a BountiedManifest. Deliberately
+ * defensive rather than a strict schema-validate-and-throw: a Solver's
+ * manifest is untrusted input arriving before any sandbox boots, and a
+ * malformed dependencies entry should be treated as "unresolvable" (see
+ * checkDependencyPolicy's fail-closed handling) rather than crash the
+ * whole submission pipeline over one bad line.
+ *
+ * Accepts dependencies as either an object map ({"numpy": "2.x"} — the
+ * documented/generated shape) or an array of {name, version} — kept
+ * permissive since a Solver's AI assistant is the one generating this
+ * file and object-vs-array is an easy, harmless mistake to make.
+ */
+export function parseBountiedManifest(bountiedJsonText: string): {
+  manifest: BountiedManifest | null;
+  parseError: string | null;
+} {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(bountiedJsonText);
+  } catch {
+    return { manifest: null, parseError: "bountied.json is not valid JSON." };
+  }
+
+  if (!raw || typeof raw !== "object") {
+    return { manifest: null, parseError: "bountied.json must be a JSON object." };
+  }
+
+  const obj = raw as Record<string, unknown>;
+  const depsRaw = obj.dependencies;
+  const dependencies: ManifestDependency[] = [];
+  const rawEntries: Array<{ name: unknown; version: unknown }> = [];
+
+  if (depsRaw && typeof depsRaw === "object" && !Array.isArray(depsRaw)) {
+    for (const [name, version] of Object.entries(depsRaw as Record<string, unknown>)) {
+      rawEntries.push({ name, version });
+    }
+  } else if (Array.isArray(depsRaw)) {
+    for (const entry of depsRaw) {
+      if (!entry || typeof entry !== "object") continue;
+      const e = entry as Record<string, unknown>;
+      rawEntries.push({ name: e.name, version: e.version });
+    }
+  }
+  // depsRaw absent entirely = zero dependencies (a stdlib-only solution),
+  // not an error - same as an empty requirements.txt was before.
+
+  if (rawEntries.length > MAX_DEPENDENCIES) {
+    return {
+      manifest: null,
+      parseError: `bountied.json lists more than ${MAX_DEPENDENCIES} dependencies.`,
+    };
+  }
+
+  for (const { name, version } of rawEntries) {
+    if (typeof name !== "string" || name.trim().length === 0) continue; // blank entries stay ignored, as before
+    const cleanName = normalizePackageName(name);
+    if (!isSafePackageName(cleanName)) {
+      return {
+        manifest: null,
+        parseError: `bountied.json has a dependency name that isn't a valid package name (${safeLabel(name)}).`,
+      };
+    }
+    let cleanVersion: string | null = null;
+    if (typeof version === "string" && version.trim().length > 0) {
+      // Only spaces/tabs are forgiven (">= 2.0" means ">=2.0"). A newline or any other
+      // control character is NOT quietly merged into the version: it fails the check below.
+      cleanVersion = version.trim().replace(/[ \t]+/g, "");
+      if (!isSafeVersion(cleanVersion)) {
+        return {
+          manifest: null,
+          parseError:
+            `bountied.json has an unsupported version for "${safeLabel(name)}". ` +
+            `Versions may only contain letters, digits and . * + ^ ~ < > = ! , _ -`,
+        };
+      }
+    }
+    dependencies.push({ name: cleanName, version: cleanVersion });
+  }
+
+  const manifest: BountiedManifest = { dependencies };
+
+  // entrypoint / executionMode: structured metadata, never a command. An
+  // invalid value is a PARSE ERROR (rejected before the evaluation step
+  // ever builds a command), not something silently dropped — fail closed.
+  if (obj.entrypoint !== undefined && obj.entrypoint !== null) {
+    const checked = validateEntrypoint(obj.entrypoint);
+    if (!checked.ok) return { manifest: null, parseError: checked.reason ?? "Invalid entrypoint." };
+    manifest.entrypoint = checked.value;
+  }
+
+  if (obj.executionMode !== undefined && obj.executionMode !== null) {
+    const mode = obj.executionMode;
+    if (typeof mode !== "string" || !(EXECUTION_MODES as readonly string[]).includes(mode)) {
+      return {
+        manifest: null,
+        parseError: `bountied.json "executionMode" must be one of: ${EXECUTION_MODES.join(", ")}.`,
+      };
+    }
+    manifest.executionMode = mode as ExecutionMode;
+  }
+
+  return { manifest, parseError: null };
+}
+
+/**
+ * The actual gate. Call this with the Giver's Problem.dependencyPolicy
+ * (already parsed) and the Solver's raw bountied.json content, BEFORE
+ * mirroring/booting anything.
+ *
+ * A parse failure always fails closed when a policy is active — same
+ * reasoning as an unresolvable requirements.txt line under the old format:
+ * an active policy is a deliberate Giver constraint, and an unparseable
+ * manifest can't be checked against it, so it can't be let through. When
+ * no policy is set at all, a parse failure is surfaced separately by the
+ * mirror step (a broken bountied.json will fail dependency install anyway)
+ * rather than blocked here.
+ */
+export function checkDependencyPolicy(
+  policy: DependencyPolicy | null,
+  bountiedJsonText: string | null
+): PolicyCheckResult {
+  const { manifest, parseError } = bountiedJsonText
+    ? parseBountiedManifest(bountiedJsonText)
+    : { manifest: { dependencies: [] }, parseError: null };
+
+  const names = manifest?.dependencies.map((d) => d.name) ?? [];
+
+  if (!policy) {
+    return { ok: true, packageNames: names };
+  }
+
+  if (parseError || !manifest) {
+    return {
+      ok: false,
+      reason:
+        `This problem restricts dependencies, and bountied.json couldn't be ` +
+        `verified against that restriction: ${parseError ?? "invalid manifest"}. ` +
+        `Regenerate bountied.json and make sure it's valid JSON with a ` +
+        `"dependencies" object.`,
+      offendingPackages: [],
+    };
+  }
+
+  if (policy.maxDependencies !== undefined && names.length > policy.maxDependencies) {
+    return {
+      ok: false,
+      reason:
+        `This problem allows at most ${policy.maxDependencies} ` +
+        `${policy.maxDependencies === 1 ? "dependency" : "dependencies"}, but ` +
+        `bountied.json lists ${names.length}.`,
+      offendingPackages: names,
+    };
+  }
+
+  if (policy.bannedPackages && policy.bannedPackages.length > 0) {
+    const banned = new Set(policy.bannedPackages);
+    const hit = names.filter((n) => banned.has(n));
+    if (hit.length > 0) {
+      return {
+        ok: false,
+        reason: `bountied.json uses package(s) this problem doesn't allow: ${hit.join(", ")}.`,
+        offendingPackages: hit,
+      };
+    }
+  }
+
+  if (policy.allowedPackages && policy.allowedPackages.length > 0) {
+    const allowed = new Set(policy.allowedPackages);
+    const disallowed = names.filter((n) => !allowed.has(n));
+    if (disallowed.length > 0) {
+      return {
+        ok: false,
+        reason:
+          `This problem only allows specific packages: ${policy.allowedPackages.join(", ")}. ` +
+          `bountied.json uses package(s) not on that list: ${disallowed.join(", ")}.`,
+        offendingPackages: disallowed,
+      };
+    }
+  }
+
+  return { ok: true, packageNames: names };
+}

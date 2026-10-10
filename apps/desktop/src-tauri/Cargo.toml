@@ -1,0 +1,46 @@
+[package]
+name = "bountied-desktop"
+version = "0.1.0"
+description = "Bountied Desktop — professional review client"
+authors = ["Bountied"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "bountied_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+# Deliberately minimal. No shell, fs, http, process or store plugins: the
+# WebView gets ONLY the business commands defined in src/lib.rs. Add a plugin
+# only with a written reason and a narrowly scoped capability.
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-window-state = "2"
+# Used ONLY from Rust (see begin_pairing) to open the pairing page in the default
+# browser. No JS permission is granted for it, so the WebView cannot open URLs.
+tauri-plugin-opener = "2"
+# OS credential store (Windows Credential Manager / macOS Keychain) for the refresh token.
+keyring = { version = "3", features = ["windows-native", "apple-native"] }
+sha2 = "0.10"
+base64 = "0.22"
+rand = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+anyhow = "1"
+env_logger = "0.11"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
+[profile.dev]
+debug = 0
