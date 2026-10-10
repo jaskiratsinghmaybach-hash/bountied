@@ -394,9 +394,12 @@ async fn complete_pairing(code: String, state: State<'_, AuthState>) -> Res<Auth
 /// Sign out on this device: revoke server-side (best effort), then forget everything locally.
 #[tauri::command]
 async fn sign_out(state: State<'_, AuthState>) -> Res<()> {
-    let tok = state.0.lock().await.tokens.as_ref().map(|t| t.access.clone());
-    if let Some(t) = tok {
-        let _ = raw(true, "/api/desktop/session/revoke", Some(&t), Some(&json!({}))).await;
+    // Revoke server-side, best effort. `authed` refreshes an expired access token
+    // first and retries once after a 401, so a device idle longer than the
+    // access-token lifetime still gets revoked instead of silently skipped.
+    let has_session = state.0.lock().await.tokens.is_some();
+    if has_session {
+        let _ = authed(&state, true, "/api/desktop/session/revoke", Some(json!({}))).await;
     }
     let mut inner = state.0.lock().await;
     forget(&mut inner);
