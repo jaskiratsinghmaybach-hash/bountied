@@ -5,7 +5,7 @@ import { syncUserFromSupabase } from "@/lib/auth/sync-user";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 
-export type AuthActionResult = { error: string } | void;
+export type AuthActionResult = { error?: string } | undefined;
 
 /**
  * Where a newly-authenticated user should land: onboarding if they haven't

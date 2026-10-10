@@ -85,7 +85,7 @@ export type BountiedManifest = {
 };
 
 export type PolicyCheckResult =
-  | { ok: true; packageNames: string[] }
+  | { ok: true; packageNames: string[]; reason?: undefined; offendingPackages?: undefined }
   | {
       ok: false;
       /** Human-readable reason shown to the solver — this becomes sandboxError. */

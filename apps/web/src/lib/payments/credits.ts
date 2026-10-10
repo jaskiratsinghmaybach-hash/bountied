@@ -3,9 +3,9 @@ import { EscrowState, ProblemStatus, CreditTransactionType } from "@prisma/clien
 import { creditsRequiredToFund } from "./fees";
 
 export type FundBountyResult =
-  | { ok: true }
-  | { ok: false; reason: "INSUFFICIENT_FUNDS"; required: number; balance: number }
-  | { ok: false; reason: "OTHER"; message: string };
+  | { ok: true; reason?: undefined; required?: undefined; balance?: undefined; message?: undefined }
+  | { ok: false; reason: "INSUFFICIENT_FUNDS"; required: number; balance: number; message?: undefined }
+  | { ok: false; reason: "OTHER"; message: string; required?: undefined; balance?: undefined };
 
 /**
  * Attempts to fund a Problem's Escrow directly from a Giver's credit

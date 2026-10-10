@@ -43,7 +43,7 @@ export async function acceptSubmissionAndRelease(params: {
   problemId: string;
   submissionId: string;
   actingGiverId: string; // for authorization check — must equal Problem.giverId
-}): Promise<{ ok: true } | { ok: false; reason: string }> {
+}): Promise<{ ok: true; reason?: undefined } | { ok: false; reason: string }> {
   const { problemId, submissionId, actingGiverId } = params;
 
   // maxWait/timeout widened from Prisma's defaults (2s / 5s) — reported

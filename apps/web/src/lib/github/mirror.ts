@@ -24,7 +24,7 @@ import {
 const MIRROR_TIMEOUT_MS = 120_000;
 
 export type MirrorResult =
-  | { ok: true; repo: PlatformRepo }
+  | { ok: true; repo: PlatformRepo; reason?: undefined }
   | { ok: false; reason: string };
 
 /**

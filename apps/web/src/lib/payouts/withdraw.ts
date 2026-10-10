@@ -3,7 +3,7 @@ import { amountPaidOnWithdrawal, withdrawalFeeFor } from "@/lib/payments/fees";
 import { prisma } from "@/lib/db";
 
 export type WithdrawResult =
-  | { ok: true; payoutAmount: number; eligibleAt: Date }
+  | { ok: true; payoutAmount: number; eligibleAt: Date; reason?: undefined }
   | { ok: false; reason: string };
 
 const PAYOUT_WINDOW_DAYS = 7;
