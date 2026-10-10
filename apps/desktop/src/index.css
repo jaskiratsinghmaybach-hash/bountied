@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0b0d10;
+  --color-panel: #12151a;
+  --color-raised: #181c22;
+  --color-line: #232830;
+  --color-fg: #e6e8eb;
+  --color-muted: #8b93a1;
+  --color-accent: #7c8cff;
+  --color-ok: #3fb97a;
+  --color-warn: #e0b04a;
+  --color-bad: #ef5b5b;
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0; background: var(--color-bg); color: var(--color-fg);
+  font-family: var(--font-sans); font-size: 13px; overflow: hidden;
+  -webkit-font-smoothing: antialiased; user-select: none;
+}
+/* Native-feeling: no accidental text selection in chrome, but allow it in evidence/logs. */
+.selectable { user-select: text; }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--color-line); border-radius: 6px; border: 2px solid var(--color-bg); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
