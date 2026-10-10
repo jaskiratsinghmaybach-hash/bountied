@@ -42,6 +42,7 @@ model User {
   notificationsSent   Notification[]  @relation("NotificationSender")
   deviceSessions      DeviceSession[]
   devicePairings      DevicePairing[]
+  solverTestRuns      SolverTestRun[]
 
   @@index([email])
 }
@@ -123,6 +124,7 @@ model Problem {
   escrow            Escrow?
   giver             User          @relation("ProblemGiver", fields: [giverId], references: [id])
   submissions       Submission[]
+  solverTestRuns    SolverTestRun[]
 
   @@index([status, type])
   @@index([giverId])
@@ -168,6 +170,11 @@ model Submission {
   platformRepoPublic    Boolean             @default(false)
   platformRepoUrl       String?
   githubAccessGrantedAt DateTime?
+  /// Solver-side sandbox test (see SolverTestRun). PASSED only when the repo HEAD at submit time equals the commit of a passing run. Set by the server, never from client input.
+  testStatus            SubmissionTestStatus @default(UNTESTED)
+  testedCommitSha       String?
+  testRunId             String?
+  testRun               SolverTestRun?       @relation("SubmissionTestRun", fields: [testRunId], references: [id])
   creditTransactions    CreditTransaction[]
   escrowRelease         Escrow?             @relation("EscrowRelease")
   review                Review?
@@ -293,6 +300,8 @@ enum CreditTransactionType {
   BOUNTY_FUNDING
   REFUND
   SUBMISSION_REVIEW
+  /// A Solver paying for a sandbox test of their own repo (SolverTestRun). Charged to creditBalance only; the earnings part is recorded on the run itself.
+  SANDBOX_TEST
 }
 
 enum PayoutRequestStatus {
@@ -421,4 +430,50 @@ model RateLimitBucket {
   resetAt DateTime
 
   @@index([resetAt])
+}
+
+// -- Solver-side sandbox testing --------------------------------------------------
+// A Solver runs the sandbox on their OWN repo before submitting, so setup errors
+// (missing entrypoint, missing files) are found by them and not by the Giver.
+// Each run is tied to the exact commit it tested.
+enum SolverTestStatus {
+  RUNNING
+  PASSED
+  FAILED
+  ERROR // platform or setup error: always refunded, never consumes the free quota
+}
+
+enum SubmissionTestStatus {
+  UNTESTED
+  PASSED
+}
+
+model SolverTestRun {
+  id                  String           @id @default(cuid())
+  solverId            String
+  problemId           String
+  repoUrl             String
+  /// Exact 40-hex commit this run tested.
+  commitSha           String
+  status              SolverTestStatus @default(RUNNING)
+  isFree              Boolean          @default(false)
+  /// How this run was paid: deposited credit first, then earned availableBalance.
+  chargedFromCredit   Decimal          @default(0) @db.Decimal(12, 2)
+  chargedFromEarnings Decimal          @default(0) @db.Decimal(12, 2)
+  /// Set once when an ERROR run is refunded; makes the refund idempotent.
+  refundedAt          DateTime?
+  /// "tests" or "entry" (see the run-mode rules in the sandbox planner).
+  mode                String?
+  exitCode            Int?
+  output              String?
+  errorCode           String?
+  errorMessage        String?
+  createdAt           DateTime         @default(now())
+  finishedAt          DateTime?
+  solver              User             @relation(fields: [solverId], references: [id])
+  problem             Problem          @relation(fields: [problemId], references: [id])
+  submissions         Submission[]     @relation("SubmissionTestRun")
+
+  @@index([solverId, problemId, createdAt])
+  @@index([problemId, commitSha])
 }

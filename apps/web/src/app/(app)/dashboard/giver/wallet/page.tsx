@@ -10,6 +10,7 @@ const txTypeLabel: Record<CreditTransactionType, string> = {
   PURCHASE: "Credit purchase",
   BOUNTY_FUNDING: "Bounty funding",
   SUBMISSION_REVIEW: "Submission review",
+  SANDBOX_TEST: "Sandbox test",
   REFUND: "Refund",
 };
 
