@@ -1,6 +1,8 @@
 import { Sandbox } from "e2b";
 import type { Runtime } from "@prisma/client";
 import { getRuntimeConfig, isRuntimeReady } from "@/lib/sandbox/runtimes";
+import { runCommandTolerant } from "@/lib/sandbox/execute";
+import type { SandboxLike } from "@/lib/sandbox/execute";
 import {
   createPlatformRepo,
   deletePlatformRepo,
@@ -24,7 +26,13 @@ import {
 const MIRROR_TIMEOUT_MS = 120_000;
 
 export type MirrorResult =
-  | { ok: true; repo: PlatformRepo; reason?: undefined }
+  | {
+      ok: true;
+      repo: PlatformRepo;
+      reason?: undefined;
+      /** The commit at the default branch's HEAD that was mirrored (40 hex), or null if it couldn't be read. */
+      mirroredCommitSha?: string | null;
+    }
   | { ok: false; reason: string };
 
 /**
@@ -111,19 +119,24 @@ export async function mirrorSubmissionRepo(params: {
 
     const bareDir = "/tmp/mirror.git";
 
+    // E2B's commands.run THROWS on a non-zero exit, so every step goes through
+    // runCommandTolerant: a failed clone or push is then reported with git's own
+    // (scrubbed) stderr instead of falling into the generic catch below.
+    const box = sandbox as unknown as SandboxLike;
+
     // 1. Bare clone of the solver's repo — full history, no working tree.
-    const clone = await sandbox.commands.run(
+    const clone = await runCommandTolerant(
+      box,
       `git clone --bare "${authenticatedSourceUrl}" "${bareDir}"`,
       { timeoutMs: MIRROR_TIMEOUT_MS }
     );
-    if (clone.exitCode !== 0) {
+    if (clone.timedOut || clone.exitCode !== 0) {
       await deletePlatformRepo(repo.fullName);
       return {
         ok: false,
-        reason: `Could not read your repository. Make sure your connected GitHub account still has access to it. (${scrub(
-          clone.stderr,
-          [solverToken, platformToken]
-        ).slice(0, 300)})`,
+        reason: `Could not read your repository. Make sure your connected GitHub account still has access to it. (${
+          clone.timedOut ? "the clone took too long" : scrub(clone.stderr, [solverToken, platformToken]).slice(0, 300)
+        })`,
       };
     }
 
@@ -131,22 +144,35 @@ export async function mirrorSubmissionRepo(params: {
     //    `push --all` + `push --tags` rather than `push --mirror`: --mirror
     //    would also try to push refs/pull/* from the source clone, which
     //    GitHub refuses, failing the whole push.
-    const push = await sandbox.commands.run(
+    const push = await runCommandTolerant(
+      box,
       `git push --all "${authenticatedDestUrl}" && git push --tags "${authenticatedDestUrl}"`,
       { cwd: bareDir, timeoutMs: MIRROR_TIMEOUT_MS }
     );
-    if (push.exitCode !== 0) {
+    if (push.timedOut || push.exitCode !== 0) {
       await deletePlatformRepo(repo.fullName);
       return {
         ok: false,
-        reason: `Could not import your repository into the platform account. (${scrub(
-          push.stderr,
-          [solverToken, platformToken]
-        ).slice(0, 300)})`,
+        reason: `Could not import your repository into the platform account. (${
+          push.timedOut ? "the import took too long" : scrub(push.stderr, [solverToken, platformToken]).slice(0, 300)
+        })`,
       };
     }
 
-    return { ok: true, repo };
+    // 3. Which commit did we just copy? HEAD of the bare clone is the default
+    //    branch's tip, the same "HEAD" the Solver's test was pinned to. The
+    //    caller uses it to re-verify a PASSED test. Failing to read it must
+    //    never fail the mirror; it only means the test can't be re-verified.
+    let mirroredCommitSha: string | null = null;
+    try {
+      const head = await runCommandTolerant(box, `git rev-parse HEAD`, { cwd: bareDir, timeoutMs: 10_000 });
+      const sha = head.stdout.trim().toLowerCase();
+      if (!head.timedOut && head.exitCode === 0 && /^[0-9a-f]{40}$/.test(sha)) mirroredCommitSha = sha;
+    } catch {
+      mirroredCommitSha = null;
+    }
+
+    return { ok: true, repo, mirroredCommitSha };
   } catch (err) {
     await deletePlatformRepo(repo.fullName);
     const message = err instanceof Error ? err.message : String(err);

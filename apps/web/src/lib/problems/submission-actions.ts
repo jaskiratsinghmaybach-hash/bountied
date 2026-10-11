@@ -7,9 +7,17 @@ import { revalidatePath } from "next/cache";
 import { mirrorSubmissionRepo } from "@/lib/github/mirror";
 import { fetchBountiedManifest } from "@/lib/github/fetch-manifest";
 import { checkDependencyPolicy, parseDependencyPolicy } from "@/lib/sandbox/bountied-manifest";
+import { evaluateSubmitGate, shouldKeepPassed } from "@/lib/solver-tests/submit-gate";
+import { submitGateDeps } from "@/lib/solver-tests/submit-gate-deps";
 
 export type CreateSubmissionResult =
-  | { error: string }
+  | {
+      error: string;
+      /** Set when the error is the test gate: TEST_FAILED, TEST_ERROR, TEST_RUNNING or HEAD_UNVERIFIABLE. */
+      code?: string;
+      /** Set when the gate has a how-to-fix page for the failing test. */
+      docsUrl?: string | null;
+    }
   | { ok: true; submissionId: string };
 
 export async function createSubmission(
@@ -66,6 +74,19 @@ export async function createSubmission(
     };
   }
 
+  // Solver-side test gate (see lib/solver-tests/submit-gate.ts). A commit whose
+  // sandbox test FAILED or ERRORED can't be submitted; an untested repo can,
+  // and is marked UNTESTED; PASSED is set only if the repo's HEAD right now is
+  // the commit a passing test ran on. The test fields below come ONLY from this
+  // server-side decision, never from the form.
+  const gate = await evaluateSubmitGate(
+    { solverId: user.id, problemId, repoUrl, solverToken: user.githubAccessToken ?? null },
+    submitGateDeps
+  );
+  if (!gate.allow) {
+    return { error: gate.message ?? "Your latest commit can't be submitted yet.", code: gate.code, docsUrl: gate.docsUrl ?? null };
+  }
+
   const submission = await prisma.submission.create({
     data: {
       problemId,
@@ -74,6 +95,9 @@ export async function createSubmission(
       writeup,
       status: "SUBMITTED",
       attemptNumber: priorAttempts + 1,
+      testStatus: gate.testStatus,
+      testedCommitSha: gate.testedCommitSha ?? null,
+      testRunId: gate.testRunId ?? null,
     },
   });
 
@@ -174,6 +198,16 @@ async function mirrorOnly(submissionId: string) {
       return;
     }
 
+    // The mirror copies whatever the repo's HEAD is NOW. If this submission was
+    // marked PASSED for an earlier commit and the Solver has pushed since, it
+    // goes back to UNTESTED: PASSED always means "the code the Giver sees is the
+    // code that passed".
+    const keepPassed = shouldKeepPassed({
+      testStatus: submission.testStatus,
+      testedCommitSha: submission.testedCommitSha,
+      mirroredCommitSha: mirrorResult.mirroredCommitSha,
+    });
+
     // Mirror succeeded — repo is ready. Status becomes AWAITING_REVIEW so the
     // giver's ReviewButton becomes actionable. Sandbox has NOT run yet.
     await prisma.submission.update({
@@ -182,6 +216,7 @@ async function mirrorOnly(submissionId: string) {
         platformRepoUrl: mirrorResult.repo.cloneUrl,
         platformRepoFullName: mirrorResult.repo.fullName,
         status: "AWAITING_REVIEW",
+        ...(keepPassed ? {} : { testStatus: "UNTESTED" as const, testedCommitSha: null, testRunId: null }),
       },
     });
   } catch (err) {
