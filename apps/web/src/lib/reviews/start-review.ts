@@ -86,9 +86,73 @@ export async function claimAndChargeReview(submissionId: string, giverId: string
   });
 }
 
-/** Claim + charge, then run the sandbox and record the evidence. */
+/**
+ * Gives a Giver back exactly what claimAndChargeReview took: the free review
+ * (freeReviewsUsed goes back down) or the $0.04 (credited back and logged as a
+ * REFUND). For a run that ended because of the platform or the setup, not the
+ * Solver's code failing. Callers invoke this at most once per claim:
+ * startAndRunReview does, and the claim itself can only be won once.
+ */
+export async function refundReview(params: {
+  giverId: string;
+  problemId: string;
+  submissionId: string;
+  /** The value claimAndChargeReview returned: false = a free review was used. */
+  charged: boolean;
+}): Promise<boolean> {
+  const { giverId, problemId, submissionId, charged } = params;
+  return prisma.$transaction(async (tx) => {
+    if (!charged) {
+      // Never below zero: a conditional decrement decided by the database.
+      const freed = await tx.problem.updateMany({
+        where: { id: problemId, freeReviewsUsed: { gt: 0 } },
+        data: { freeReviewsUsed: { decrement: 1 } },
+      });
+      return freed.count === 1;
+    }
+    await tx.user.update({
+      where: { id: giverId },
+      data: { creditBalance: { increment: REVIEW_COST_USD } },
+    });
+    const giver = await tx.user.findUniqueOrThrow({ where: { id: giverId }, select: { creditBalance: true } });
+    await tx.creditTransaction.create({
+      data: {
+        userId: giverId,
+        type: "REFUND",
+        amount: REVIEW_COST_USD,
+        balanceAfter: giver.creditBalance,
+        problemId,
+        submissionId,
+      },
+    });
+    return true;
+  });
+}
+
+/**
+ * Claim + charge, then run the sandbox and record the evidence. If the run
+ * ended because of the platform or the setup (outcome.refundable), the Giver
+ * gets the review back: a platform failure must never eat a free review or
+ * cost money. A program that ran and failed is a real result and stays charged.
+ * `charged` in the return value is what the Giver is out of AFTER any refund.
+ */
 export async function startAndRunReview(submissionId: string, giverId: string) {
-  const { charged, problemId } = await claimAndChargeReview(submissionId, giverId);
+  const claim = await claimAndChargeReview(submissionId, giverId);
   const outcome = await runAndRecordSubmission(submissionId);
-  return { charged, problemId, outcome };
+
+  let refunded = false;
+  if (outcome.refundable) {
+    try {
+      refunded = await refundReview({
+        giverId,
+        problemId: claim.problemId,
+        submissionId,
+        charged: claim.charged,
+      });
+    } catch (error) {
+      // The run result is already recorded; never lose it over a failed refund. Surface it for follow-up.
+      console.error("Review refund failed:", submissionId, error instanceof Error ? error.message : "unknown error");
+    }
+  }
+  return { charged: claim.charged && !refunded, refunded, problemId: claim.problemId, outcome };
 }

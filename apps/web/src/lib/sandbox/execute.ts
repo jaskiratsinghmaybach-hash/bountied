@@ -1,4 +1,4 @@
-import { Sandbox } from "e2b";
+import { Sandbox, TimeoutError } from "e2b";
 import type { Runtime } from "@prisma/client";
 import { getRuntimeConfig, isRuntimeReady } from "./runtimes";
 import { parseBountiedManifest } from "./bountied-manifest";
@@ -18,70 +18,117 @@ const EXECUTION_TIMEOUT_MS = 30_000;
 // sequence doesn't get killed by sandbox lifetime before it finishes.
 const SANDBOX_LIFETIME_MS = EXECUTION_TIMEOUT_MS * 5;
 const MAX_OUTPUT_CHARS = 10_000;
+const WORK_DIR = "/home/user/submission";
+const COMMIT_SHA = /^[0-9a-f]{40}$/;
 
 /**
- * Lets the caller (the API route) map a failure onto the right
- * SubmissionStatus without execute.ts knowing anything about Prisma.
- * "dependency-install" is the one new addition (product decision
- * 2026-09-02) — everything else stays SANDBOX_FAILED, same as before.
+ * Lets callers map a failure onto the right status without execute.ts knowing
+ * anything about Prisma or billing.
+ *   clone              - the repo could not be fetched (access, bad URL, timeout)
+ *   dependency-install - declared dependencies could not be installed
+ *   setup              - the clone worked but is not what we were asked to run
+ *                        (wrong commit, unreadable commit, unbuildable command)
+ *   timeout            - the Solver's program ran past the time limit
+ *   infra              - the platform failed (sandbox, network, our own timeouts)
  */
 export type ExecutionFailureKind =
   | "clone"
   | "dependency-install"
+  | "setup"
+  | "timeout"
   | "infra";
 
-export type ExecutionResult =
-  | {
-      ok: true;
-      stdout: string;
-      stderr: string;
-      exitCode: number;
-    }
-  | {
-      ok: false;
-      kind: ExecutionFailureKind;
-      /**
-       * Human-readable reason execution never produced real output.
-       * Shown as sandboxError, distinct from a program that ran and
-       * exited non-zero.
-       */
-      reason: string;
-    };
+/**
+ * Flat shape (not a union): this repo runs `strict: false`, where an ok/!ok
+ * union does not narrow. Fields marked "ok only" / "failure only" are only set
+ * in that case.
+ */
+export type ExecutionResult = {
+  ok: boolean;
+  /** ok only. */
+  stdout?: string;
+  /** ok only. */
+  stderr?: string;
+  /** ok only. */
+  exitCode?: number;
+  /** The exact commit that was cloned and run. Set whenever the clone got that far. */
+  commitSha?: string;
+  /** failure only. */
+  kind?: ExecutionFailureKind;
+  /**
+   * failure only. Human-readable reason execution never produced real output.
+   * Shown as sandboxError, distinct from a program that ran and exited non-zero.
+   */
+  reason?: string;
+  /**
+   * failure only. Bounded, secret-scrubbed output of the step that failed
+   * (for example the failed install's stderr). It is the Solver's own output:
+   * for the Solver's diagnosis only, never for a Giver.
+   */
+  output?: string;
+};
+
+/** What the runner needs from a sandbox. e2b's Sandbox satisfies it; tests pass a fake. */
+export type CommandOutcome = { stdout: string; stderr: string; exitCode: number };
+type RunOptions = { cwd?: string; timeoutMs?: number; envs?: Record<string, string> };
+export type SandboxLike = {
+  commands: { run(command: string, options?: RunOptions): Promise<CommandOutcome> };
+  kill(): Promise<unknown>;
+};
+export type ExecuteDeps = {
+  createSandbox?: (templateId: string, options: { timeoutMs: number }) => Promise<SandboxLike>;
+};
+
+const defaultCreateSandbox: NonNullable<ExecuteDeps["createSandbox"]> = async (templateId, options) =>
+  (await Sandbox.create(templateId, options)) as unknown as SandboxLike;
 
 /**
- * Runs a solver's submitted GitHub repo inside an ephemeral E2B sandbox.
+ * Runs a solver's GitHub repo inside an ephemeral E2B sandbox.
  *
  * NO raw text from a Giver or a Solver is ever executed. The evaluation
  * command is produced solely by the runtime adapter
- * (RuntimeConfig.buildEvaluationCommand in lib/sandbox/runtimes.ts) from
- * the Solver's parsed, validated bountied.json — a fixed per-runtime
- * template, never user text. Problem.runCommand (legacy) is not read.
- * See docs/review-engine-architecture.md.
+ * (RuntimeConfig.buildEvaluationCommand in lib/sandbox/runtimes.ts) from a
+ * validated manifest — a fixed per-runtime template, never user text.
+ * Problem.runCommand (legacy) is not read. See docs/review-engine-architecture.md.
+ *
+ * Two ways to choose what runs:
+ *  - `manifest` given (Solver tests): the planner's effective manifest is used
+ *    as-is. bountied.json in the repo is not re-read. Dependencies are
+ *    installed only if the list is non-empty.
+ *  - `manifest` omitted (Giver review of the mirrored repo): bountied.json is
+ *    read from the clone, as before.
+ *
+ * `expectedCommitSha`, when given, must equal the cloned HEAD or the run stops
+ * with a "setup" failure before anything of the Solver's runs. This is what
+ * ties a test to one exact commit.
  *
  * Security model (see product decisions 2026-08-02/03):
- *  - GitHub token is used for the git clone step only (server-side,
- *    inside the sandbox, never sent to the giver's browser).
- *  - Hard execution timeout — kills runaway/malicious code, caps E2B cost.
- *  - Sandbox always killed in finally — never left running idle.
- *  - Output truncated to MAX_OUTPUT_CHARS — no unbounded DB writes.
+ *  - The token is used for the git clone step only, as a header in an env var
+ *    for that one command (see clone.ts), and never reaches the Solver's code.
+ *  - Hard per-step timeouts kill runaway code and cap E2B cost.
+ *  - The sandbox is always killed in finally.
+ *  - Output is truncated to MAX_OUTPUT_CHARS.
  *
- * Deliberately runtime-agnostic — every runtime-specific decision comes
- * from lib/sandbox/runtimes.ts. Do NOT add "if (runtime === ...)" branches
- * here; extend the registry instead.
+ * Deliberately runtime-agnostic: no `if (runtime === ...)` here; extend the
+ * registry in runtimes.ts instead.
  *
- * IMPORTANT: E2B's commands.run THROWS a CommandExitException on non-zero
- * exit codes. A program legitimately exiting non-zero is a completely
- * normal, successful execution (e.g. "tests failed" reported via exit code)
- * — not a sandbox failure — so we catch and recover stdout/stderr/exitCode
- * from the exception object via extractCommandResult() rather than treating
- * every thrown error as infrastructure failure.
+ * E2B's commands.run THROWS a CommandExitError on a non-zero exit. Every step
+ * therefore goes through runCommandTolerant(), which turns that into a normal
+ * result. A program exiting non-zero is a real result, not a sandbox failure.
  */
-export async function executeSubmission(params: {
-  runtime: Runtime;
-  repoUrl: string;
-  githubToken: string;
-}): Promise<ExecutionResult> {
-  const { runtime, repoUrl, githubToken } = params;
+export async function executeSubmission(
+  params: {
+    runtime: Runtime;
+    repoUrl: string;
+    githubToken: string;
+    expectedCommitSha?: string;
+    manifest?: BountiedManifest;
+  },
+  deps: ExecuteDeps = {}
+): Promise<ExecutionResult> {
+  const { runtime, repoUrl, githubToken, expectedCommitSha } = params;
+  const createSandbox = deps.createSandbox ?? defaultCreateSandbox;
+  const scrub = (text: string) => redactSecrets(text, githubToken);
 
   if (!isRuntimeReady(runtime)) {
     return {
@@ -93,194 +140,132 @@ export async function executeSubmission(params: {
 
   const config = getRuntimeConfig(runtime);
   if (!config.templateId) {
-    return {
-      ok: false,
-      kind: "infra",
-      reason: `Runtime ${runtime} has no sandbox template configured yet.`,
-    };
+    return { ok: false, kind: "infra", reason: `Runtime ${runtime} has no sandbox template configured yet.` };
+  }
+  if (expectedCommitSha !== undefined && !COMMIT_SHA.test(expectedCommitSha)) {
+    return { ok: false, kind: "setup", reason: "The commit to test is not a valid 40-character SHA." };
   }
 
+  // Checked before a sandbox is booted: a bad URL should cost nothing.
+  const plan = planClone(repoUrl, WORK_DIR, githubToken);
+  if (!plan.ok || !plan.command) {
+    return { ok: false, kind: "clone", reason: plan.reason ?? "Invalid repo URL." };
+  }
 
-
-  let sandbox: Sandbox | null = null;
+  let sandbox: SandboxLike | null = null;
 
   try {
-    sandbox = await Sandbox.create(config.templateId, {
-      timeoutMs: SANDBOX_LIFETIME_MS,
+    sandbox = await createSandbox(config.templateId, { timeoutMs: SANDBOX_LIFETIME_MS });
+
+    // 1. Clone (command planned above). The token is NOT in the URL and is not
+    //    written anywhere in the sandbox: see clone.ts. --depth 1 = shallow clone.
+    const clone = await runCommandTolerant(sandbox, plan.command, {
+      envs: plan.envs,
+      timeoutMs: EXECUTION_TIMEOUT_MS,
     });
-
-    const workDir = "/home/user/submission";
-
-    // 1. Clone the solver's repo. The token is NOT in the URL and is not written
-    //    anywhere in the sandbox: see lib/sandbox/clone.ts. --depth 1 = shallow
-    //    clone (only latest commit, much faster/cheaper).
-    //    If this fails, the token doesn't grant access to this repo.
-    const plan = planClone(repoUrl, workDir, githubToken);
-    if (!plan.ok || !plan.command) {
-      return { ok: false, kind: "clone", reason: plan.reason ?? "Invalid repo URL." };
-    }
-    // E2B's commands.run THROWS on a non-zero exit, so a failed clone must be
-    // caught here to get the friendly message (the old `exitCode !== 0` check
-    // never ran). Anything shown or stored is scrubbed of the token first.
-    try {
-      await sandbox.commands.run(plan.command, {
-        envs: plan.envs,
-        timeoutMs: EXECUTION_TIMEOUT_MS,
-      });
-    } catch (err) {
-      const detail = extractCommandResult(err)?.stderr ?? (err instanceof Error ? err.message : String(err));
+    if (clone.timedOut || clone.exitCode !== 0) {
+      const detail = clone.timedOut ? "the clone took too long" : clone.stderr;
       return {
         ok: false,
         kind: "clone",
-        reason: `Could not clone the repository. Make sure your GitHub account has access to this repo. (${truncate(redactSecrets(detail, githubToken), 300)})`,
+        reason: `Could not clone the repository. Make sure your GitHub account has access to this repo. (${truncate(scrub(detail), 300)})`,
+      };
+    }
+
+    // 2. Pin the commit. Must happen BEFORE .git is removed.
+    const head = await runCommandTolerant(sandbox, `git -C "${WORK_DIR}" rev-parse HEAD`, { timeoutMs: 10_000 });
+    const commitSha = head.stdout.trim().toLowerCase();
+    if (head.timedOut || head.exitCode !== 0 || !COMMIT_SHA.test(commitSha)) {
+      return { ok: false, kind: "setup", reason: "Could not read the commit of the cloned repository." };
+    }
+    if (expectedCommitSha !== undefined && commitSha !== expectedCommitSha.toLowerCase()) {
+      return {
+        ok: false,
+        kind: "setup",
+        commitSha,
+        reason: "The repository has a newer commit than the one that was prepared for testing. Run the check again.",
       };
     }
 
     // The Solver's code runs in this directory next. Drop the git metadata so
     // nothing from the clone step is visible to it.
-    await sandbox.commands.run(`rm -rf "${workDir}/.git"`, { timeoutMs: 10_000 });
-
-    // 2. Read + parse bountied.json (always — the evaluation step needs it
-    //    too, not just the install step). Absent = zero dependencies and
-    //    the runtime adapter's defaults.
-    const manifestCheck = await sandbox.commands.run(
-      `cat "${workDir}/${MANIFEST_FILE_NAME}" 2>/dev/null || echo "__MISSING__"`,
-      { timeoutMs: 5_000 }
-    );
-    const manifestText = manifestCheck.stdout;
-    const hasManifest = manifestText.trim() !== "__MISSING__";
-
-    let manifest: BountiedManifest = { dependencies: [] };
-    if (hasManifest) {
-      const parsed = parseBountiedManifest(manifestText);
-      if (parsed.parseError || !parsed.manifest) {
-        // Includes an invalid entrypoint/executionMode: rejected here, before
-        // the evaluation command is ever built — same severity as malformed JSON.
-        return {
-          ok: false,
-          kind: "dependency-install",
-          reason: `bountied.json could not be parsed: ${parsed.parseError ?? "invalid manifest"}.`,
-        };
-      }
-      manifest = parsed.manifest;
+    const strip = await runCommandTolerant(sandbox, `rm -rf "${WORK_DIR}/.git"`, { timeoutMs: 10_000 });
+    if (strip.timedOut || strip.exitCode !== 0) {
+      return { ok: false, kind: "infra", commitSha, reason: "Could not prepare the sandbox." };
     }
 
-    // Install dependencies. Retry ladder (product decision 2026-09-02): a lean base image can't
-    // have every system lib every package might need preinstalled without
-    // bloating every single boot. So on failure we classify WHY it failed
-    // before deciding what to do:
-    //   - missing system lib (e.g. no pg_config, no gcc) -> apt-get the
-    //     specific missing piece IN THIS SAME SANDBOX and retry the exact
-    //     same install command once. No second boot, no second clone.
-    //   - anything else (bad package name, real version conflict) -> that
-    //     is never fixed by installing more system libraries, so we don't
-    //     waste an apt-get round-trip retrying it. Fail straight to
-    //     DEPENDENCY_INSTALL_FAILED with the real pip stderr.
-    // A second full sandbox (config.fallbackTemplateId) is intentionally
-    // NOT used here — see runtimes.ts doc comment on why that's reserved
-    // as a last resort the platform doesn't currently need to reach for
-    // to solve the common cases above.
-    if (config.installCommand && hasManifest) {
-      const install = await sandbox.commands.run(
-        config.installCommand(manifest.dependencies),
-        { cwd: workDir, timeoutMs: EXECUTION_TIMEOUT_MS }
+    // 3. Which manifest? The planner's, or bountied.json from the clone.
+    let manifest: BountiedManifest;
+    let installNeeded: boolean;
+    if (params.manifest) {
+      manifest = params.manifest;
+      installNeeded = manifest.dependencies.length > 0;
+    } else {
+      const read = await runCommandTolerant(
+        sandbox,
+        `cat "${WORK_DIR}/${MANIFEST_FILE_NAME}" 2>/dev/null || echo "__MISSING__"`,
+        { timeoutMs: 5_000 }
       );
-
-      if (install.exitCode !== 0) {
-        const retry = config.installRetry;
-        const classification = retry?.classifyFailure(install.stderr) ?? "unretryable";
-
-        if (retry && classification === "missing-system-lib") {
-          const aptPackages = retry.resolveAptPackages(install.stderr);
-
-          if (aptPackages.length > 0) {
-            // Best-effort update — some base images have a stale apt
-            // cache; if `update` itself fails we still attempt install,
-            // since the cache may already be good enough.
-            await sandbox.commands
-              .run(retry.aptUpdateCommand, { timeoutMs: EXECUTION_TIMEOUT_MS })
-              .catch(() => {});
-
-            const aptInstall = await sandbox.commands.run(
-              retry.aptInstallCommand(aptPackages),
-              { timeoutMs: EXECUTION_TIMEOUT_MS }
-            );
-
-            if (aptInstall.exitCode === 0) {
-              const retryInstall = await sandbox.commands.run(
-                config.installCommand(manifest.dependencies),
-                { cwd: workDir, timeoutMs: EXECUTION_TIMEOUT_MS }
-              );
-
-              if (retryInstall.exitCode !== 0) {
-                return {
-                  ok: false,
-                  kind: "dependency-install",
-                  reason: `Dependency install failed even after installing ${aptPackages.join(", ")} (exit ${retryInstall.exitCode}):\n${truncate(retryInstall.stderr)}`,
-                };
-              }
-              // Retry succeeded — fall through to step 3 as normal.
-            } else {
-              return {
-                ok: false,
-                kind: "dependency-install",
-                reason: `Dependency install failed (missing system library) and the automatic fix (${aptPackages.join(", ")}) also failed:\n${truncate(aptInstall.stderr, 1000)}`,
-              };
-            }
-          } else {
-            // Classified as a system-lib issue but we don't know which
-            // apt package fixes it — nothing to retry with.
-            return {
-              ok: false,
-              kind: "dependency-install",
-              reason: `Dependency install failed (exit ${install.exitCode}):\n${truncate(install.stderr)}`,
-            };
-          }
-        } else {
-          // Not retry-worthy — bad package name/version conflict/etc.
+      const hasManifest = !read.timedOut && read.stdout.trim() !== "__MISSING__";
+      manifest = { dependencies: [] };
+      if (hasManifest) {
+        const parsed = parseBountiedManifest(read.stdout);
+        if (parsed.parseError || !parsed.manifest) {
+          // Includes an invalid entrypoint/executionMode: rejected before the
+          // evaluation command is ever built — same severity as malformed JSON.
           return {
             ok: false,
             kind: "dependency-install",
-            reason: `Dependency install failed (exit ${install.exitCode}):\n${truncate(install.stderr)}`,
+            commitSha,
+            reason: `bountied.json could not be parsed: ${parsed.parseError ?? "invalid manifest"}.`,
           };
         }
+        manifest = parsed.manifest;
       }
+      installNeeded = hasManifest;
     }
 
-    // 3. Evaluate. The command comes ONLY from the runtime adapter, built
-    //    from the validated manifest — never from Giver or Solver text.
-    const evaluationCommand = config.buildEvaluationCommand(manifest);
-    let run: { stdout: string; stderr: string; exitCode: number };
+    // 4. Install, with the retry ladder (product decision 2026-09-02): a
+    //    missing system library is fixed in this same sandbox with apt-get and
+    //    one retry; anything else (bad name, version conflict) fails straight
+    //    away with the real stderr.
+    if (config.installCommand && installNeeded) {
+      const failure = await installDependencies(sandbox, config, manifest, scrub);
+      if (failure) return { ...failure, commitSha };
+    }
+
+    // 5. Evaluate. The command comes ONLY from the runtime adapter, built from
+    //    the validated manifest — never from Giver or Solver text.
+    let evaluationCommand: string;
     try {
-      run = await sandbox.commands.run(evaluationCommand, {
-        cwd: workDir,
-        timeoutMs: EXECUTION_TIMEOUT_MS,
-      });
-    } catch (err) {
-      const recovered = extractCommandResult(err);
-      if (recovered) {
-        // Non-zero exit from the solver's program — this is a normal,
-        // meaningful result, not a system error.
-        run = recovered;
-      } else {
-        // Real infrastructure failure (timeout, connection drop, etc.).
-        throw err;
-      }
+      evaluationCommand = config.buildEvaluationCommand(manifest);
+    } catch {
+      // The adapter refuses to build from an invalid entrypoint (fail closed).
+      return { ok: false, kind: "setup", commitSha, reason: "Bountied could not build a safe command to run your project." };
+    }
+    const run = await runCommandTolerant(sandbox, evaluationCommand, {
+      cwd: WORK_DIR,
+      timeoutMs: EXECUTION_TIMEOUT_MS,
+    });
+    if (run.timedOut) {
+      return {
+        ok: false,
+        kind: "timeout",
+        commitSha,
+        reason: `The program did not finish within ${EXECUTION_TIMEOUT_MS / 1000} seconds and was stopped.`,
+      };
     }
 
     return {
       ok: true,
-      stdout: truncate(run.stdout),
-      stderr: truncate(run.stderr),
+      stdout: truncate(scrub(run.stdout)),
+      stderr: truncate(scrub(run.stderr)),
       exitCode: run.exitCode,
+      commitSha,
     };
   } catch (err) {
-        const message = redactSecrets(err instanceof Error ? err.message : String(err), githubToken);
-    return {
-      ok: false,
-      kind: "infra",
-      reason: `Sandbox execution failed: ${truncate(message, 500)}`,
-    };
+    const message = scrub(err instanceof Error ? err.message : String(err));
+    return { ok: false, kind: "infra", reason: `Sandbox execution failed: ${truncate(message, 500)}` };
   } finally {
     if (sandbox) {
       await sandbox.kill().catch(() => {
@@ -291,31 +276,123 @@ export async function executeSubmission(params: {
   }
 }
 
+type FailureResult = Pick<ExecutionResult, "ok" | "kind" | "reason" | "output">;
+
+async function installDependencies(
+  sandbox: SandboxLike,
+  config: ReturnType<typeof getRuntimeConfig>,
+  manifest: BountiedManifest,
+  scrub: (text: string) => string
+): Promise<FailureResult | null> {
+  const installCommand = config.installCommand(manifest.dependencies);
+  const opts = { cwd: WORK_DIR, timeoutMs: EXECUTION_TIMEOUT_MS };
+
+  const tooSlow: FailureResult = {
+    ok: false,
+    kind: "infra",
+    reason: `Installing dependencies took longer than ${EXECUTION_TIMEOUT_MS / 1000} seconds.`,
+  };
+  const failed = (message: string, r: CommandOutcome): FailureResult => ({
+    ok: false,
+    kind: "dependency-install",
+    reason: message,
+    output: truncate(scrub([r.stderr, r.stdout].filter(Boolean).join("\n"))),
+  });
+
+  const install = await runCommandTolerant(sandbox, installCommand, opts);
+  if (install.timedOut) return tooSlow;
+  if (install.exitCode === 0) return null;
+
+  const retry = config.installRetry;
+  const classification = retry?.classifyFailure(install.stderr) ?? "unretryable";
+  if (!retry || classification !== "missing-system-lib") {
+    // Not retry-worthy — bad package name/version conflict/etc.
+    return failed(`Dependency install failed (exit ${install.exitCode}):\n${truncate(scrub(install.stderr))}`, install);
+  }
+
+  const aptPackages = retry.resolveAptPackages(install.stderr);
+  if (aptPackages.length === 0) {
+    // Classified as a system-lib issue but we don't know which apt package fixes it.
+    return failed(`Dependency install failed (exit ${install.exitCode}):\n${truncate(scrub(install.stderr))}`, install);
+  }
+
+  // Best-effort update — a stale apt cache is common; if `update` itself fails
+  // we still attempt the install.
+  await runCommandTolerant(sandbox, retry.aptUpdateCommand, { timeoutMs: EXECUTION_TIMEOUT_MS });
+  const apt = await runCommandTolerant(sandbox, retry.aptInstallCommand(aptPackages), {
+    timeoutMs: EXECUTION_TIMEOUT_MS,
+  });
+  if (apt.timedOut) return tooSlow;
+  if (apt.exitCode !== 0) {
+    return failed(
+      `Dependency install failed (missing system library) and the automatic fix (${aptPackages.join(", ")}) also failed:\n${truncate(scrub(apt.stderr), 1000)}`,
+      install
+    );
+  }
+
+  const again = await runCommandTolerant(sandbox, installCommand, opts);
+  if (again.timedOut) return tooSlow;
+  if (again.exitCode !== 0) {
+    return failed(
+      `Dependency install failed even after installing ${aptPackages.join(", ")} (exit ${again.exitCode}):\n${truncate(scrub(again.stderr))}`,
+      again
+    );
+  }
+  return null;
+}
+
+/** One finished step. `timedOut` means the step hit its own time limit (stdout/stderr are empty then). */
+export type StepResult = CommandOutcome & { timedOut: boolean };
+
+/**
+ * commands.run that never throws for a command that ran. A non-zero exit
+ * (CommandExitError) comes back as a normal result, and a step that exceeds
+ * its own timeoutMs comes back as timedOut. Anything else — a dropped
+ * connection, a killed sandbox, a request timeout — is a real infrastructure
+ * failure and is rethrown for the caller's catch.
+ */
+export async function runCommandTolerant(
+  sandbox: SandboxLike,
+  command: string,
+  options?: RunOptions
+): Promise<StepResult> {
+  try {
+    const r = await sandbox.commands.run(command, options);
+    return { stdout: r.stdout ?? "", stderr: r.stderr ?? "", exitCode: r.exitCode ?? 0, timedOut: false };
+  } catch (err) {
+    const recovered = extractCommandResult(err);
+    if (recovered) return { ...recovered, timedOut: false };
+    if (isCommandTimeout(err)) return { stdout: "", stderr: "", exitCode: -1, timedOut: true };
+    throw err;
+  }
+}
+
+/**
+ * e2b maps the gRPC "deadline exceeded" a command's own timeoutMs produces to a
+ * TimeoutError whose message names 'timeoutMs'. Its request-level timeout
+ * ('requestTimeoutMs') is a different message and stays an infra failure.
+ */
+export function isCommandTimeout(err: unknown): boolean {
+  return err instanceof TimeoutError && /exceeding 'timeoutMs'/.test(err.message);
+}
+
 function truncate(text: string, max = MAX_OUTPUT_CHARS): string {
   if (text.length <= max) return text;
   return text.slice(0, max) + `\n\n[truncated — ${text.length - max} more characters]`;
 }
 
 /**
- * E2B's commands.run throws a CommandExitException on non-zero exit, but
- * the exception still carries the real stdout/stderr/exitCode. This
- * extracts them via duck-typing since the exact exception class properties
- * aren't pinned down in public docs — returns null if the thrown value
- * doesn't look like a command result (meaning it's a real infra failure).
+ * E2B's CommandExitError still carries the real stdout/stderr/exitCode.
+ * Extracted by duck-typing (they are prototype getters); null when the thrown
+ * value doesn't look like a command result, meaning a real infra failure.
  */
-function extractCommandResult(
-  err: unknown
-): { stdout: string; stderr: string; exitCode: number } | null {
+function extractCommandResult(err: unknown): CommandOutcome | null {
   if (!err || typeof err !== "object") return null;
   const e = err as Record<string, unknown>;
   const stdout = e.stdout;
   const stderr = e.stderr;
   const exitCode = e.exitCode ?? e.exit_code;
-  if (
-    typeof stdout === "string" &&
-    typeof stderr === "string" &&
-    typeof exitCode === "number"
-  ) {
+  if (typeof stdout === "string" && typeof stderr === "string" && typeof exitCode === "number") {
     return { stdout, stderr, exitCode };
   }
   return null;

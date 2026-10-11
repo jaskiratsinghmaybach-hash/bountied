@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { executeSubmission } from "@/lib/sandbox/execute";
 import { buildReviewEvidence } from "@/lib/sandbox/review-evidence";
+import { diagnose } from "@/lib/solver-tests/diagnose";
 
 /** Flat shape (not a union) so it narrows under this repo's `strict: false`. */
 export type RunOutcome = {
@@ -8,6 +9,12 @@ export type RunOutcome = {
   submission?: Awaited<ReturnType<typeof prisma.submission.update>>;
   status?: number;
   error?: string;
+  /**
+   * True when the run ended because of the platform or the setup, not because
+   * of the Solver's code (see diagnose.ts). The Giver must then be refunded
+   * (lib/reviews/start-review.ts). A program that ran and failed is NOT refundable.
+   */
+  refundable?: boolean;
 };
 
 /**
@@ -41,6 +48,16 @@ export async function runAndRecordSubmission(submissionId: string): Promise<RunO
     const failureStatus =
       failure?.kind === "dependency-install" ? "DEPENDENCY_INSTALL_FAILED" : "SANDBOX_FAILED";
 
+    // Only `refundable` is taken from the diagnosis. Its text is for the Solver and never reaches a Giver.
+    const refundable = failure
+      ? diagnose({
+          runtime: submission.problem.runtime as "PYTHON" | "NODE",
+          mode: null,
+          failureKind: failure.kind as "clone" | "dependency-install" | "infra" | "setup" | "timeout",
+          output: (result as { output?: string }).output ?? failure.reason,
+        })?.refundable === true
+      : false;
+
     const updated = await prisma.submission.update({
       where: { id: submission.id },
       data: {
@@ -51,7 +68,7 @@ export async function runAndRecordSubmission(submissionId: string): Promise<RunO
         status: isSuccess ? "UNDER_REVIEW" : failureStatus,
       },
     });
-    return { ok: true, submission: updated };
+    return { ok: true, submission: updated, refundable };
   } catch (error) {
     console.error("Sandbox execution error:", error);
     await prisma.submission
@@ -64,6 +81,6 @@ export async function runAndRecordSubmission(submissionId: string): Promise<RunO
         },
       })
       .catch(() => {});
-    return { ok: false, status: 500, error: "Sandbox execution failed" };
+    return { ok: false, status: 500, error: "Sandbox execution failed", refundable: true };
   }
 }
