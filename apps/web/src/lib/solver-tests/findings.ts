@@ -19,6 +19,7 @@ export const FINDING_CODES = [
   "NO_TEST_SCRIPT",
   "PACKAGE_JSON_INVALID",
   "UNDECLARED_DEPENDENCIES",
+  "DEPENDENCY_POLICY",
   // warnings: the run may still work
   "REQUIREMENTS_IGNORED",
   "TS_ENTRYPOINT",
@@ -48,6 +49,7 @@ const TITLES: Record<FindingCode, string> = {
   NO_TEST_SCRIPT: "No test script",
   PACKAGE_JSON_INVALID: "package.json can't be read",
   UNDECLARED_DEPENDENCIES: "Dependencies not declared",
+  DEPENDENCY_POLICY: "Dependencies not allowed by this bounty",
   REQUIREMENTS_IGNORED: "requirements.txt is ignored",
   TS_ENTRYPOINT: "TypeScript entry file",
   PLAN: "What will run",

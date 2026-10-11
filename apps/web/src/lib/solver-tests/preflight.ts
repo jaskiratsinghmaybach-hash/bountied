@@ -12,6 +12,8 @@ export type PreflightResult = {
   commitSha?: string;
   /** What will run, or what to fix first. Check plan.ok before charging. */
   plan?: RunPlan;
+  /** bountied.json at that commit (null if absent), for the Giver's dependency-policy check. */
+  bountiedJson?: string | null;
 };
 
 /**
@@ -40,5 +42,5 @@ export async function runPreflight(params: {
     packageJson: snap.packageJson ?? null,
     requirementsTxt: snap.requirementsTxt ?? null,
   });
-  return { ok: true, commitSha: snap.commitSha, plan };
+  return { ok: true, commitSha: snap.commitSha, plan, bountiedJson: snap.bountiedJson ?? null };
 }
