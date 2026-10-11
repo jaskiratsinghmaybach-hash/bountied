@@ -40,7 +40,7 @@ export type Finding = {
   docsUrl: string;
 };
 
-const TITLES: Record<FindingCode, string> = {
+export const FINDING_TITLES: Record<FindingCode, string> = {
   MANIFEST_INVALID: "bountied.json can't be read",
   NO_TESTS: "No tests found",
   NO_ENTRYPOINT: "Nothing to run",
@@ -64,7 +64,7 @@ export function makeFinding(
   message: string,
   fix: string
 ): Finding {
-  return { code, severity, title: TITLES[code], message, fix, docsUrl: sandboxDocsUrl(code) };
+  return { code, severity, title: FINDING_TITLES[code], message, fix, docsUrl: sandboxDocsUrl(code) };
 }
 
 const RANK: Record<FindingSeverity, number> = { error: 0, warning: 1, info: 2 };
