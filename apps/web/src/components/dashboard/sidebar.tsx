@@ -28,6 +28,7 @@ const solverLinks = [
     icon: FileText,
   },
   { href: "/dashboard/solver/earnings", label: "Earnings", icon: Wallet },
+  { href: "/dashboard/solver/funds", label: "Funds", icon: DollarSign },
 ];
 
 const giverLinks = [

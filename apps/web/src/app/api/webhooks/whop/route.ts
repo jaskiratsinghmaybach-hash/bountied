@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
-import { creditUserBalance, fundProblemFromCredits } from "@/lib/payments/credits";
-import { CreditTransactionType } from "@prisma/client";
+import { handleWhopEvent } from "@/lib/payments/whop-events";
 
 /**
  * Whop signs webhooks using the Standard Webhooks spec (standardwebhooks.com),
@@ -76,26 +75,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
-  const event = JSON.parse(rawBody);
-
-  if (event.type === "payment.succeeded") {
-    const { giverId, draftProblemId, requiredAmount } = event.data?.metadata ?? {};
-
-    if (!giverId || !requiredAmount) {
-      return NextResponse.json({ error: "Missing metadata on event" }, { status: 400 });
-    }
-
-    await creditUserBalance({
-      userId: giverId,
-      amount: Number(requiredAmount),
-      type: CreditTransactionType.PURCHASE,
-      whopChargeRef: event.data?.id,
-    });
-
-    if (draftProblemId) {
-      await fundProblemFromCredits({ problemId: draftProblemId, giverId });
-    }
+  let event;
+  try {
+    event = JSON.parse(rawBody);
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  return NextResponse.json({ received: true });
+  // Crediting (idempotent, for Givers and Solvers alike) lives in lib/payments/whop-events.ts.
+  const result = await handleWhopEvent(event);
+  return NextResponse.json(result.body, { status: result.status });
 }

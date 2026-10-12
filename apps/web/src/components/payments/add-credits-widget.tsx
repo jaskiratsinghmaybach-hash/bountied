@@ -10,7 +10,20 @@ const POLL_TIMEOUT_MS = 30000;
 
 type Phase = "idle" | "checkout" | "confirming" | "error";
 
-export function AddCreditsWidget({ currentBalance }: { currentBalance: number }) {
+const COPY = {
+  giver: "Top up to fund bounties instantly. A 10% platform fee applies when you post a bounty, not when you top up.",
+  solver:
+    "Top up to run sandbox tests on your solutions. Credit is only spent on tests. Money you earn from bounties is separate, and you withdraw it from Earnings.",
+};
+
+export function AddCreditsWidget({
+  currentBalance,
+  audience = "giver",
+}: {
+  currentBalance: number;
+  /** Chooses the explanatory text only. Who is topping up is always decided server-side. */
+  audience?: "giver" | "solver";
+}) {
   const router = useRouter();
   const [selected, setSelected] = useState<number>(50);
   const [useCustom, setUseCustom] = useState(false);
@@ -132,10 +145,7 @@ export function AddCreditsWidget({ currentBalance }: { currentBalance: number })
           ${currentBalance.toFixed(2)}
         </span>
       </div>
-      <p className="text-xs text-foreground-muted mb-5">
-        Top up to fund bounties instantly. A 10% platform fee applies when you
-        post a bounty, not when you top up.
-      </p>
+      <p className="text-xs text-foreground-muted mb-5">{COPY[audience]}</p>
 
       {errorMessage && (
         <p className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger mb-4">

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getPaymentProvider } from "@/lib/payments";
+import { parseDepositAmount } from "@/lib/payments/deposit";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -12,12 +13,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const body = await request.json();
-  const { amount, draftProblemId } = body as { amount: number; draftProblemId?: string };
-
-  if (!amount || amount <= 0) {
-    return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
+  const body = (await request.json().catch(() => null)) as { amount?: unknown; draftProblemId?: unknown } | null;
+  const parsed = parseDepositAmount(body?.amount);
+  if (!parsed.ok || parsed.amount === undefined) {
+    return NextResponse.json({ error: parsed.error ?? "Invalid amount" }, { status: 400 });
   }
+  const amount = parsed.amount;
+  const draftProblemId = typeof body?.draftProblemId === "string" && body.draftProblemId ? body.draftProblemId : undefined;
 
   try {
     const provider = getPaymentProvider();
@@ -25,8 +27,10 @@ export async function POST(request: Request) {
       userId: user.id,
       amount,
       currency: "USD",
+      // Top-ups are for any signed-in user (Giver or Solver). The webhook credits
+      // metadata.userId, which the provider also sets from `userId` above.
       metadata: {
-        giverId: user.id,
+        userId: user.id,
         ...(draftProblemId ? { draftProblemId } : {}),
         requiredAmount: String(amount),
       },

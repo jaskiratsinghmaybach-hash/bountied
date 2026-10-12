@@ -23,6 +23,12 @@ export async function fundProblemFromCredits(params: {
   giverId: string;
 }): Promise<FundBountyResult> {
   return prisma.$transaction(async (tx) => {
+    // Funding must happen once per bounty. Two callers can arrive together (a
+    // webhook retry and the page's own funding call, or a double click): both
+    // would read DRAFT and both would charge. Locking the problem row first
+    // makes the second caller wait, then see it is no longer a DRAFT.
+    await tx.$queryRaw`SELECT id FROM "Problem" WHERE id = ${params.problemId} FOR UPDATE`;
+
     const problem = await tx.problem.findUnique({
       where: { id: params.problemId },
       include: { escrow: true },
@@ -44,27 +50,28 @@ export async function fundProblemFromCredits(params: {
 
     const bountyAmount = Number(problem.bountyAmount);
     const required = creditsRequiredToFund(bountyAmount); // bountyAmount + 10%
-    const balance = Number(giver.creditBalance);
 
-    if (balance < required) {
-      return { ok: false, reason: "INSUFFICIENT_FUNDS", required, balance };
+    // The debit is decided by the database, not by the balance read above: a
+    // top-up or a sandbox charge landing at the same moment can no longer be
+    // overwritten by a stale "balance - required" write.
+    const debited = await tx.user.updateMany({
+      where: { id: giver.id, creditBalance: { gte: required } },
+      data: { creditBalance: { decrement: required } },
+    });
+    if (debited.count === 0) {
+      const fresh = await tx.user.findUniqueOrThrow({ where: { id: giver.id }, select: { creditBalance: true } });
+      return { ok: false, reason: "INSUFFICIENT_FUNDS", required, balance: Number(fresh.creditBalance) };
     }
-
-    const newBalance = balance - required;
+    const after = await tx.user.findUniqueOrThrow({ where: { id: giver.id }, select: { creditBalance: true } });
 
     const ledgerEntry = await tx.creditTransaction.create({
       data: {
         userId: giver.id,
         type: CreditTransactionType.BOUNTY_FUNDING,
         amount: -required,
-        balanceAfter: newBalance,
+        balanceAfter: after.creditBalance,
         problemId: problem.id,
       },
-    });
-
-    await tx.user.update({
-      where: { id: giver.id },
-      data: { creditBalance: newBalance },
     });
 
     await tx.escrow.upsert({
@@ -99,10 +106,30 @@ export async function fundProblemFromCredits(params: {
   });
 }
 
+/** Flat shape (not a union) so it narrows under this repo's `strict: false`. */
+export type CreditUserResult = {
+  /** False when this payment (whopChargeRef) had already been credited and nothing changed. */
+  credited: boolean;
+  /** The balance after this call (unchanged when !credited). */
+  balance: number;
+};
+
 /**
  * Credits a user's wallet balance. Called by the Whop webhook after a
  * successful checkout (PURCHASE), and can be reused for REFUND if a funded
  * Problem is later cancelled with no accepted submission.
+ *
+ * Safe to call twice for the same payment. Whop delivers webhooks at least
+ * once and retries on a timeout or an error, so the same `payment.succeeded`
+ * can arrive repeatedly, even at the same moment. When a whopChargeRef is
+ * given, a transaction-scoped advisory lock on that reference serializes the
+ * deliveries and the ledger is checked for it before anything is added, so a
+ * payment is credited exactly once. (Needs no schema change. A unique index on
+ * CreditTransaction.whopChargeRef would be a good second layer once the table
+ * is confirmed to have no duplicates.)
+ *
+ * The balance changes with an atomic increment, never "read, add, write", so
+ * a debit committing at the same moment is never lost.
  */
 export async function creditUserBalance(params: {
   userId: string;
@@ -110,27 +137,42 @@ export async function creditUserBalance(params: {
   type: CreditTransactionType;
   whopChargeRef?: string;
   problemId?: string;
-}): Promise<void> {
-  await prisma.$transaction(async (tx) => {
-    const user = await tx.user.findUnique({ where: { id: params.userId } });
+}): Promise<CreditUserResult> {
+  if (!Number.isFinite(params.amount) || params.amount <= 0) {
+    throw new Error(`Refusing to credit a non-positive amount (${params.amount})`);
+  }
+  const amount = Math.round(params.amount * 100) / 100;
+
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.user.findUnique({ where: { id: params.userId }, select: { id: true, creditBalance: true } });
     if (!user) throw new Error(`User ${params.userId} not found`);
 
-    const newBalance = Number(user.creditBalance) + params.amount;
+    if (params.whopChargeRef) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"whop-charge:" + params.whopChargeRef}))`;
+      const already = await tx.creditTransaction.findFirst({
+        where: { whopChargeRef: params.whopChargeRef },
+        select: { id: true },
+      });
+      if (already) return { credited: false, balance: Number(user.creditBalance) };
+    }
+
+    const updated = await tx.user.update({
+      where: { id: params.userId },
+      data: { creditBalance: { increment: amount } },
+      select: { creditBalance: true },
+    });
 
     await tx.creditTransaction.create({
       data: {
         userId: params.userId,
         type: params.type,
-        amount: params.amount,
-        balanceAfter: newBalance,
+        amount,
+        balanceAfter: updated.creditBalance,
         whopChargeRef: params.whopChargeRef,
         problemId: params.problemId,
       },
     });
 
-    await tx.user.update({
-      where: { id: params.userId },
-      data: { creditBalance: newBalance },
-    });
+    return { credited: true, balance: Number(updated.creditBalance) };
   });
 }
