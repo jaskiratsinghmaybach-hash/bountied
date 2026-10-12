@@ -59,6 +59,8 @@ export default async function ProblemDetailPage({
           sandboxExitCode: true,
           writeup: true,
           attemptNumber: true,
+          testStatus: true,
+          testedCommitSha: true,
         },
         orderBy: { attemptNumber: "asc" },
       })
@@ -182,6 +184,21 @@ export default async function ProblemDetailPage({
                     {s.status.replace("_", " ").toLowerCase()}
                   </span>
                 </div>
+
+                <p className="flex items-center gap-2 text-xs text-foreground-muted mb-3">
+                  <span
+                    className={`inline-block h-2 w-2 rounded-full ${s.testStatus === "PASSED" ? "bg-success" : "bg-foreground-muted"}`}
+                    aria-hidden
+                  />
+                  {s.testStatus === "PASSED" ? (
+                    <>
+                      Passed your sandbox test
+                      {s.testedCommitSha && <span className="font-mono">commit {s.testedCommitSha.slice(0, 7)}</span>}
+                    </>
+                  ) : (
+                    "Untested: submitted without a passing sandbox test"
+                  )}
+                </p>
 
                 {s.status === "MIRRORING" && (
                   <p className="text-xs text-foreground-muted">

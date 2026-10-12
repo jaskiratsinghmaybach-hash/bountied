@@ -99,6 +99,15 @@ export function classifySubmissionFailure(
     };
   }
 
+  // The Solver's program ran past the time limit (see lib/sandbox/giver-reason.ts).
+  // It never produced an exit code, but it is the Solver's to fix.
+  if (rawError.startsWith("The program did not finish")) {
+    return {
+      summary: "This submission's program didn't finish within the time limit and was stopped.",
+      suggestible: true,
+    };
+  }
+
   // Anything else (infra: timeout, connection drop, "no sandbox template
   // configured", etc.) — genuinely a platform-side problem, not the
   // solver's to fix.
@@ -143,6 +152,16 @@ export function buildSuggestedNotification(
       `Hey — the sandbox couldn't install the dependencies listed in your ` +
       `bountied.json for "${problemTitle}". Can you double-check the package ` +
       `names and versions there? Let me know once it's fixed and I'll re-run it.`
+    );
+  }
+
+  // No exit code but still suggestible: the program ran past the time limit.
+  if (submission.sandboxExitCode === null) {
+    return (
+      `Hey — I ran your submission for "${problemTitle}" and the program didn't ` +
+      `finish within the sandbox's time limit. Can you check for an infinite loop ` +
+      `or something waiting for input? Let me know once you've pushed a fix and ` +
+      `I'll re-run it.`
     );
   }
 

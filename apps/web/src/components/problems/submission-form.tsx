@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useCallback, useState } from "react";
 import { FaGithub } from "react-icons/fa";
 import { Terminal, TriangleAlert } from "lucide-react";
 import {
@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import Link from "next/link";
 import { RepoSelector } from "./repo-selector";
+import { SolverTestPanel } from "./solver-test-panel";
 
 // @ts-ignore
 const initialState: CreateSubmissionResult | undefined = undefined;
@@ -28,6 +29,11 @@ export function SubmissionForm({
   const boundAction = createSubmission.bind(null, problemId);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
   const [hasRepo, setHasRepo] = useState(false);
+  const [repoUrl, setRepoUrl] = useState<string | null>(null);
+  const handleSelectionChange = useCallback((has: boolean) => {
+    setHasRepo(has);
+    if (!has) setRepoUrl(null);
+  }, []);
 
   if (state && "ok" in state) {
     return (
@@ -37,9 +43,8 @@ export function SubmissionForm({
           <p className="text-sm font-medium text-foreground">Submission received</p>
         </div>
         <p className="text-xs text-foreground-muted">
-          Your repo is being cloned and run in a sandbox now. This usually
-          takes under 30 seconds — check back on your submissions page to
-          see the captured output once it&apos;s ready.
+          Your repo is being prepared for the giver&apos;s review. This takes
+          a few seconds. Check your submissions page to follow its status.
         </p>
       </div>
     );
@@ -68,15 +73,23 @@ export function SubmissionForm({
         Submit your solution
       </h2>
       <p className="text-xs text-foreground-muted mb-5">
-        Your repo will be cloned and run in an isolated sandbox. The giver
-        sees only the captured terminal output — not your source code.
+        Your repo will be run in an isolated sandbox when the giver reviews
+        it. The giver sees only the captured terminal output and whether it
+        passed — not your source code. You can test it yourself first.
       </p>
 
       {state && "error" in state && (
         <Alert variant="destructive" className="mb-4">
           <TriangleAlert className="h-4 w-4" />
           <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{state.error}</AlertDescription>
+          <AlertDescription className="flex flex-col gap-2">
+            <span>{state.error}</span>
+            {state.docsUrl && (
+              <Link href={state.docsUrl} target="_blank" className="underline w-fit">
+                How to fix this
+              </Link>
+            )}
+          </AlertDescription>
         </Alert>
       )}
 
@@ -88,12 +101,14 @@ export function SubmissionForm({
           >
             GitHub repo URL
           </label>
-          <RepoSelector onSelectionChange={setHasRepo} />
+          <RepoSelector onSelectionChange={handleSelectionChange} onSelect={(repo) => setRepoUrl(repo.htmlUrl)} />
           <p className="text-[11px] text-foreground-muted mt-1">
             Public or private — your repo stays private from the giver until
             they release payment.
           </p>
         </div>
+
+        <SolverTestPanel problemId={problemId} repoUrl={repoUrl} />
 
         <div>
           <label

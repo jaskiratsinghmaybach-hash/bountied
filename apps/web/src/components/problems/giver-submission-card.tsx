@@ -33,6 +33,9 @@ type SubmissionData = {
   platformRepoUrl: string | null;
   githubAccessGrantedAt: Date | null;
   attemptNumber: number;
+  /** Set by the server's submit gate. PASSED means the code you see is the exact commit that passed the Solver's own test. */
+  testStatus: "UNTESTED" | "PASSED";
+  testedCommitSha: string | null;
   solver: { name: string };
 };
 
@@ -68,6 +71,23 @@ export function GiverSubmissionCard({
         <span className={`text-xs font-mono shrink-0 ${status.color}`}>{status.label}</span>
       </div>
 
+      <p className="flex flex-wrap items-center gap-2 text-xs text-foreground-muted mb-4">
+        <span
+          className={`inline-block h-2 w-2 rounded-full ${submission.testStatus === "PASSED" ? "bg-success" : "bg-foreground-muted"}`}
+          aria-hidden
+        />
+        {submission.testStatus === "PASSED" ? (
+          <>
+            <span className="text-foreground">Solver&apos;s own test passed</span>
+            {submission.testedCommitSha && (
+              <span className="font-mono">commit {submission.testedCommitSha.slice(0, 7)}</span>
+            )}
+          </>
+        ) : (
+          <span>Untested: the Solver did not run a passing test on this commit</span>
+        )}
+      </p>
+
       <div className="mb-4">
         <p className="text-xs text-foreground-muted uppercase tracking-wide mb-2">
           Solver notes
@@ -85,22 +105,15 @@ export function GiverSubmissionCard({
         <p className="text-sm text-emerald-500 font-mono mb-4">Sandbox is running…</p>
       )}
 
-      {submission.sandboxError && (
+      {/* Zero-source: only the classified, fixed summary is shown. The runner's raw
+          error is never stored for Givers (see lib/sandbox/giver-reason.ts), and
+          there is deliberately no "show raw error". */}
+      {submission.sandboxError && failure && (
         <div className="rounded-md border border-danger/30 bg-danger/10 p-4 mb-4">
           <p className="text-xs text-foreground-muted uppercase tracking-wide mb-2">
             Sandbox error
           </p>
-          <p className="text-sm text-danger leading-relaxed">
-            {failure?.summary ?? submission.sandboxError}
-          </p>
-          <details className="mt-2">
-            <summary className="text-xs text-foreground-muted cursor-pointer hover:text-foreground transition-colors">
-              Show raw error
-            </summary>
-            <pre className="text-xs font-mono text-danger whitespace-pre-wrap overflow-x-auto mt-2">
-              {submission.sandboxError}
-            </pre>
-          </details>
+          <p className="text-sm text-danger leading-relaxed">{failure.summary}</p>
         </div>
       )}
 

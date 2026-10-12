@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { executeSubmission } from "@/lib/sandbox/execute";
 import { buildReviewEvidence } from "@/lib/sandbox/review-evidence";
 import { diagnose } from "@/lib/solver-tests/diagnose";
+import { giverSafeReason } from "@/lib/sandbox/giver-reason";
 
 /** Flat shape (not a union) so it narrows under this repo's `strict: false`. */
 export type RunOutcome = {
@@ -58,12 +59,18 @@ export async function runAndRecordSubmission(submissionId: string): Promise<RunO
         })?.refundable === true
       : false;
 
+    if (failure) {
+      console.error("Review sandbox run failed:", submission.id, failure.kind, failure.reason);
+    }
+
     const updated = await prisma.submission.update({
       where: { id: submission.id },
       data: {
         sandboxOutput: result.ok ? evidence.output : null,
         sandboxExitCode: evidence.exitCode,
-        sandboxError: failure ? failure.reason : null,
+        // Zero-source: the Giver sees a fixed sentence, never the runner's raw reason
+        // (it can echo the Solver's files). The raw reason is logged below.
+        sandboxError: failure ? giverSafeReason(failure.kind) : null,
         sandboxRanAt: new Date(),
         status: isSuccess ? "UNDER_REVIEW" : failureStatus,
       },
@@ -76,7 +83,8 @@ export async function runAndRecordSubmission(submissionId: string): Promise<RunO
         where: { id: submissionId },
         data: {
           status: "SANDBOX_FAILED",
-          sandboxError: `Sandbox execution failed: ${error instanceof Error ? error.message : String(error)}`,
+          // Fixed text for the same reason as above; the real error is in the server log (console.error above).
+          sandboxError: giverSafeReason("infra"),
           sandboxRanAt: new Date(),
         },
       })
