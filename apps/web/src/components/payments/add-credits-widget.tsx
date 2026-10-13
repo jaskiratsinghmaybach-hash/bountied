@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { WhopCheckoutEmbed } from "@whop/checkout/react";
 import { useRouter } from "next/navigation";
+import { MAX_DEPOSIT_USD, MIN_DEPOSIT_USD, parseDepositAmount } from "@/lib/payments/deposit";
 
 const PILL_AMOUNTS = [50, 100, 250];
 const POLL_INTERVAL_MS = 2000;
@@ -34,7 +35,9 @@ export function AddCreditsWidget({
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const amount = useCustom ? Number(customValue) : selected;
-  const isValid = Number.isFinite(amount) && amount > 0;
+  // The same rule the server applies (lib/payments/deposit.ts), so the button and the checkout agree.
+  const parsedAmount = parseDepositAmount(amount);
+  const isValid = parsedAmount.ok;
 
   useEffect(() => {
     return () => {
@@ -194,7 +197,8 @@ export function AddCreditsWidget({
           </span>
           <input
             type="number"
-            min={1}
+            min={MIN_DEPOSIT_USD}
+            max={MAX_DEPOSIT_USD}
             step="0.01"
             autoFocus
             value={customValue}
@@ -202,6 +206,9 @@ export function AddCreditsWidget({
             placeholder="500.00"
             className="w-full rounded-md border border-border bg-surface-raised pl-6 pr-3 py-2.5 text-sm text-foreground outline-none focus:border-accent transition-colors font-mono"
           />
+          {customValue !== "" && !isValid && parsedAmount.error && (
+            <p className="text-xs text-danger mt-1.5">{parsedAmount.error}</p>
+          )}
         </div>
       )}
 

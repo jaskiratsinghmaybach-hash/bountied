@@ -153,7 +153,7 @@ async function mirrorOnly(submissionId: string) {
         // with its own (better) error message rather than duplicating it
         // here with a less specific one.
       } else {
-        const check = checkDependencyPolicy(policy, manifestFile.content);
+        const check = checkDependencyPolicy(policy, manifestFile.content, submission.problem.runtime as "PYTHON" | "NODE");
         if (!check.ok) {
           await prisma.submission.update({
             where: { id: submissionId },

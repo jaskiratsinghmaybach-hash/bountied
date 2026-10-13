@@ -13,17 +13,26 @@ const db = vi.hoisted(() => ({
     transactions: [] as Array<{ type: string; amount: number; balanceAfter: number }>,
   },
   run: { refundable: false, ok: true } as { refundable?: boolean; ok: boolean },
+  // What status the (mocked) sandbox run leaves the submission in.
+  runStatus: "UNDER_REVIEW",
   failRefund: false,
 }));
 
-vi.mock("@/lib/sandbox/run-submission", () => ({ runAndRecordSubmission: async () => db.run }));
+vi.mock("@/lib/sandbox/run-submission", () => ({
+  runAndRecordSubmission: async () => {
+    db.state.status = db.runStatus;
+    return db.run;
+  },
+}));
 vi.mock("@/lib/db", () => {
   const tx = {
     submission: {
       findUnique: async () => ({ id: "s1", problem: { id: "p1", giverId: "g1" } }),
-      updateMany: async () => {
-        if (db.state.status !== "AWAITING_REVIEW") return { count: 0 };
-        db.state.status = "RUNNING";
+      updateMany: async (a: { where: { status?: string | { in: string[] } }; data: { status: string } }) => {
+        const w = a.where.status;
+        const matches = typeof w === "string" ? db.state.status === w : Array.isArray(w?.in) ? w.in.includes(db.state.status) : true;
+        if (!matches) return { count: 0 };
+        db.state.status = a.data.status;
         return { count: 1 };
       },
     },
@@ -67,31 +76,38 @@ beforeEach(() => {
   db.state.status = "AWAITING_REVIEW";
   db.state.transactions = [];
   db.run = { ok: true, refundable: false };
+  db.runStatus = "UNDER_REVIEW";
   db.failRefund = false;
 });
 
 describe("startAndRunReview: platform failures do not cost the Giver", () => {
-  it("gives the free review back when the run failed on the platform", async () => {
+  it("gives the free review back when the run failed on the platform, and puts the submission back in the queue", async () => {
     db.run = { ok: true, refundable: true };
+    db.runStatus = "SANDBOX_FAILED";
     const r = await startAndRunReview("s1", "g1");
     expect(r.refunded).toBe(true);
     expect(r.charged).toBe(false);
     expect(db.state.freeReviewsUsed).toBe(0);
     expect(db.state.credit).toBe(1);
+    expect(db.state.status).toBe("AWAITING_REVIEW");
   });
 
-  it("keeps the free review used when the Solver's program ran and failed", async () => {
+  it("keeps the free review used, and the failure on record, when the Solver's program ran and failed", async () => {
     db.run = { ok: true, refundable: false };
+    db.runStatus = "SANDBOX_FAILED";
     const r = await startAndRunReview("s1", "g1");
     expect(r.refunded).toBe(false);
     expect(db.state.freeReviewsUsed).toBe(1);
+    expect(db.state.status).toBe("SANDBOX_FAILED");
   });
 
   it("refunds the $0.04 and logs a REFUND when a paid review failed on the platform", async () => {
     db.state.freeReviewsUsed = 3; // all free reviews already used
     db.run = { ok: false, refundable: true };
+    db.runStatus = "DEPENDENCY_INSTALL_FAILED";
     const r = await startAndRunReview("s1", "g1");
     expect(r.refunded).toBe(true);
+    expect(db.state.status).toBe("AWAITING_REVIEW");
     expect(r.charged).toBe(false);
     expect(db.state.credit).toBe(1);
     expect(db.state.transactions.map((t) => t.type)).toEqual(["SUBMISSION_REVIEW", "REFUND"]);
@@ -109,6 +125,7 @@ describe("startAndRunReview: platform failures do not cost the Giver", () => {
 
   it("still returns the recorded result if the refund itself throws", async () => {
     db.run = { ok: true, refundable: true };
+    db.runStatus = "SANDBOX_FAILED";
     db.failRefund = true;
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const r = await startAndRunReview("s1", "g1");
@@ -117,6 +134,7 @@ describe("startAndRunReview: platform failures do not cost the Giver", () => {
     expect(r.refunded).toBe(false);
     expect(r.charged).toBe(false); // the free review is still used; the failed refund was logged for follow-up
     expect(db.state.freeReviewsUsed).toBe(1);
+    expect(db.state.status).toBe("SANDBOX_FAILED"); // no refund, so no reset
   });
 });
 

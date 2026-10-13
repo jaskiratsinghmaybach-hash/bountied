@@ -108,6 +108,17 @@ export function GiverSubmissionCard({
       {/* Zero-source: only the classified, fixed summary is shown. The runner's raw
           error is never stored for Givers (see lib/sandbox/giver-reason.ts), and
           there is deliberately no "show raw error". */}
+      {/* A run that failed on Bountied's side is refunded and the submission returns to the
+          queue (lib/reviews/start-review.ts). Say so, instead of silently showing it as new. */}
+      {submission.status === "AWAITING_REVIEW" && submission.sandboxError && (
+        <div className="rounded-md border border-border bg-surface-raised p-4 mb-4">
+          <p className="text-xs text-foreground-muted leading-relaxed">
+            The last review run couldn&apos;t finish because of a problem on Bountied&apos;s side. You were not charged
+            and it didn&apos;t use a free review. You can run it again.
+          </p>
+        </div>
+      )}
+
       {submission.sandboxError && failure && (
         <div className="rounded-md border border-danger/30 bg-danger/10 p-4 mb-4">
           <p className="text-xs text-foreground-muted uppercase tracking-wide mb-2">

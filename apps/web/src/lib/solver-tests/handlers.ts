@@ -138,7 +138,7 @@ async function prepare(user: HandlerUser, rawBody: unknown, deps: SolverTestDeps
     return { error: fail(422, "REPO_UNREADABLE", preflight.reason ?? "Could not read your repository.") };
   }
 
-  const plan = applyDependencyPolicy(preflight, problem.dependencyPolicy);
+  const plan = applyDependencyPolicy(preflight, problem.dependencyPolicy, problem.runtime);
   return { problem, repoUrl, solverToken: user.githubAccessToken, preflight, plan, body: body as Record<string, unknown> };
 }
 
@@ -148,11 +148,11 @@ async function prepare(user: HandlerUser, rawBody: unknown, deps: SolverTestDeps
  * submission still be rejected afterwards, which is the surprise this feature
  * exists to prevent. Never makes a plan more permissive.
  */
-export function applyDependencyPolicy(preflight: PreflightResult, rawPolicy: unknown): RunPlan {
+export function applyDependencyPolicy(preflight: PreflightResult, rawPolicy: unknown, runtime: "PYTHON" | "NODE" = "PYTHON"): RunPlan {
   const plan = preflight.plan as RunPlan;
   const policy = parseDependencyPolicy(rawPolicy);
   if (!policy) return plan;
-  const check = checkDependencyPolicy(policy, preflight.bountiedJson ?? null);
+  const check = checkDependencyPolicy(policy, preflight.bountiedJson ?? null, runtime);
   if (check.ok) return plan;
   const finding: Finding = makeFinding(
     "DEPENDENCY_POLICY",

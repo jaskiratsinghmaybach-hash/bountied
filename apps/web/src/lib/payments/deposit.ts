@@ -6,12 +6,16 @@
  *  - dollars and cents only: what the button says is exactly what is charged
  *    and exactly what is credited, with no hidden rounding;
  *  - at least $1 (the amount field's own minimum);
- *  - at most MAX_DEPOSIT_USD: the ledger column holds 10 digits before the
- *    decimal point, and a payment that succeeds but can't be credited is the
- *    worst failure this flow can have.
+ *  - at most MAX_DEPOSIT_USD, which is Whop's own ceiling: Whop caps a single
+ *    checkout at $2,500 for accounts that haven't been approved for higher
+ *    amounts (docs.whop.com, "Access Higher Checkout Links"). Asking Whop for
+ *    more would fail at checkout, so the form says so up front. If your Whop
+ *    account is approved for higher checkouts, raise this constant to match.
+ *    It is also far below the ledger column's limit, so a payment that
+ *    succeeds can always be credited.
  */
 export const MIN_DEPOSIT_USD = 1;
-export const MAX_DEPOSIT_USD = 10_000;
+export const MAX_DEPOSIT_USD = 2_500;
 
 /** Flat shape (not a union) so it narrows under this repo's `strict: false`. */
 export type DepositAmountResult = { ok: boolean; amount?: number; error?: string };

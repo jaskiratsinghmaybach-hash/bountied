@@ -89,7 +89,8 @@ export async function claimAndChargeReview(submissionId: string, giverId: string
 /**
  * Gives a Giver back exactly what claimAndChargeReview took: the free review
  * (freeReviewsUsed goes back down) or the $0.04 (credited back and logged as a
- * REFUND). For a run that ended because of the platform or the setup, not the
+ * REFUND), and puts the submission back to AWAITING_REVIEW so it can be run
+ * again. For a run that ended because of the platform or the setup, not the
  * Solver's code failing. Callers invoke this at most once per claim:
  * startAndRunReview does, and the claim itself can only be won once.
  */
@@ -102,30 +103,47 @@ export async function refundReview(params: {
 }): Promise<boolean> {
   const { giverId, problemId, submissionId, charged } = params;
   return prisma.$transaction(async (tx) => {
+    let refunded: boolean;
     if (!charged) {
       // Never below zero: a conditional decrement decided by the database.
       const freed = await tx.problem.updateMany({
         where: { id: problemId, freeReviewsUsed: { gt: 0 } },
         data: { freeReviewsUsed: { decrement: 1 } },
       });
-      return freed.count === 1;
+      refunded = freed.count === 1;
+    } else {
+      await tx.user.update({
+        where: { id: giverId },
+        data: { creditBalance: { increment: REVIEW_COST_USD } },
+      });
+      const giver = await tx.user.findUniqueOrThrow({ where: { id: giverId }, select: { creditBalance: true } });
+      await tx.creditTransaction.create({
+        data: {
+          userId: giverId,
+          type: "REFUND",
+          amount: REVIEW_COST_USD,
+          balanceAfter: giver.creditBalance,
+          problemId,
+          submissionId,
+        },
+      });
+      refunded = true;
     }
-    await tx.user.update({
-      where: { id: giverId },
-      data: { creditBalance: { increment: REVIEW_COST_USD } },
-    });
-    const giver = await tx.user.findUniqueOrThrow({ where: { id: giverId }, select: { creditBalance: true } });
-    await tx.creditTransaction.create({
-      data: {
-        userId: giverId,
-        type: "REFUND",
-        amount: REVIEW_COST_USD,
-        balanceAfter: giver.creditBalance,
-        problemId,
-        submissionId,
-      },
-    });
-    return true;
+
+    // The Solver's code was never judged, so the submission goes back in the
+    // queue and the Giver can simply run the review again. Without this it
+    // would stay SANDBOX_FAILED (a review can only be claimed from
+    // AWAITING_REVIEW), the Giver would hold a refund they can't use, and the
+    // Solver would have to burn one of their 3 attempts resubmitting for a
+    // fault that was never theirs. Done in the same transaction as the refund,
+    // so one can't happen without the other.
+    if (refunded) {
+      await tx.submission.updateMany({
+        where: { id: submissionId, status: { in: ["SANDBOX_FAILED", "DEPENDENCY_INSTALL_FAILED"] } },
+        data: { status: "AWAITING_REVIEW" },
+      });
+    }
+    return refunded;
   });
 }
 

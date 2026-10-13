@@ -116,13 +116,13 @@ export function parseDependencyPolicy(raw: unknown): DependencyPolicy | null {
     const list = obj.allowedPackages.filter(
       (p): p is string => typeof p === "string" && p.trim().length > 0
     );
-    if (list.length > 0) policy.allowedPackages = list.map(normalizePackageName);
+    if (list.length > 0) policy.allowedPackages = list.map(installName);
   }
   if (Array.isArray(obj.bannedPackages)) {
     const list = obj.bannedPackages.filter(
       (p): p is string => typeof p === "string" && p.trim().length > 0
     );
-    if (list.length > 0) policy.bannedPackages = list.map(normalizePackageName);
+    if (list.length > 0) policy.bannedPackages = list.map(installName);
   }
 
   const isEmpty =
@@ -134,17 +134,28 @@ export function parseDependencyPolicy(raw: unknown): DependencyPolicy | null {
 }
 
 /**
- * Package names across ecosystems are case-insensitive-ish in practice
- * (pip's PEP 503 normalization treats "-", "_", "." as equivalent; npm
- * scoped/unscoped names are lowercase by convention) — normalizing the
- * same way for every runtime means a Giver banning "scikit-learn" isn't
- * silently bypassed by "scikit_learn" in a bountied.json dependencies
- * block, regardless of which runtime the problem targets.
+ * Two different questions about a package name, answered differently on purpose.
+ *
+ * installName: what gets INSTALLED. Trimmed and lowercased, nothing else. It
+ * must never be "tidied" further: npm package names are exact, and `socket.io`,
+ * `chart.js` and `lodash.debounce` are real packages that are NOT the same as
+ * `socket-io`, `chart-js` or `lodash-debounce`. (pip normalizes names itself, so
+ * handing it the original spelling is always safe.)
+ *
+ * packageKey: what is COMPARED for a Giver's ban list. pip (PEP 503) treats
+ * "-", "_" and "." as the same, so a ban on "scikit-learn" must also catch
+ * "scikit_learn". Using this one key for every runtime means a ban can only
+ * ever over-match (banning `socket.io` also blocks `socket-io`), never be
+ * dodged by respelling. An ALLOW list is stricter on Node: see
+ * checkDependencyPolicy.
  */
-function normalizePackageName(name: string): string {
-  return name.trim().toLowerCase().replace(/[-_.]+/g, "-");
+function installName(name: string): string {
+  return name.trim().toLowerCase();
 }
 
+export function packageKey(name: string): string {
+  return name.trim().toLowerCase().replace(/[-_.]+/g, "-");
+}
 
 /**
  * Dependency names and versions come from the Solver's bountied.json and end
@@ -154,11 +165,12 @@ function normalizePackageName(name: string): string {
  * install builders in runtimes.ts additionally single-quote every argument.
  */
 const MAX_DEPENDENCIES = 100;
-// Runs on the already-normalized name (lowercased; "-", "_", "." collapsed to "-").
-// Optional npm scope + lowercase alphanumerics/hyphens. Must START with a letter/digit
-// (or "@scope/") so it can never be read as a command-line option like "--registry=...",
-// and has no ":" or "/" beyond the scope so it can't be a URL, git or file spec.
-const SAFE_PACKAGE_NAME = /^(@[a-z0-9][a-z0-9-]*\/)?[a-z0-9][a-z0-9-]*$/;
+// Runs on the install name (trimmed and lowercased). Optional npm scope + lowercase
+// alphanumerics with "-", "_" and "." inside, which real packages use (socket.io,
+// lodash.debounce, scikit_learn). Must START with a letter/digit (or "@scope/") so it
+// can never be read as a command-line option like "--registry=...", and has no ":",
+// "@" or "/" beyond the scope so it can't be a URL, git or file spec.
+const SAFE_PACKAGE_NAME = /^(@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 // Version specifiers: digits/letters plus the range operators pip and npm use.
 // No spaces, quotes, "$", backticks, ";", "|", "&", ":", "/", "@", parentheses, braces.
 const SAFE_VERSION = /^[0-9A-Za-z.*+^~<>=!,_-]{1,64}$/;
@@ -244,7 +256,9 @@ export function parseBountiedManifest(bountiedJsonText: string): {
     return { manifest: null, parseError: "bountied.json is not valid JSON." };
   }
 
-  if (!raw || typeof raw !== "object") {
+  // A top-level array is not an object here. It used to be accepted as "no dependencies",
+  // which silently dropped a list like [{"name": "requests"}] and left the run without its packages.
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return { manifest: null, parseError: "bountied.json must be a JSON object." };
   }
 
@@ -276,7 +290,7 @@ export function parseBountiedManifest(bountiedJsonText: string): {
 
   for (const { name, version } of rawEntries) {
     if (typeof name !== "string" || name.trim().length === 0) continue; // blank entries stay ignored, as before
-    const cleanName = normalizePackageName(name);
+    const cleanName = installName(name);
     if (!isSafePackageName(cleanName)) {
       return {
         manifest: null,
@@ -340,7 +354,9 @@ export function parseBountiedManifest(bountiedJsonText: string): {
  */
 export function checkDependencyPolicy(
   policy: DependencyPolicy | null,
-  bountiedJsonText: string | null
+  bountiedJsonText: string | null,
+  /** The problem's runtime. Decides how strictly an ALLOW list matches: see below. Defaults to Python's rules. */
+  runtime: "PYTHON" | "NODE" = "PYTHON"
 ): PolicyCheckResult {
   const { manifest, parseError } = bountiedJsonText
     ? parseBountiedManifest(bountiedJsonText)
@@ -376,8 +392,9 @@ export function checkDependencyPolicy(
   }
 
   if (policy.bannedPackages && policy.bannedPackages.length > 0) {
-    const banned = new Set(policy.bannedPackages);
-    const hit = names.filter((n) => banned.has(n));
+    // A ban matches any spelling (see packageKey): it may over-match, never be dodged.
+    const banned = new Set(policy.bannedPackages.map(packageKey));
+    const hit = names.filter((n) => banned.has(packageKey(n)));
     if (hit.length > 0) {
       return {
         ok: false,
@@ -388,8 +405,12 @@ export function checkDependencyPolicy(
   }
 
   if (policy.allowedPackages && policy.allowedPackages.length > 0) {
-    const allowed = new Set(policy.allowedPackages);
-    const disallowed = names.filter((n) => !allowed.has(n));
+    // Python: pip treats "-", "_" and "." as the same, so spelling doesn't matter.
+    // Node: names are exact, `socket.io` and `socket-io` are different packages, so
+    // allowing one must not allow the other (a look-alike would slip past the list).
+    const same = runtime === "NODE" ? (n: string) => n : packageKey;
+    const allowed = new Set(policy.allowedPackages.map(same));
+    const disallowed = names.filter((n) => !allowed.has(same(n)));
     if (disallowed.length > 0) {
       return {
         ok: false,
