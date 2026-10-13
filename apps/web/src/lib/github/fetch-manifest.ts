@@ -14,6 +14,8 @@
  * this repo hasn't been mirrored yet at the point this runs.
  */
 
+import { parseGithubRepoUrl } from "./repo-snapshot";
+
 const GITHUB_API_VERSION = "2022-11-28";
 const GITHUB_API = "https://api.github.com";
 
@@ -34,21 +36,13 @@ export async function fetchBountiedManifest(params: {
 }): Promise<FetchManifestResult> {
   const { repoUrl, solverToken, path = "bountied.json" } = params;
 
-  let owner: string;
-  let repo: string;
-  try {
-    const parsed = new URL(repoUrl);
-    if (parsed.hostname !== "github.com") {
-      return { ok: false, reason: "Only GitHub repo URLs are accepted." };
-    }
-    const parts = parsed.pathname.replace(/^\/+/, "").replace(/\.git$/, "").split("/");
-    if (parts.length < 2) {
-      return { ok: false, reason: "Invalid repository URL." };
-    }
-    [owner, repo] = parts;
-  } catch {
-    return { ok: false, reason: "Invalid repository URL." };
+  // Strict, like every other place a Solver-supplied URL becomes a request: https,
+  // github.com, exactly owner/repo made of letters, digits, dot, dash, underscore.
+  const target = parseGithubRepoUrl(repoUrl);
+  if (!target) {
+    return { ok: false, reason: "Only plain https://github.com/owner/repo URLs are accepted." };
   }
+  const { owner, repo } = target;
 
   const res = await fetch(
     `${GITHUB_API}/repos/${owner}/${repo}/contents/${path}`,

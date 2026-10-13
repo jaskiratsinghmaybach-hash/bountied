@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { mirrorSubmissionRepo } from "@/lib/github/mirror";
 import { fetchBountiedManifest } from "@/lib/github/fetch-manifest";
 import { checkDependencyPolicy, parseDependencyPolicy } from "@/lib/sandbox/bountied-manifest";
+import { parseGithubRepoUrl } from "@/lib/github/repo-snapshot";
 import { evaluateSubmitGate, shouldKeepPassed } from "@/lib/solver-tests/submit-gate";
 import { submitGateDeps } from "@/lib/solver-tests/submit-gate-deps";
 
@@ -25,12 +26,21 @@ export async function createSubmission(
   _prevState: CreateSubmissionResult | undefined,
   formData: FormData
 ): Promise<CreateSubmissionResult> {
-  const repoUrl = String(formData.get("repoUrl") ?? "").trim();
+  const repoUrlRaw = String(formData.get("repoUrl") ?? "").trim();
   const writeup = String(formData.get("writeup") ?? "").trim();
 
-  if (!repoUrl) {
+  if (!repoUrlRaw) {
     return { error: "Select a GitHub repository before submitting." };
   }
+
+  // The form field is client-controlled and this URL later ends up in a shell
+  // command and in GitHub API paths. Accept only https://github.com/<owner>/<repo>
+  // and store it rebuilt from those two parts, so nothing else can ever be saved.
+  const parsedRepo = parseGithubRepoUrl(repoUrlRaw);
+  if (!parsedRepo) {
+    return { error: "Select a GitHub repository (a plain https://github.com/owner/repo address) before submitting." };
+  }
+  const repoUrl = `https://github.com/${parsedRepo.owner}/${parsedRepo.repo}`;
 
   if (writeup.length < 30) {
     return { error: "Writeup must be at least 30 characters long." };

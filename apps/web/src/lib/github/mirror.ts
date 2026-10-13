@@ -3,6 +3,8 @@ import type { Runtime } from "@prisma/client";
 import { getRuntimeConfig, isRuntimeReady } from "@/lib/sandbox/runtimes";
 import { runCommandTolerant } from "@/lib/sandbox/execute";
 import type { SandboxLike } from "@/lib/sandbox/execute";
+import { redactSecrets } from "@/lib/sandbox/clone";
+import { parseGithubRepoUrl } from "./repo-snapshot";
 import {
   createPlatformRepo,
   deletePlatformRepo,
@@ -25,6 +27,19 @@ import {
  */
 const MIRROR_TIMEOUT_MS = 120_000;
 
+/** What the mirror needs from the outside world. Real ones by default; tests pass fakes. */
+export type MirrorDeps = {
+  createRepo?: typeof createPlatformRepo;
+  deleteRepo?: typeof deletePlatformRepo;
+  createSandbox?: (templateId: string, options: { timeoutMs: number }) => Promise<SandboxLike>;
+};
+
+const defaultCreateSandbox: NonNullable<MirrorDeps["createSandbox"]> = async (templateId, options) =>
+  (await Sandbox.create(templateId, options)) as unknown as SandboxLike;
+
+/** `x-access-token:<token>` as the Basic credential git sends in an HTTP header. */
+const basicAuth = (token: string) => Buffer.from(`x-access-token:${token}`).toString("base64");
+
 export type MirrorResult =
   | {
       ok: true;
@@ -46,23 +61,40 @@ export type MirrorResult =
  *   - PLATFORM_GITHUB_TOKEN — the platform account's PAT (used inside
  *     platform-repo.ts and for the push below). WRITE side only.
  *
- * Neither token ever reaches a browser. Both are embedded in remote URLs
- * inside the sandbox only, and the sandbox is destroyed in `finally`.
+ * Neither token ever reaches a browser. Each is handed to ONE git command as
+ * an HTTP auth header through an environment variable (the same way
+ * lib/sandbox/clone.ts does it), never placed in a URL: so neither appears in
+ * a command line, in the bare repo's .git/config, or in git's error text. The
+ * solver token exists only for the clone command and the platform token only
+ * for the push command. The sandbox is destroyed in `finally`.
+ *
+ * The solver's repo URL is attacker-controlled text that ends up inside a
+ * shell command, so it is NEVER used as given: it must be exactly
+ * https://github.com/<owner>/<repo> (owner and repo made only of letters,
+ * digits, dot, dash, underscore) and the clone URL is rebuilt from those two
+ * parts. A URL like https://github.com/a/b$(...) used to pass a host-only check
+ * and run inside the sandbox that later receives the platform token.
  *
  * The new repo is created PRIVATE. It becomes public only when the giver
  * accepts and escrow releases — see lib/escrow/release.ts. Creating it
  * public here would hand the giver the solution before paying, which is the
  * exact failure mode the reveal gate exists to prevent.
  */
-export async function mirrorSubmissionRepo(params: {
-  submissionId: string;
-  sourceRepoUrl: string;
-  solverToken: string;
-  runtime: Runtime;
-  problemTitle?: string;
-  attemptNumber: number;
-}): Promise<MirrorResult> {
+export async function mirrorSubmissionRepo(
+  params: {
+    submissionId: string;
+    sourceRepoUrl: string;
+    solverToken: string;
+    runtime: Runtime;
+    problemTitle?: string;
+    attemptNumber: number;
+  },
+  deps: MirrorDeps = {}
+): Promise<MirrorResult> {
   const { submissionId, sourceRepoUrl, solverToken, runtime, problemTitle, attemptNumber } = params;
+  const createRepo = deps.createRepo ?? createPlatformRepo;
+  const deleteRepo = deps.deleteRepo ?? deletePlatformRepo;
+  const createSandbox = deps.createSandbox ?? defaultCreateSandbox;
 
   const platformToken = process.env.PLATFORM_GITHUB_TOKEN;
   if (!platformToken) {
@@ -81,22 +113,16 @@ export async function mirrorSubmissionRepo(params: {
     return { ok: false, reason: `Runtime ${runtime} has no sandbox template configured yet.` };
   }
 
-  // Validate and build the authenticated SOURCE url before creating anything
-  // on GitHub — cheaper to fail here than to clean up an orphaned repo.
-  let authenticatedSourceUrl: string;
-  try {
-    const parsed = new URL(sourceRepoUrl);
-    if (parsed.hostname !== "github.com") {
-      return { ok: false, reason: "Only GitHub repo URLs are accepted." };
-    }
-    parsed.username = "x-access-token";
-    parsed.password = solverToken;
-    authenticatedSourceUrl = parsed.toString();
-  } catch {
-    return { ok: false, reason: "Invalid repository URL." };
+  // Validate the SOURCE url before creating anything on GitHub: cheaper to fail
+  // here than to clean up an orphaned repo, and the value is rebuilt from its
+  // validated parts so nothing but a plain owner/repo can reach a shell.
+  const source = parseGithubRepoUrl(sourceRepoUrl);
+  if (!source) {
+    return { ok: false, reason: "Only plain https://github.com/owner/repo URLs are accepted." };
   }
+  const sourceUrl = `https://github.com/${source.owner}/${source.repo}`;
 
-  const created = await createPlatformRepo(
+  const created = await createRepo(
     repoNameForSubmission(submissionId, attemptNumber),
     problemTitle
       ? `Submission for "${problemTitle}" — mirrored by Bountied.`
@@ -105,37 +131,44 @@ export async function mirrorSubmissionRepo(params: {
   if (!created.ok) return created;
   const repo = created.repo;
 
-  // Authenticated DESTINATION url, using the PLATFORM token.
-  const authenticatedDestUrl = (() => {
-    const parsed = new URL(repo.cloneUrl);
-    parsed.username = "x-access-token";
-    parsed.password = platformToken;
-    return parsed.toString();
-  })();
+  // DESTINATION url: the address GitHub gave back for the repo we just created,
+  // re-validated the same strict way before it goes anywhere near a shell.
+  const dest = parseGithubRepoUrl(repo.cloneUrl);
+  if (!dest) {
+    await deleteRepo(repo.fullName);
+    return { ok: false, reason: "The platform repository has an unexpected address." };
+  }
+  const destUrl = `https://github.com/${dest.owner}/${dest.repo}.git`;
 
-  let sandbox: Sandbox | null = null;
+  const redact = (text: string) => redactSecrets(redactSecrets(text, solverToken), platformToken);
+
+  let sandbox: SandboxLike | null = null;
   try {
-    sandbox = await Sandbox.create(templateId, { timeoutMs: MIRROR_TIMEOUT_MS });
+    sandbox = await createSandbox(templateId, { timeoutMs: MIRROR_TIMEOUT_MS });
 
     const bareDir = "/tmp/mirror.git";
 
     // E2B's commands.run THROWS on a non-zero exit, so every step goes through
     // runCommandTolerant: a failed clone or push is then reported with git's own
     // (scrubbed) stderr instead of falling into the generic catch below.
-    const box = sandbox as unknown as SandboxLike;
+    const box = sandbox;
 
     // 1. Bare clone of the solver's repo — full history, no working tree.
+    //    Only the SOLVER token is in this command's environment.
     const clone = await runCommandTolerant(
       box,
-      `git clone --bare "${authenticatedSourceUrl}" "${bareDir}"`,
-      { timeoutMs: MIRROR_TIMEOUT_MS }
+      `git -c "http.extraHeader=Authorization: Basic $BOUNTIED_SRC_AUTH" clone --bare "${sourceUrl}" "${bareDir}"`,
+      {
+        timeoutMs: MIRROR_TIMEOUT_MS,
+        envs: { GIT_TERMINAL_PROMPT: "0", BOUNTIED_SRC_AUTH: basicAuth(solverToken) },
+      }
     );
     if (clone.timedOut || clone.exitCode !== 0) {
-      await deletePlatformRepo(repo.fullName);
+      await deleteRepo(repo.fullName);
       return {
         ok: false,
         reason: `Could not read your repository. Make sure your connected GitHub account still has access to it. (${
-          clone.timedOut ? "the clone took too long" : scrub(clone.stderr, [solverToken, platformToken]).slice(0, 300)
+          clone.timedOut ? "the clone took too long" : redact(clone.stderr).slice(0, 300)
         })`,
       };
     }
@@ -144,17 +177,23 @@ export async function mirrorSubmissionRepo(params: {
     //    `push --all` + `push --tags` rather than `push --mirror`: --mirror
     //    would also try to push refs/pull/* from the source clone, which
     //    GitHub refuses, failing the whole push.
+    //    Only the PLATFORM token is in this command's environment.
+    const pushAuth = `git -c "http.extraHeader=Authorization: Basic $BOUNTIED_DEST_AUTH"`;
     const push = await runCommandTolerant(
       box,
-      `git push --all "${authenticatedDestUrl}" && git push --tags "${authenticatedDestUrl}"`,
-      { cwd: bareDir, timeoutMs: MIRROR_TIMEOUT_MS }
+      `${pushAuth} push --all "${destUrl}" && ${pushAuth} push --tags "${destUrl}"`,
+      {
+        cwd: bareDir,
+        timeoutMs: MIRROR_TIMEOUT_MS,
+        envs: { GIT_TERMINAL_PROMPT: "0", BOUNTIED_DEST_AUTH: basicAuth(platformToken) },
+      }
     );
     if (push.timedOut || push.exitCode !== 0) {
-      await deletePlatformRepo(repo.fullName);
+      await deleteRepo(repo.fullName);
       return {
         ok: false,
         reason: `Could not import your repository into the platform account. (${
-          push.timedOut ? "the import took too long" : scrub(push.stderr, [solverToken, platformToken]).slice(0, 300)
+          push.timedOut ? "the import took too long" : redact(push.stderr).slice(0, 300)
         })`,
       };
     }
@@ -174,11 +213,11 @@ export async function mirrorSubmissionRepo(params: {
 
     return { ok: true, repo, mirroredCommitSha };
   } catch (err) {
-    await deletePlatformRepo(repo.fullName);
+    await deleteRepo(repo.fullName);
     const message = err instanceof Error ? err.message : String(err);
     return {
       ok: false,
-      reason: `Repository import failed: ${scrub(message, [solverToken, platformToken]).slice(0, 500)}`,
+      reason: `Repository import failed: ${redact(message).slice(0, 500)}`,
     };
   } finally {
     if (sandbox) {
@@ -187,20 +226,4 @@ export async function mirrorSubmissionRepo(params: {
       });
     }
   }
-}
-
-/**
- * git writes the remote URL into its error messages, and our remote URLs
- * carry access tokens. Those messages are stored on Submission.sandboxError
- * and rendered to the giver, so any token substring must be removed before
- * the text leaves this module.
- */
-function scrub(text: string, secrets: string[]): string {
-  let out = text;
-  for (const secret of secrets) {
-    if (secret && secret.length > 0) {
-      out = out.split(secret).join("***");
-    }
-  }
-  return out;
 }
