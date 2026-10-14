@@ -36,6 +36,7 @@ export type PanelQuote = {
   earningsUsd: number;
   canAfford: boolean;
   shortfallUsd: number;
+  cached?: boolean;
 };
 
 export type PanelRun = {
@@ -77,6 +78,7 @@ export function describePlan(plan: PanelPlan): string {
 
 export function runButtonLabel(quote: PanelQuote | undefined): string {
   if (!quote) return "Run test";
+  if (quote.cached) return "Reuse passing result (free)";
   return quote.free ? "Run test (free)" : `Run test (${usd(quote.costUsd)})`;
 }
 
@@ -132,7 +134,7 @@ function RunResult({ run, onReset }: { run: PanelRun; onReset: () => void }) {
 
       {passed && (
         <p className="text-xs text-foreground-muted leading-relaxed">
-          This exact commit passed. Submit while your repo is still at this commit and your submission is marked Passed. If you push again first, it shows as Untested.
+          This exact commit passed. You can submit this snapshot even if newer commits exist, as long as this commit is still available on GitHub.
         </p>
       )}
 

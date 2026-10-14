@@ -32,7 +32,7 @@ const REPO_PATH = /^\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 // workDir is platform-chosen, but it also lands inside a shell string - keep it plain.
 const WORK_DIR = /^\/[A-Za-z0-9._/-]+$/;
 
-export function planClone(repoUrl: string, workDir: string, githubToken: string): ClonePlan {
+export function planClone(repoUrl: string, workDir: string, githubToken: string, commitSha?: string): ClonePlan {
   if (!WORK_DIR.test(workDir)) return { ok: false, reason: "Invalid working directory." };
 
   let cloneUrl: string;
@@ -50,9 +50,14 @@ export function planClone(repoUrl: string, workDir: string, githubToken: string)
     return { ok: false, reason: "Invalid repo URL." };
   }
 
+  if (commitSha !== undefined && !/^[0-9a-f]{40}$/.test(commitSha)) return { ok: false, reason: "Invalid commit SHA." };
   const envs: Record<string, string> = { GIT_TERMINAL_PROMPT: "0" };
   let command: string;
-  if (githubToken) {
+  if (commitSha !== undefined) {
+    // Fetch the exact immutable commit, not whatever HEAD happens to be today.
+    command = `git init "${workDir}" && git -C "${workDir}" -c "http.extraHeader=Authorization: Basic $BOUNTIED_GIT_AUTH" fetch --depth=1 "${cloneUrl}.git" "${commitSha}" && git -C "${workDir}" checkout --detach FETCH_HEAD`;
+    envs.BOUNTIED_GIT_AUTH = Buffer.from(`x-access-token:${githubToken}`).toString("base64");
+  } else if (githubToken) {
     envs.BOUNTIED_GIT_AUTH = Buffer.from(`x-access-token:${githubToken}`).toString("base64");
     command = `git -c "http.extraHeader=Authorization: Basic $BOUNTIED_GIT_AUTH" clone --depth 1 "${cloneUrl}" "${workDir}"`;
   } else {

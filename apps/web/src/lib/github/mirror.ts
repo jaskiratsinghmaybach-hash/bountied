@@ -13,7 +13,7 @@ import {
 } from "./platform-repo";
 
 /**
- * A mirror moves a whole git history between two remotes, which needs a real
+ * A submission snapshot is fetched and exported inside an E2B sandbox, which needs a real
  * `git` binary. Next.js server routes run in a serverless-ish environment
  * with no guarantee of one, so the git work happens inside an E2B sandbox —
  * the same infrastructure lib/sandbox/execute.ts already uses. We reuse the
@@ -51,9 +51,9 @@ export type MirrorResult =
   | { ok: false; reason: string };
 
 /**
- * Imports a solver's submitted repository (public or private) into the
- * platform's GitHub account as a standalone PRIVATE repository, and returns
- * the platform's own URL for it.
+ * Exports the Solver-selected commit tree (public or private source repo) into
+ * a standalone PRIVATE platform repository. The destination gets a fresh root
+ * commit containing only that snapshot, never the source history/branches/tags.
  *
  * Two different credentials are in play and they are not interchangeable:
  *   - solverToken  — the solver's OAuth token. READ side only: it is what
@@ -84,6 +84,8 @@ export async function mirrorSubmissionRepo(
   params: {
     submissionId: string;
     sourceRepoUrl: string;
+    /** Exact commit selected by the Solver. When set, mirror a history-free snapshot of this commit only. */
+    selectedCommitSha?: string | null;
     solverToken: string;
     runtime: Runtime;
     problemTitle?: string;
@@ -91,7 +93,8 @@ export async function mirrorSubmissionRepo(
   },
   deps: MirrorDeps = {}
 ): Promise<MirrorResult> {
-  const { submissionId, sourceRepoUrl, solverToken, runtime, problemTitle, attemptNumber } = params;
+  const { submissionId, sourceRepoUrl, selectedCommitSha, solverToken, runtime, problemTitle, attemptNumber } = params;
+  if (selectedCommitSha && !/^[0-9a-f]{40}$/.test(selectedCommitSha)) return { ok: false, reason: "The selected source commit is invalid." };
   const createRepo = deps.createRepo ?? createPlatformRepo;
   const deleteRepo = deps.deleteRepo ?? deletePlatformRepo;
   const createSandbox = deps.createSandbox ?? defaultCreateSandbox;
@@ -145,72 +148,57 @@ export async function mirrorSubmissionRepo(
   let sandbox: SandboxLike | null = null;
   try {
     sandbox = await createSandbox(templateId, { timeoutMs: MIRROR_TIMEOUT_MS });
-
-    const bareDir = "/tmp/mirror.git";
-
-    // E2B's commands.run THROWS on a non-zero exit, so every step goes through
-    // runCommandTolerant: a failed clone or push is then reported with git's own
-    // (scrubbed) stderr instead of falling into the generic catch below.
     const box = sandbox;
 
-    // 1. Bare clone of the solver's repo — full history, no working tree.
-    //    Only the SOLVER token is in this command's environment.
-    const clone = await runCommandTolerant(
+    const workDir = "/tmp/bountied-snapshot";
+    const sourceRef = selectedCommitSha ?? "HEAD";
+    // Fetch only the selected object at shallow depth. We never push source refs,
+    // branches, tags, or history to the platform repository.
+    const fetch = await runCommandTolerant(
       box,
-      `git -c "http.extraHeader=Authorization: Basic $BOUNTIED_SRC_AUTH" clone --bare "${sourceUrl}" "${bareDir}"`,
-      {
-        timeoutMs: MIRROR_TIMEOUT_MS,
-        envs: { GIT_TERMINAL_PROMPT: "0", BOUNTIED_SRC_AUTH: basicAuth(solverToken) },
-      }
+      `mkdir -p "${workDir}" && git -C "${workDir}" init && git -C "${workDir}" -c "http.extraHeader=Authorization: Basic $BOUNTIED_SRC_AUTH" fetch --depth=1 "${sourceUrl}.git" "${sourceRef}" && git -C "${workDir}" checkout --detach FETCH_HEAD`,
+      { timeoutMs: MIRROR_TIMEOUT_MS, envs: { GIT_TERMINAL_PROMPT: "0", BOUNTIED_SRC_AUTH: basicAuth(solverToken) } }
     );
-    if (clone.timedOut || clone.exitCode !== 0) {
+    if (fetch.timedOut || fetch.exitCode !== 0) {
       await deleteRepo(repo.fullName);
-      return {
-        ok: false,
-        reason: `Could not read your repository. Make sure your connected GitHub account still has access to it. (${
-          clone.timedOut ? "the clone took too long" : redact(clone.stderr).slice(0, 300)
-        })`,
-      };
+      return { ok: false, reason: `Could not fetch the selected commit. It may have been removed, become unreachable, or your GitHub access may have changed. (${fetch.timedOut ? "fetch timed out" : redact(fetch.stderr).slice(0, 250)})` };
     }
 
-    // 2. Push branches and tags to the platform repo.
-    //    `push --all` + `push --tags` rather than `push --mirror`: --mirror
-    //    would also try to push refs/pull/* from the source clone, which
-    //    GitHub refuses, failing the whole push.
-    //    Only the PLATFORM token is in this command's environment.
+    const sourceHead = await runCommandTolerant(box, `git -C "${workDir}" rev-parse HEAD`, { timeoutMs: 10_000 });
+    const sourceResolvedSha = sourceHead.stdout.trim().toLowerCase();
+    if (sourceHead.timedOut || sourceHead.exitCode !== 0 || !/^[0-9a-f]{40}$/.test(sourceResolvedSha) || (selectedCommitSha && sourceResolvedSha !== selectedCommitSha)) {
+      await deleteRepo(repo.fullName);
+      return { ok: false, reason: "Could not verify the exact selected commit for the private snapshot." };
+    }
+
+    // Export the exact tree, discard the source .git metadata, and create a new
+    // single-root commit. This preserves the selected commit's files while making
+    // the private Giver mirror incapable of exposing surrounding source history.
+    const archive = await runCommandTolerant(box, `git -C "${workDir}" archive --format=tar -o /tmp/bountied-snapshot.tar FETCH_HEAD && mkdir -p /tmp/bountied-export && tar -xf /tmp/bountied-snapshot.tar -C /tmp/bountied-export`, { timeoutMs: MIRROR_TIMEOUT_MS });
+    if (archive.timedOut || archive.exitCode !== 0) {
+      await deleteRepo(repo.fullName);
+      return { ok: false, reason: `Could not export the selected commit snapshot. (${archive.timedOut ? "export timed out" : redact(archive.stderr).slice(0, 250)})` };
+    }
+    const initSnapshot = await runCommandTolerant(box,
+      `cd /tmp/bountied-export && git init -b main && git config user.name "Bountied Snapshot" && git config user.email "snapshot@bountied.invalid" && git add -A && git commit -m "Bountied submission snapshot"`,
+      { timeoutMs: MIRROR_TIMEOUT_MS });
+    if (initSnapshot.timedOut || initSnapshot.exitCode !== 0) {
+      await deleteRepo(repo.fullName);
+      return { ok: false, reason: `Could not prepare the isolated submission snapshot. (${initSnapshot.timedOut ? "snapshot timed out" : redact(initSnapshot.stderr).slice(0, 250)})` };
+    }
+
     const pushAuth = `git -c "http.extraHeader=Authorization: Basic $BOUNTIED_DEST_AUTH"`;
-    const push = await runCommandTolerant(
-      box,
-      `${pushAuth} push --all "${destUrl}" && ${pushAuth} push --tags "${destUrl}"`,
-      {
-        cwd: bareDir,
-        timeoutMs: MIRROR_TIMEOUT_MS,
-        envs: { GIT_TERMINAL_PROMPT: "0", BOUNTIED_DEST_AUTH: basicAuth(platformToken) },
-      }
-    );
+    const push = await runCommandTolerant(box,
+      `${pushAuth} -C /tmp/bountied-export remote add origin "${destUrl}" && ${pushAuth} -C /tmp/bountied-export push -u origin main`,
+      { timeoutMs: MIRROR_TIMEOUT_MS, envs: { GIT_TERMINAL_PROMPT: "0", BOUNTIED_DEST_AUTH: basicAuth(platformToken) } });
     if (push.timedOut || push.exitCode !== 0) {
       await deleteRepo(repo.fullName);
-      return {
-        ok: false,
-        reason: `Could not import your repository into the platform account. (${
-          push.timedOut ? "the import took too long" : redact(push.stderr).slice(0, 300)
-        })`,
-      };
+      return { ok: false, reason: `Could not import the isolated snapshot into the platform account. (${push.timedOut ? "push timed out" : redact(push.stderr).slice(0, 250)})` };
     }
 
-    // 3. Which commit did we just copy? HEAD of the bare clone is the default
-    //    branch's tip, the same "HEAD" the Solver's test was pinned to. The
-    //    caller uses it to re-verify a PASSED test. Failing to read it must
-    //    never fail the mirror; it only means the test can't be re-verified.
-    let mirroredCommitSha: string | null = null;
-    try {
-      const head = await runCommandTolerant(box, `git rev-parse HEAD`, { cwd: bareDir, timeoutMs: 10_000 });
-      const sha = head.stdout.trim().toLowerCase();
-      if (!head.timedOut && head.exitCode === 0 && /^[0-9a-f]{40}$/.test(sha)) mirroredCommitSha = sha;
-    } catch {
-      mirroredCommitSha = null;
-    }
-
+    // Store the source SHA as the mirrored identity. The destination commit is
+    // intentionally a new root commit with no source history.
+    const mirroredCommitSha = selectedCommitSha ?? sourceResolvedSha;
     return { ok: true, repo, mirroredCommitSha };
   } catch (err) {
     await deleteRepo(repo.fullName);

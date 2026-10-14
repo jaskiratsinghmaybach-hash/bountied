@@ -8,6 +8,7 @@ import { mirrorSubmissionRepo } from "@/lib/github/mirror";
 import { fetchBountiedManifest } from "@/lib/github/fetch-manifest";
 import { checkDependencyPolicy, parseDependencyPolicy } from "@/lib/sandbox/bountied-manifest";
 import { parseGithubRepoUrl } from "@/lib/github/repo-snapshot";
+import { fetchCommitAvailability, fetchHeadCommitSha } from "@/lib/github/head-commit";
 import { evaluateSubmitGate, shouldKeepPassed } from "@/lib/solver-tests/submit-gate";
 import { submitGateDeps } from "@/lib/solver-tests/submit-gate-deps";
 import { decryptGithubTokenOrNull } from "@/lib/security/github-token";
@@ -29,6 +30,9 @@ export async function createSubmission(
 ): Promise<CreateSubmissionResult> {
   const repoUrlRaw = String(formData.get("repoUrl") ?? "").trim();
   const writeup = String(formData.get("writeup") ?? "").trim();
+  const selectedCommitRaw = String(formData.get("selectedCommitSha") ?? "").trim();
+  const selectedCommitSha = selectedCommitRaw || null;
+  if (selectedCommitSha && !/^[0-9a-f]{40}$/.test(selectedCommitSha)) return { error: "Select a valid commit from the repository history." };
 
   if (!repoUrlRaw) {
     return { error: "Select a GitHub repository before submitting." };
@@ -85,13 +89,27 @@ export async function createSubmission(
     };
   }
 
+  const solverToken = decryptGithubTokenOrNull(user.githubAccessToken);
+  if (!solverToken) return { error: "Reconnect GitHub before submitting." };
+  let submissionCommitSha = selectedCommitSha;
+  if (submissionCommitSha) {
+    const available = await fetchCommitAvailability({ repoUrl, token: solverToken, commitSha: submissionCommitSha });
+    if (!available.ok) return { error: available.reason ?? "The selected commit is no longer available. Refresh history and select another commit." };
+  } else {
+    // Pin even an untested submission to a single immutable snapshot now, not
+    // whichever HEAD happens to exist when asynchronous mirroring starts.
+    const head = await fetchHeadCommitSha({ repoUrl, token: solverToken });
+    if (!head.ok || !head.commitSha) return { error: head.reason ?? "Could not determine the repository's current commit. Try again." };
+    submissionCommitSha = head.commitSha;
+  }
+
   // Solver-side test gate (see lib/solver-tests/submit-gate.ts). A commit whose
   // sandbox test FAILED or ERRORED can't be submitted; an untested repo can,
   // and is marked UNTESTED; PASSED is set only if the repo's HEAD right now is
   // the commit a passing test ran on. The test fields below come ONLY from this
   // server-side decision, never from the form.
   const gate = await evaluateSubmitGate(
-    { solverId: user.id, problemId, repoUrl, solverToken: user.githubAccessToken ?? null },
+    { solverId: user.id, problemId, repoUrl, solverToken: user.githubAccessToken ?? null, selectedCommitSha: submissionCommitSha },
     submitGateDeps
   );
   if (!gate.allow) {
@@ -103,6 +121,7 @@ export async function createSubmission(
       problemId,
       solverId: user.id,
       repoUrl,
+      sourceCommitSha: submissionCommitSha ?? gate.testedCommitSha ?? null,
       writeup,
       status: "SUBMITTED",
       attemptNumber: priorAttempts + 1,
@@ -193,6 +212,7 @@ async function mirrorOnly(submissionId: string) {
     const mirrorResult = await mirrorSubmissionRepo({
       submissionId,
       sourceRepoUrl: submission.repoUrl,
+      selectedCommitSha: submission.sourceCommitSha,
       solverToken,
       runtime: submission.problem.runtime,
       problemTitle: submission.problem.title,

@@ -24,6 +24,10 @@ export const solverTestDeps: SolverTestDeps = {
   },
   runPreflight: (params) => runPreflight(params),
   getQuote: (params) => getSolverTestQuote(params),
+  hasCachedPassedRun: async (params) => !!(await prisma.solverTestRun.findFirst({
+    where: { solverId: params.solverId, problemId: params.problemId, repoUrl: params.repoUrl, commitSha: params.commitSha, executionFingerprint: params.executionFingerprint, status: "PASSED" },
+    select: { id: true },
+  })),
   begin: (params) => beginSolverTest(params),
   execute: (params) => executeSolverTest(params),
   schedule: (task) => {

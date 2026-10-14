@@ -35,9 +35,11 @@ const message = (body: Record<string, unknown>, fallback: string) => (typeof bod
  *
  * Every button is type="button": this panel sits inside the submission <form>.
  */
-export function SolverTestPanel({ problemId, repoUrl }: { problemId: string; repoUrl: string | null }) {
+export function SolverTestPanel({ problemId, repoUrl, selectedCommitSha, onCommitResolved }: { problemId: string; repoUrl: string | null; selectedCommitSha: string | null; onCommitResolved: (sha: string) => void }) {
   const [state, setState] = useState<PanelState>({ phase: "idle" });
   const runId = state.run?.runId;
+  const selectedRef = useRef(selectedCommitSha);
+  useEffect(() => { if (selectedRef.current !== selectedCommitSha) { selectedRef.current = selectedCommitSha; setState((current) => ("commitSha" in current && current.commitSha === selectedCommitSha ? current : { phase: "idle" })); } }, [selectedCommitSha]);
 
   // A different repo means a different test: drop whatever we knew about the last one.
   const lastRepo = useRef(repoUrl);
@@ -99,9 +101,10 @@ export function SolverTestPanel({ problemId, repoUrl }: { problemId: string; rep
   async function onCheck() {
     if (!repoUrl) return;
     setState({ phase: "checking" });
-    const r = await postJson("/api/solver-tests/preflight", { problemId, repoUrl });
+    const r = await postJson("/api/solver-tests/preflight", { problemId, repoUrl, ...(selectedCommitSha ? { commitSha: selectedCommitSha } : {}) });
 
     if (r.status === 200) {
+      onCommitResolved(r.body.commitSha as string);
       setState({
         phase: "checked",
         commitSha: r.body.commitSha as string,
@@ -124,7 +127,7 @@ export function SolverTestPanel({ problemId, repoUrl }: { problemId: string; rep
     const before = state;
     setState({ ...before, phase: "starting", error: undefined });
 
-    const r = await postJson("/api/solver-tests/run", { problemId, repoUrl, expectedCommitSha: before.commitSha });
+    const r = await postJson("/api/solver-tests/run", { problemId, repoUrl, commitSha: before.commitSha, expectedCommitSha: before.commitSha });
 
     if (r.status === 202) {
       setState({

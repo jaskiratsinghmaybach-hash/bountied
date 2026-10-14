@@ -147,7 +147,7 @@ export async function executeSubmission(
   }
 
   // Checked before a sandbox is booted: a bad URL should cost nothing.
-  const plan = planClone(repoUrl, WORK_DIR, githubToken);
+  const plan = planClone(repoUrl, WORK_DIR, githubToken, expectedCommitSha);
   if (!plan.ok || !plan.command) {
     return { ok: false, kind: "clone", reason: plan.reason ?? "Invalid repo URL." };
   }

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { parseGithubRepoUrl } from "@/lib/github/repo-snapshot";
 import { checkDependencyPolicy, parseDependencyPolicy } from "@/lib/sandbox/bountied-manifest";
 import { makeFinding, sandboxDocsUrl, sortFindings } from "./findings";
@@ -56,9 +57,10 @@ export type RunRecord = {
 
 export type SolverTestDeps = {
   findProblem(problemId: string): Promise<ProblemForTest | null>;
-  runPreflight(params: { repoUrl: string; solverToken: string; runtime: "PYTHON" | "NODE" }): Promise<PreflightResult>;
+  runPreflight(params: { repoUrl: string; solverToken: string; runtime: "PYTHON" | "NODE"; commitSha?: string }): Promise<PreflightResult>;
   getQuote(params: { solverId: string; problemId: string }): Promise<SolverTestQuote>;
-  begin(params: { solverId: string; problemId: string; repoUrl: string; commitSha: string }): Promise<BeginSolverTestResult>;
+  hasCachedPassedRun?(params: { solverId: string; problemId: string; repoUrl: string; commitSha: string; executionFingerprint: string }): Promise<boolean>;
+  begin(params: { solverId: string; problemId: string; repoUrl: string; commitSha: string; executionFingerprint: string }): Promise<BeginSolverTestResult>;
   /** Runs a begun test and records how it ended. Must not throw for a normal failure. */
   execute(params: {
     runId: string;
@@ -119,6 +121,8 @@ async function prepare(user: HandlerUser, rawBody: unknown, deps: SolverTestDeps
     return { error: fail(400, "BAD_REPO_URL", "Enter a GitHub repository URL like https://github.com/you/your-repo.") };
   }
   const repoUrl = `https://github.com/${target.owner}/${target.repo}`;
+  const requestedCommit = body && typeof body.commitSha === "string" ? body.commitSha : undefined;
+  if (requestedCommit !== undefined && !SHA.test(requestedCommit)) return { error: fail(400, "INVALID_COMMIT", "Select a valid commit from the history.") };
 
   const problem = await deps.findProblem(problemId);
   if (!problem) return { error: fail(404, "NOT_FOUND", "Problem not found.") };
@@ -133,9 +137,13 @@ async function prepare(user: HandlerUser, rawBody: unknown, deps: SolverTestDeps
     repoUrl,
     solverToken: user.githubAccessToken,
     runtime: problem.runtime,
+    ...(requestedCommit ? { commitSha: requestedCommit } : {}),
   });
   if (!preflight.ok || !preflight.plan || !preflight.commitSha) {
     return { error: fail(422, "REPO_UNREADABLE", preflight.reason ?? "Could not read your repository.") };
+  }
+  if (requestedCommit && preflight.commitSha !== requestedCommit) {
+    return { error: fail(409, "COMMIT_UNAVAILABLE", "GitHub could not confirm the selected commit. Refresh history and choose an available commit.") };
   }
 
   const plan = applyDependencyPolicy(preflight, problem.dependencyPolicy, problem.runtime);
@@ -184,10 +192,17 @@ function planForClient(plan: RunPlan) {
 export async function handlePreflight(user: HandlerUser, rawBody: unknown, deps: SolverTestDeps): Promise<HandlerResult> {
   const p = await prepare(user, rawBody, deps);
   if (p.error) return p.error;
-  const quote = await deps.getQuote({ solverId: (user as { id: string }).id, problemId: (p.problem as ProblemForTest).id });
+  const solverId = (user as { id: string }).id;
+  const problem = p.problem as ProblemForTest;
+  const commitSha = (p.preflight as PreflightResult).commitSha as string;
+  const plan = p.plan as RunPlan;
+  const executionFingerprint = createHash("sha256").update(JSON.stringify({ runtime: problem.runtime, mode: plan.mode, manifest: plan.effectiveManifest, entrypoint: plan.entrypoint, dependencyPolicy: problem.dependencyPolicy ?? null })).digest("hex");
+  const cached = !!plan.ok && !!plan.effectiveManifest && !!deps.hasCachedPassedRun && await deps.hasCachedPassedRun({ solverId, problemId: problem.id, repoUrl: p.repoUrl as string, commitSha, executionFingerprint });
+  const quote = await deps.getQuote({ solverId, problemId: problem.id });
+  const effectiveQuote = cached ? { ...quote, costUsd: 0, free: true, canAfford: true, shortfallUsd: 0, cached: true } : quote;
   return {
     status: 200,
-    body: { commitSha: (p.preflight as PreflightResult).commitSha, plan: planForClient(p.plan as RunPlan), quote },
+    body: { commitSha, plan: planForClient(plan), quote: effectiveQuote, cached },
   };
 }
 
@@ -214,13 +229,13 @@ export async function handleRun(user: HandlerUser, rawBody: unknown, deps: Solve
 
   // The Solver saw a preflight for one commit. If they pushed since, stop instead of charging for a different one.
   const expected = (p.body as Record<string, unknown>).expectedCommitSha;
+  const selected = (p.body as Record<string, unknown>).commitSha;
   if (expected !== undefined && (typeof expected !== "string" || !SHA.test(expected) || expected !== commitSha)) {
-    return fail(409, "COMMIT_CHANGED", "Your repository changed since the check. Check again to test the latest commit.", {
-      commitSha,
-    });
+    return fail(409, "COMMIT_CHANGED", selected ? "The selected commit is no longer available or changed. Refresh the commit history and select an available commit." : "Your repository changed since the check. Check again to test the latest commit.", { commitSha });
   }
 
-  const begun = await deps.begin({ solverId, problemId: problem.id, repoUrl, commitSha });
+  const executionFingerprint = createHash("sha256").update(JSON.stringify({ runtime: problem.runtime, mode: plan.mode, manifest: plan.effectiveManifest, entrypoint: plan.entrypoint, dependencyPolicy: problem.dependencyPolicy ?? null })).digest("hex");
+  const begun = await deps.begin({ solverId, problemId: problem.id, repoUrl, commitSha, executionFingerprint });
   if (!begun.ok || !begun.runId) {
     const code = (begun.code ?? "INVALID_COMMIT") as SolverTestErrorCode;
     return fail(BEGIN_STATUS[code] ?? 500, code, begun.message ?? "Could not start the test.", {
@@ -230,7 +245,7 @@ export async function handleRun(user: HandlerUser, rawBody: unknown, deps: Solve
   }
 
   const runId = begun.runId;
-  deps.schedule(async () => {
+  if (!begun.reused) deps.schedule(async () => {
     try {
       await deps.execute({ runId, runtime: problem.runtime, repoUrl, solverToken, commitSha, plan });
     } catch (error) {
@@ -245,6 +260,7 @@ export async function handleRun(user: HandlerUser, rawBody: unknown, deps: Solve
       runId,
       commitSha,
       free: !!begun.isFree,
+      reused: !!begun.reused,
       chargedUsd: Math.round(((begun.chargedFromCredit ?? 0) + (begun.chargedFromEarnings ?? 0)) * 100) / 100,
     },
   };

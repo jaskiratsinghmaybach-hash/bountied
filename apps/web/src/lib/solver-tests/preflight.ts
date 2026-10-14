@@ -27,11 +27,13 @@ export async function runPreflight(params: {
   solverToken: string;
   runtime: PlanRuntime;
   fetchImpl?: FetchLike;
+  commitSha?: string;
 }): Promise<PreflightResult> {
   const snap = await fetchRepoSnapshot({
     repoUrl: params.repoUrl,
     token: params.solverToken,
     fetchImpl: params.fetchImpl,
+    commitSha: params.commitSha,
   });
   if (!snap.ok) return { ok: false, reason: snap.reason };
 

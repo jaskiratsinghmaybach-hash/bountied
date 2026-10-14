@@ -56,6 +56,7 @@ class SolverTestError extends Error {
 /** Flat shape (not a union) so it narrows under this repo's `strict: false`. */
 export type BeginSolverTestResult = {
   ok: boolean;
+  reused?: boolean;
   code?: SolverTestErrorCode;
   message?: string;
   runId?: string;
@@ -82,8 +83,10 @@ export async function beginSolverTest(params: {
   repoUrl: string;
   /** Exact 40-hex commit the caller resolved from GitHub. */
   commitSha: string;
+  executionFingerprint?: string;
 }): Promise<BeginSolverTestResult> {
   const { solverId, problemId, repoUrl, commitSha } = params;
+  const executionFingerprint = params.executionFingerprint ?? "__no_cache__";
   if (!COMMIT_SHA.test(commitSha)) {
     return { ok: false, code: "INVALID_COMMIT", message: "Could not determine the commit to test." };
   }
@@ -106,6 +109,14 @@ export async function beginSolverTest(params: {
       if (problem.giverId === solverId) {
         throw new SolverTestError("OWN_PROBLEM", "You can't test a solution on your own problem.");
       }
+      // Reuse a successful run only for the same solver, bounty, normalized repo,
+      // immutable commit, and execution fingerprint. This happens before charging.
+      const cached = await tx.solverTestRun.findFirst({
+        where: { solverId, problemId, repoUrl, commitSha, executionFingerprint, status: "PASSED" },
+        orderBy: { finishedAt: "desc" },
+        select: { id: true, isFree: true },
+      });
+      if (cached) return { ok: true, runId: cached.id, isFree: cached.isFree, reused: true, chargedFromCredit: 0, chargedFromEarnings: 0 };
 
       const attempts = await tx.submission.count({ where: { problemId, solverId } });
       if (attempts >= MAX_SUBMISSION_ATTEMPTS) {
@@ -190,6 +201,7 @@ export async function beginSolverTest(params: {
           problemId,
           repoUrl,
           commitSha,
+          executionFingerprint,
           status: "RUNNING",
           isFree,
           chargedFromCredit: centsToAmount(fromCredit),

@@ -103,7 +103,7 @@ describe("mirrorSubmissionRepo: the repo URL is attacker-controlled text that re
     const h = harness([HEAD]);
     await mirrorSubmissionRepo(params("https://github.com/Own-er/re.po_1.git"), h.deps);
     const clone = h.seen[0].command;
-    expect(clone).toContain('clone --bare "https://github.com/Own-er/re.po_1" "/tmp/mirror.git"');
+    expect(clone).toContain('fetch --depth=1 "https://github.com/Own-er/re.po_1.git"');
     for (const { command } of h.seen) expect(command).not.toMatch(/\$\(|`|;\s*id|&&\s*id/);
   });
 
@@ -114,7 +114,7 @@ describe("mirrorSubmissionRepo: the repo URL is attacker-controlled text that re
     const h = harness([HEAD]);
     const r = await mirrorSubmissionRepo(params(url), h.deps);
     expect(r.ok).toBe(true);
-    expect(h.seen[0].command).toContain('"https://github.com/solver/project"');
+    expect(h.seen[0].command).toContain('"https://github.com/solver/project.git"');
     for (const { command } of h.seen) {
       expect(command).not.toContain("$(");
       expect(command).not.toContain("pwned");
@@ -147,7 +147,7 @@ describe("mirrorSubmissionRepo: where each token lives", () => {
   it("gives the clone ONLY the solver token, and the push ONLY the platform token", async () => {
     const h = harness([HEAD]);
     await mirrorSubmissionRepo(params(), h.deps);
-    const clone = h.seen.find((s) => s.command.includes("clone"))!;
+    const clone = h.seen.find((s) => s.command.includes("fetch"))!;
     const push = h.seen.find((s) => s.command.includes("push"))!;
     const b64 = (t: string) => Buffer.from(`x-access-token:${t}`).toString("base64");
 
@@ -160,7 +160,7 @@ describe("mirrorSubmissionRepo: where each token lives", () => {
   it("gives no other command (such as reading the commit) any token at all", async () => {
     const h = harness([HEAD]);
     await mirrorSubmissionRepo(params(), h.deps);
-    const rest = h.seen.filter((s) => !s.command.includes("clone") && !s.command.includes("push"));
+    const rest = h.seen.filter((s) => !s.command.includes("fetch") && !s.command.includes("push"));
     expect(rest.length).toBeGreaterThan(0);
     for (const s of rest) expect(Object.keys(s.envs).some((k) => k.startsWith("BOUNTIED_"))).toBe(false);
   });
@@ -168,7 +168,7 @@ describe("mirrorSubmissionRepo: where each token lives", () => {
   it("sends the credential as an HTTP header, never prompting", async () => {
     const h = harness([HEAD]);
     await mirrorSubmissionRepo(params(), h.deps);
-    const clone = h.seen.find((s) => s.command.includes("clone"))!;
+    const clone = h.seen.find((s) => s.command.includes("fetch"))!;
     expect(clone.command).toContain('-c "http.extraHeader=Authorization: Basic $BOUNTIED_SRC_AUTH"');
     expect(clone.envs.GIT_TERMINAL_PROMPT).toBe("0");
   });
@@ -184,39 +184,40 @@ describe("mirrorSubmissionRepo: where each token lives", () => {
 });
 
 describe("mirrorSubmissionRepo: the happy path", () => {
-  it("copies branches and tags (not --mirror) and reports the mirrored commit", async () => {
+  it("pushes only a history-free snapshot and reports the source commit", async () => {
     const h = harness([HEAD]);
     const r = await mirrorSubmissionRepo(params(), h.deps);
     expect(r).toEqual({ ok: true, repo: REPO, mirroredCommitSha: SHA });
     const push = h.seen.find((s) => s.command.includes("push"))!;
-    expect(push.command).toContain('push --all "https://github.com/bountied-dev/sub-1.git"');
-    expect(push.command).toContain('push --tags "https://github.com/bountied-dev/sub-1.git"');
+    expect(push.command).toContain('push -u origin main');
+    expect(push.command).not.toContain("push --all");
+    expect(push.command).not.toContain("push --tags");
     expect(push.command).not.toContain("--mirror");
     expect(h.deleted).toHaveLength(0);
     expect(h.killed()).toBe(1);
   });
 
-  it("reads the commit AFTER the push, from the bare clone", async () => {
+  it("resolves the source commit and pushes a history-free snapshot", async () => {
     const h = harness([HEAD]);
     await mirrorSubmissionRepo(params(), h.deps);
-    const order = h.seen.map((s) => (s.command.includes("clone") ? "clone" : s.command.includes("push") ? "push" : "head"));
-    expect(order).toEqual(["clone", "push", "head"]);
+    const order = h.seen.map((s) => (s.command.includes("fetch") ? "fetch" : s.command.includes("push") ? "push" : s.command.includes("rev-parse") ? "head" : "snapshot"));
+    expect(order).toEqual(["fetch", "head", "snapshot", "snapshot", "push"]);
   });
 
-  it("still succeeds when the mirrored commit can't be read, reporting null", async () => {
+  it("fails closed when the selected source commit cannot be verified", async () => {
     for (const reply of [{ stdout: "garbage" }, { stdout: SHA, exitCode: 1 }, exitError(128, "fatal"), commandTimeout(), new Error("socket hang up")] as Reply[]) {
       const h = harness([[/rev-parse HEAD/, reply]]);
       const r = await mirrorSubmissionRepo(params(), h.deps);
-      expect(r.ok).toBe(true);
-      expect(r.ok && r.mirroredCommitSha).toBeNull();
-      expect(h.deleted).toHaveLength(0);
+      expect(r.ok).toBe(false);
+      expect(h.deleted).toEqual([REPO.fullName]);
     }
   });
 
-  it("lowercases the commit it reports", async () => {
-    const h = harness([[/rev-parse HEAD/, { stdout: "ABCDEF1234567890ABCDEF1234567890ABCDEF12\n" }]]);
-    const r = await mirrorSubmissionRepo(params(), h.deps);
-    expect(r.ok && r.mirroredCommitSha).toBe("abcdef1234567890abcdef1234567890abcdef12");
+  it("preserves the exact selected source commit as the mirror identity", async () => {
+    const h = harness();
+    const r = await mirrorSubmissionRepo({ ...params(), selectedCommitSha: SHA }, h.deps);
+    expect(r.ok && r.mirroredCommitSha).toBe(SHA);
+    expect(h.seen[0].command).toContain(SHA);
   });
 });
 
@@ -224,7 +225,7 @@ describe("mirrorSubmissionRepo: failures clean up and never leak a token", () =>
   const b64 = (t: string) => Buffer.from(`x-access-token:${t}`).toString("base64");
 
   it("a failed clone deletes the platform repo, kills the sandbox and never pushes", async () => {
-    const h = harness([[/clone/, exitError(128, "fatal: Authentication failed")]]);
+    const h = harness([[/fetch/, exitError(128, "fatal: Authentication failed")]]);
     const r = await mirrorSubmissionRepo(params(), h.deps);
     expect(r.ok).toBe(false);
     expect(r.ok === false && r.reason).toContain("Authentication failed");
@@ -235,7 +236,7 @@ describe("mirrorSubmissionRepo: failures clean up and never leak a token", () =>
 
   it("scrubs both tokens, in raw and base64 form, from a clone error", async () => {
     const stderr = `fatal: ${SOLVER_TOKEN} ${PLATFORM_TOKEN} ${b64(SOLVER_TOKEN)} ${b64(PLATFORM_TOKEN)}`;
-    const h = harness([[/clone/, exitError(128, stderr)]]);
+    const h = harness([[/fetch/, exitError(128, stderr)]]);
     const r = await mirrorSubmissionRepo(params(), h.deps);
     const reason = r.ok === false ? r.reason : "";
     for (const secret of [SOLVER_TOKEN, PLATFORM_TOKEN, b64(SOLVER_TOKEN), b64(PLATFORM_TOKEN)]) expect(reason).not.toContain(secret);
@@ -252,20 +253,20 @@ describe("mirrorSubmissionRepo: failures clean up and never leak a token", () =>
   });
 
   it("truncates a long error to 300 characters", async () => {
-    const h = harness([[/clone/, exitError(128, "x".repeat(2000))]]);
+    const h = harness([[/fetch/, exitError(128, "x".repeat(2000))]]);
     const r = await mirrorSubmissionRepo(params(), h.deps);
     expect(r.ok === false && r.reason.length).toBeLessThan(500);
   });
 
   it("reports a slow clone and a slow push as such, and cleans up", async () => {
-    const slowClone = harness([[/clone/, commandTimeout()]]);
+    const slowClone = harness([[/fetch/, commandTimeout()]]);
     const a = await mirrorSubmissionRepo(params(), slowClone.deps);
-    expect(a.ok === false && a.reason).toContain("clone took too long");
+    expect(a.ok === false && a.reason).toContain("fetch timed out");
     expect(slowClone.deleted).toEqual([REPO.fullName]);
 
     const slowPush = harness([[/push/, commandTimeout()]]);
     const b = await mirrorSubmissionRepo(params(), slowPush.deps);
-    expect(b.ok === false && b.reason).toContain("import took too long");
+    expect(b.ok === false && b.reason).toContain("push timed out");
     expect(slowPush.deleted).toEqual([REPO.fullName]);
   });
 

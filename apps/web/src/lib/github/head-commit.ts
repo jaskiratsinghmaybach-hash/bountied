@@ -60,3 +60,28 @@ export async function fetchHeadCommitSha(params: {
     return { ok: false, reason: "Could not reach GitHub. Try again in a moment." };
   }
 }
+
+/** Verify a user-selected historical commit is still reachable through the authenticated GitHub API. */
+export async function fetchCommitAvailability(params: {
+  repoUrl: string;
+  token: string;
+  commitSha: string;
+  fetchImpl?: FetchLike;
+}): Promise<HeadCommitResult> {
+  if (!/^[0-9a-f]{40}$/.test(params.commitSha)) return { ok: false, reason: "The selected commit ID is invalid." };
+  const target = parseGithubRepoUrl(params.repoUrl);
+  if (!target) return { ok: false, reason: "That isn't a valid GitHub repository URL." };
+  const doFetch: FetchLike = params.fetchImpl ?? ((url, init) => fetch(url, init));
+  try {
+    const res = await doFetch(`${GITHUB_API}/repos/${target.owner}/${target.repo}/commits/${params.commitSha}`, {
+      headers: { Authorization: `Bearer ${params.token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": GITHUB_API_VERSION },
+      cache: "no-store", signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    if (res.status === 404) return { ok: false, reason: "This commit is no longer available on GitHub. Refresh the commit history and select an available commit." };
+    if (res.status === 401 || res.status === 403) return { ok: false, reason: "GitHub denied access to this commit. Reconnect GitHub or check repository permissions." };
+    if (!res.ok) return { ok: false, reason: `GitHub could not verify this commit (${res.status}). Try again.` };
+    const body = await res.json() as { sha?: unknown };
+    if (body.sha !== params.commitSha) return { ok: false, reason: "GitHub returned a different commit than the one selected." };
+    return { ok: true, commitSha: params.commitSha };
+  } catch { return { ok: false, reason: "Could not reach GitHub to verify the selected commit." }; }
+}

@@ -162,6 +162,8 @@ model Submission {
   isRevealed            Boolean             @default(false)
   evaluationResult      Json?
   repoUrl               String
+  /** Exact solver-selected source commit; never inferred from the moving default branch. */
+  sourceCommitSha       String?
   writeup               String
   sandboxOutput         String?
   sandboxExitCode       Int?
@@ -456,6 +458,8 @@ model SolverTestRun {
   repoUrl             String
   /// Exact 40-hex commit this run tested.
   commitSha           String
+  /** Hash of execution-affecting runtime/manifest/policy inputs for safe cache reuse. */
+  executionFingerprint String?
   status              SolverTestStatus @default(RUNNING)
   isFree              Boolean          @default(false)
   /// How this run was paid: deposited credit first, then earned availableBalance.
@@ -477,4 +481,5 @@ model SolverTestRun {
 
   @@index([solverId, problemId, createdAt])
   @@index([problemId, commitSha])
+  @@index([solverId, problemId, repoUrl, commitSha, status])
 }

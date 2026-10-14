@@ -53,15 +53,16 @@ const newestFirst = (x: GateRun, y: GateRun) => y.createdAt.getTime() - x.create
  * @param headSha  the repo's current HEAD, or null if it could not be read.
  *                 Only needed when the Solver has tested this repo.
  */
-export function decideSubmitGate(params: { runs: GateRun[]; repoUrl: string; headSha: string | null }): GateDecision {
-  const { runs, repoUrl, headSha } = params;
+export function decideSubmitGate(params: { runs: GateRun[]; repoUrl: string; headSha: string | null; selectedCommitSha?: string | null }): GateDecision {
+  const { runs, repoUrl, headSha, selectedCommitSha } = params;
+  const targetSha = selectedCommitSha ?? headSha;
   const mine = runs.filter((r) => sameRepo(r.repoUrl, repoUrl));
 
   // Never tested this repo: allowed, marked UNTESTED. No GitHub call needed.
   if (mine.length === 0) return untested();
 
   // Tested before, but we can't tell which commit is submitted. Don't guess in either direction.
-  if (!headSha) {
+  if (!targetSha) {
     return {
       allow: false,
       code: "HEAD_UNVERIFIABLE",
@@ -70,8 +71,8 @@ export function decideSubmitGate(params: { runs: GateRun[]; repoUrl: string; hea
     };
   }
 
-  const atHead = mine.filter((r) => r.commitSha === headSha).sort(newestFirst);
-  if (atHead.length === 0) return untested(); // pushed since the last test: a new, untested commit
+  const atHead = mine.filter((r) => r.commitSha === targetSha).sort(newestFirst);
+  if (atHead.length === 0) return untested(); // this exact commit has not been tested
 
   const passed = atHead.find((r) => r.status === "PASSED");
   if (passed) return { allow: true, testStatus: "PASSED", testedCommitSha: passed.commitSha, testRunId: passed.id };
@@ -115,18 +116,18 @@ export type SubmitGateDeps = {
 
 /** Looks up the facts, then decides. HEAD is fetched only when the Solver actually tested this repo. */
 export async function evaluateSubmitGate(
-  params: { solverId: string; problemId: string; repoUrl: string; solverToken: string | null },
+  params: { solverId: string; problemId: string; repoUrl: string; solverToken: string | null; selectedCommitSha?: string | null },
   deps: SubmitGateDeps
 ): Promise<GateDecision> {
   const runs = await deps.findRuns({ solverId: params.solverId, problemId: params.problemId });
   if (!runs.some((r) => sameRepo(r.repoUrl, params.repoUrl))) return untested();
 
-  let headSha: string | null = null;
-  if (params.solverToken) {
+  let headSha: string | null = params.selectedCommitSha ?? null;
+  if (!params.selectedCommitSha && params.solverToken) {
     const head = await deps.fetchHead({ repoUrl: params.repoUrl, token: params.solverToken });
     if (head.ok && head.commitSha) headSha = head.commitSha;
   }
-  return decideSubmitGate({ runs, repoUrl: params.repoUrl, headSha });
+  return decideSubmitGate({ runs, repoUrl: params.repoUrl, headSha, selectedCommitSha: params.selectedCommitSha });
 }
 
 /**

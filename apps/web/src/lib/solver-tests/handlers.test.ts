@@ -212,19 +212,19 @@ describe("handleRun", () => {
     expect(deps.begin).not.toHaveBeenCalled();
   });
 
-  it("begins with the SERVER-resolved commit, not one from the body", async () => {
+  it("rejects a selected commit if GitHub does not resolve that exact SHA", async () => {
     const { deps } = makeDeps();
-    await handleRun(USER, { ...GOOD_BODY, commitSha: "c".repeat(40) }, deps);
-    expect(deps.begin).toHaveBeenCalledWith({
-      solverId: "solver1", problemId: "prob1", repoUrl: GOOD_BODY.repoUrl, commitSha: SHA,
-    });
+    const r = await handleRun(USER, { ...GOOD_BODY, commitSha: "c".repeat(40) }, deps);
+    expect(r.status).toBe(409);
+    expect(r.body.code).toBe("COMMIT_UNAVAILABLE");
+    expect(deps.begin).not.toHaveBeenCalled();
   });
 
   it("answers 202 with the run id, and runs the sandbox only after the response", async () => {
     const { deps, scheduled } = makeDeps();
     const r = await handleRun(USER, GOOD_BODY, deps);
     expect(r.status).toBe(202);
-    expect(r.body).toEqual({ runId: "run1", commitSha: SHA, free: true, chargedUsd: 0 });
+    expect(r.body).toEqual({ runId: "run1", commitSha: SHA, free: true, reused: false, chargedUsd: 0 });
     expect(deps.execute).not.toHaveBeenCalled();
     expect(scheduled).toHaveLength(1);
 

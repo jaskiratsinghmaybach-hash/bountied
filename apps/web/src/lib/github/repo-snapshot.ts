@@ -55,6 +55,8 @@ export async function fetchRepoSnapshot(params: {
   token: string;
   /** Injected in tests. */
   fetchImpl?: FetchLike;
+  /** Optional immutable commit requested by the Solver. */
+  commitSha?: string;
 }): Promise<RepoSnapshotResult> {
   const { repoUrl, token } = params;
   const doFetch: FetchLike = params.fetchImpl ?? ((url, init) => fetch(url, init));
@@ -85,7 +87,11 @@ export async function fetchRepoSnapshot(params: {
 
   try {
     // 1. The commit at the tip of the default branch, and its tree.
-    const commitRes = await get(`/repos/${owner}/${repo}/commits/HEAD`);
+    const requestedSha = params.commitSha;
+    if (requestedSha !== undefined && !/^[0-9a-f]{40}$/.test(requestedSha)) {
+      return { ok: false, reason: "The selected commit ID is invalid." };
+    }
+    const commitRes = await get(`/repos/${owner}/${repo}/commits/${requestedSha ?? "HEAD"}`);
     if (!commitRes.ok) {
       return { ok: false, reason: accessProblem(commitRes.status) ?? `GitHub returned an error (${commitRes.status}). Try again.` };
     }
