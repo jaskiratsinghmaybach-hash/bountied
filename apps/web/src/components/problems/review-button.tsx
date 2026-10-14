@@ -56,8 +56,8 @@ export function ReviewButton({
       if (!res.ok) throw new Error("Sandbox execution failed");
 
       router.refresh();
-    } catch (err: any) {
-      if (err.message === "INSUFFICIENT_FUNDS") {
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message === "INSUFFICIENT_FUNDS") {
         setInsufficientFunds(true);
       } else {
         setError("An error occurred while executing the sandbox.");

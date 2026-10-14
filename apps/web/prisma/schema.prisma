@@ -61,6 +61,7 @@ model CreditTransaction {
   user          User                  @relation(fields: [userId], references: [id])
 
   @@index([userId])
+  @@unique([whopChargeRef])
 }
 
 model PayoutRequest {

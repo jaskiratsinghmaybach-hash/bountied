@@ -19,7 +19,7 @@ export function FieldDeadline({
   function handlePreset(p: DeadlinePreset) {
     onPresetChange(p);
     if (p !== "custom") {
-      let d = new Date();
+      const d = new Date();
       if (p === "1w") d.setDate(d.getDate() + 7);
       if (p === "2w") d.setDate(d.getDate() + 14);
       if (p === "1m") d.setMonth(d.getMonth() + 1);

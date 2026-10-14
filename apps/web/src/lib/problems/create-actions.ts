@@ -153,7 +153,7 @@ export async function createProblem(
       giverId: user.id,
       deadline: parsed.deadline,
       status: "DRAFT",
-    } as any,
+    } as unknown as Parameters<typeof prisma.problem.create>[0]["data"],
   });
 
   if (intent === "draft") {
@@ -232,7 +232,7 @@ export async function updateProblem(
       runtime: parsed.runtime,
       language: parsed.language,
       deadline: parsed.deadline,
-    } as any,
+    } as unknown as Parameters<typeof prisma.problem.update>[0]["data"],
   });
 
   if (intent === "draft") {
@@ -435,7 +435,7 @@ export async function autoSaveProblem(
           addons,
           referenceRepoUrls,
           screenshotUrls,
-        } as any,
+        } as unknown as Parameters<typeof prisma.problem.update>[0]["data"],
       });
       return { draftProblemId };
     } else {
@@ -455,7 +455,7 @@ export async function autoSaveProblem(
           addons,
           referenceRepoUrls,
           screenshotUrls,
-        } as any,
+        } as unknown as Parameters<typeof prisma.problem.create>[0]["data"],
       });
       return { draftProblemId: problem.id };
     }

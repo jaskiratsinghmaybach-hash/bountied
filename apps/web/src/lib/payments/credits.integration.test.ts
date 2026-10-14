@@ -37,8 +37,11 @@ describe.skipIf(!url)("wallet credits (real Postgres)", () => {
   const ledger = (userId: string) => prisma.creditTransaction.findMany({ where: { userId }, orderBy: { createdAt: "asc" } });
   const purchase = (userId: string, amount: number, ref: string) =>
     credits.creditUserBalance({ userId, amount, type: "PURCHASE", whopChargeRef: ref });
-  const payment = (id: string | undefined, metadata: Record<string, unknown>) =>
-    events.handleWhopEvent({ type: "payment.succeeded", data: { id, metadata } });
+  const payment = (id: string | undefined, metadata: Record<string, unknown>, actual?: { amount?: number; currency?: string }) =>
+    events.handleWhopEvent({
+      type: "payment.succeeded",
+      data: { id, metadata, total: { amount: actual?.amount ?? Number(metadata.requiredAmount), currency: actual?.currency ?? "USD" } },
+    });
 
   describe("creditUserBalance", () => {
     it("credits a purchase and writes a ledger row with the balance after", async () => {
@@ -146,6 +149,15 @@ describe.skipIf(!url)("wallet credits (real Postgres)", () => {
       expect((await payment("p1", { requiredAmount: "10" })).status).toBe(400);
       expect((await payment("p2", { userId: u.id })).status).toBe(400);
       expect((await payment(undefined, { userId: u.id, requiredAmount: "10" })).status).toBe(400);
+      expect(await balance(u.id)).toBe(0);
+    });
+
+    it("rejects a missing, mismatched, or non-USD provider charge", async () => {
+      const u = await mkUser();
+      const handler = events.handleWhopEvent;
+      expect((await handler({ type: "payment.succeeded", data: { id: "pay_missing", metadata: { userId: u.id, requiredAmount: "10" }, currency: "USD" } })).status).toBe(400);
+      expect((await payment("pay_mismatch", { userId: u.id, requiredAmount: "10" }, { amount: 9.99, currency: "USD" })).status).toBe(400);
+      expect((await payment("pay_currency", { userId: u.id, requiredAmount: "10" }, { amount: 10, currency: "INR" })).status).toBe(400);
       expect(await balance(u.id)).toBe(0);
     });
 

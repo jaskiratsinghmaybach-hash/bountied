@@ -22,7 +22,7 @@ export function StatCard({
         <Icon size={16} className="text-foreground-muted mt-0.5" />
       </CardHeader>
       <CardContent className="p-5 pt-3">
-        <p className="font-mono text-2xl font-semibold text-foreground">
+        <p className={`font-mono text-2xl font-semibold ${accent ? "text-emerald-500" : "text-foreground"}`}>
           {value}
         </p>
       </CardContent>

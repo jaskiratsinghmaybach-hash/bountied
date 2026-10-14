@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
+import { decryptGithubTokenOrNull } from "@/lib/security/github-token";
 
 export async function relinkGithubIdentity(): Promise<
   { ok: true } | { error: string }
@@ -17,7 +18,8 @@ export async function relinkGithubIdentity(): Promise<
     select: { githubAccessToken: true },
   });
 
-  if (!profile || !profile.githubAccessToken) {
+  const githubAccessToken = decryptGithubTokenOrNull(profile?.githubAccessToken);
+  if (!profile || !githubAccessToken) {
     return { error: "No GitHub connection found. Please Unlink and connect again." };
   }
 
@@ -25,7 +27,7 @@ export async function relinkGithubIdentity(): Promise<
     // Verify the existing token against GitHub API
     const res = await fetch("https://api.github.com/user", {
       headers: {
-        Authorization: `Bearer ${profile.githubAccessToken}`,
+        Authorization: `Bearer ${githubAccessToken}`,
         Accept: "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
       },
@@ -54,7 +56,9 @@ export async function relinkGithubIdentity(): Promise<
 
     revalidatePath("/integrations");
     return { ok: true };
-  } catch (err: any) {
-    return { error: err.message || "An unexpected error occurred." };
+  } catch (err: unknown) {
+    return {
+      error: err instanceof Error ? err.message : "An unexpected error occurred.",
+    };
   }
 }

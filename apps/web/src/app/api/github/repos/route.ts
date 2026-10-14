@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/db";
+import { decryptGithubTokenOrNull } from "@/lib/security/github-token";
 
 const GITHUB_API_VERSION = "2022-11-28";
 
@@ -36,7 +37,8 @@ export async function GET() {
     select: { githubAccessToken: true, githubConnected: true },
   });
 
-  if (!profile?.githubConnected || !profile.githubAccessToken) {
+  const githubAccessToken = decryptGithubTokenOrNull(profile?.githubAccessToken);
+  if (!profile?.githubConnected || !githubAccessToken) {
     return NextResponse.json({ error: "GitHub not connected" }, { status: 422 });
   }
 
@@ -47,7 +49,7 @@ export async function GET() {
     "https://api.github.com/user/repos?sort=updated&per_page=100&affiliation=owner,collaborator",
     {
       headers: {
-        Authorization: `Bearer ${profile.githubAccessToken}`,
+        Authorization: `Bearer ${githubAccessToken}`,
         Accept: "application/vnd.github+json",
         "X-GitHub-Api-Version": GITHUB_API_VERSION,
       },

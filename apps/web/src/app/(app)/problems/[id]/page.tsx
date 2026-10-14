@@ -68,7 +68,6 @@ export default async function ProblemDetailPage({
   const canResubmit = mySubmissions.length < MAX_SUBMISSION_ATTEMPTS;
 
   const isSolver = profile?.role === "SOLVER" || profile?.role === "BOTH";
-  const isGiver = profile?.role === "GIVER" || profile?.role === "BOTH";
   const isOwner = problem.giverId === user?.id;
 
   return (

@@ -5,7 +5,6 @@ import { FaGithub } from "react-icons/fa";
 import { Terminal, TriangleAlert } from "lucide-react";
 import {
   createSubmission,
-  // @ts-ignore
   type CreateSubmissionResult,
 } from "@/lib/problems/submission-actions";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
@@ -15,7 +14,6 @@ import Link from "next/link";
 import { RepoSelector } from "./repo-selector";
 import { SolverTestPanel } from "./solver-test-panel";
 
-// @ts-ignore
 const initialState: CreateSubmissionResult | undefined = undefined;
 
 export function SubmissionForm({
@@ -25,7 +23,6 @@ export function SubmissionForm({
   problemId: string;
   githubConnected: boolean;
 }) {
-  // @ts-ignore
   const boundAction = createSubmission.bind(null, problemId);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
   const [hasRepo, setHasRepo] = useState(false);

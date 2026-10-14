@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
+import { encryptGithubToken } from "@/lib/security/github-token";
 
 /**
  * Ensures a Prisma User row exists for a given Supabase Auth user.
@@ -52,6 +53,9 @@ export async function syncUserFromSupabase(
 
   const avatarUrl =
     (supabaseUser.user_metadata?.avatar_url as string | undefined) ?? null;
+  const encryptedGithubToken = githubAccessToken
+    ? encryptGithubToken(githubAccessToken)
+    : undefined;
 
   return prisma.user.upsert({
     where: { id: supabaseUser.id },
@@ -62,7 +66,7 @@ export async function syncUserFromSupabase(
       name,
       avatarUrl,
       ...(githubAccessToken
-        ? { githubAccessToken, githubConnected: true }
+        ? { githubAccessToken: encryptedGithubToken, githubConnected: true }
         : {}),
       ...(githubUsername ? { githubUsername } : {}),
     },
@@ -72,7 +76,7 @@ export async function syncUserFromSupabase(
       name,
       avatarUrl,
       ...(githubAccessToken
-        ? { githubAccessToken, githubConnected: true }
+        ? { githubAccessToken: encryptedGithubToken, githubConnected: true }
         : {}),
       ...(githubUsername ? { githubUsername } : {}),
     },

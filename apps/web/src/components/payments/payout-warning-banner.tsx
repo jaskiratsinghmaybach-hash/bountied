@@ -1,18 +1,35 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { AlertTriangle, X } from "lucide-react";
 import Link from "next/link";
 
 const DISMISS_KEY = "payout-warning-dismissed";
+const DISMISS_EVENT = "bountied:payout-warning-dismissed-change";
+
+function subscribeToDismissal(onChange: () => void) {
+  window.addEventListener(DISMISS_EVENT, onChange);
+  window.addEventListener("storage", onChange);
+  return () => {
+    window.removeEventListener(DISMISS_EVENT, onChange);
+    window.removeEventListener("storage", onChange);
+  };
+}
+
+function getDismissedSnapshot() {
+  return window.sessionStorage.getItem(DISMISS_KEY) === "true";
+}
+
+function getServerDismissedSnapshot() {
+  return false;
+}
 
 export function PayoutWarningBanner({ bankDetailsAdded }: { bankDetailsAdded: boolean }) {
-  const [dismissed, setDismissed] = useState(true);
-
-  useEffect(() => {
-    if (bankDetailsAdded) return;
-    setDismissed(sessionStorage.getItem(DISMISS_KEY) === "true");
-  }, [bankDetailsAdded]);
+  const dismissed = useSyncExternalStore(
+    subscribeToDismissal,
+    getDismissedSnapshot,
+    getServerDismissedSnapshot
+  );
 
   if (bankDetailsAdded || dismissed) return null;
 
@@ -31,7 +48,7 @@ export function PayoutWarningBanner({ bankDetailsAdded }: { bankDetailsAdded: bo
         type="button"
         onClick={() => {
           sessionStorage.setItem(DISMISS_KEY, "true");
-          setDismissed(true);
+          window.dispatchEvent(new Event(DISMISS_EVENT));
         }}
         className="text-foreground-muted hover:text-foreground shrink-0"
         aria-label="Dismiss"

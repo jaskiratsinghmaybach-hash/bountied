@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Toast } from "@/components/ui/toast";
-import { X } from "lucide-react";
 
 /**
  * Supabase's linkIdentity() (and some other OAuth flows) can return the

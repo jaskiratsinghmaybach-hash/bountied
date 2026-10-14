@@ -10,6 +10,7 @@ import { checkDependencyPolicy, parseDependencyPolicy } from "@/lib/sandbox/boun
 import { parseGithubRepoUrl } from "@/lib/github/repo-snapshot";
 import { evaluateSubmitGate, shouldKeepPassed } from "@/lib/solver-tests/submit-gate";
 import { submitGateDeps } from "@/lib/solver-tests/submit-gate-deps";
+import { decryptGithubTokenOrNull } from "@/lib/security/github-token";
 
 export type CreateSubmissionResult =
   | {
@@ -131,7 +132,8 @@ async function mirrorOnly(submissionId: string) {
 
     if (!submission) return;
 
-    if (!submission.solver.githubAccessToken) {
+    const solverToken = decryptGithubTokenOrNull(submission.solver.githubAccessToken);
+    if (!solverToken) {
       await prisma.submission.update({
         where: { id: submissionId },
         data: {
@@ -153,7 +155,7 @@ async function mirrorOnly(submissionId: string) {
     if (policy) {
       const manifestFile = await fetchBountiedManifest({
         repoUrl: submission.repoUrl,
-        solverToken: submission.solver.githubAccessToken,
+        solverToken,
       });
 
       if (!manifestFile.ok) {
@@ -191,7 +193,7 @@ async function mirrorOnly(submissionId: string) {
     const mirrorResult = await mirrorSubmissionRepo({
       submissionId,
       sourceRepoUrl: submission.repoUrl,
-      solverToken: submission.solver.githubAccessToken,
+      solverToken,
       runtime: submission.problem.runtime,
       problemTitle: submission.problem.title,
       attemptNumber: submission.attemptNumber,
