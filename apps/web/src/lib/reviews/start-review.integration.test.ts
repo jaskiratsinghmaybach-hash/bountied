@@ -35,6 +35,8 @@ describe.skipIf(!url)("Giver review flow (real Postgres)", () => {
     await prisma?.$disconnect();
   });
   beforeEach(() => {
+    // A failed run logs its real reason on the server on purpose; keep the test output readable.
+    vi.spyOn(console, "error").mockImplementation(() => {});
     sandbox.calls = 0;
     sandbox.next = { ok: true, exitCode: 0, stdout: "3 passed", stderr: "" };
   });
@@ -142,7 +144,6 @@ describe.skipIf(!url)("Giver review flow (real Postgres)", () => {
     it("keeps only a fixed sentence for the Giver, never the raw reason", async () => {
       const t = await setup();
       result({ ok: false, kind: "infra", reason: "secret /srv/app/token ghp_leak line from the solver's file" });
-      vi.spyOn(console, "error").mockImplementation(() => {});
       await review.startAndRunReview(t.submission.id, t.giver.id);
       const s = await sub(t.submission.id);
       expect(s.sandboxError).not.toMatch(/secret|ghp_|\/srv/);

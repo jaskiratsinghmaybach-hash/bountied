@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { getTestDatabaseUrl, resetTestDatabase } from "@/test/db";
 
 /**
@@ -150,6 +150,7 @@ describe.skipIf(!url)("wallet credits (real Postgres)", () => {
     });
 
     it("rejects an invalid credit amount and credits nothing", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {}); // the handler logs each rejected amount on purpose
       const u = await mkUser();
       for (const bad of ["abc", "0", "-5", "0.5", "10.005", "99999999999"]) {
         expect((await payment(`pay_inv_${bad}`, { userId: u.id, requiredAmount: bad })).status, bad).toBe(400);

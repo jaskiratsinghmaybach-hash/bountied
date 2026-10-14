@@ -5,7 +5,7 @@ npm run test --workspace apps/web
 ```
 
 Most tests need nothing. The **integration tests** (files ending in `.integration.test.ts`)
-talk to a real Postgres and are **skipped** unless you give them a database:
+talk to a real Postgres and are **skipped** by that command, because it has no database to give them:
 
 - `src/lib/solver-tests/service.integration.test.ts`: Solver test charging, quotas, refunds
 - `src/lib/payments/credits.integration.test.ts`: wallet top-ups, retries, funding races
@@ -13,38 +13,46 @@ talk to a real Postgres and are **skipped** unless you give them a database:
 - `src/lib/desktop/pairing.integration.test.ts`: Bountied Desktop device pairing
 - `src/lib/problems/submission-actions.integration.test.ts`: submitting a solution, the test gate and the mirror-time re-check
 
-## The test database
-
-It is a **throwaway** database. Every integration test file wipes and rebuilds its `public`
-schema from the migrations, so:
-
-- it must be a **separate, empty** database, never your real one;
-- its name must contain `test` (the tests refuse to run otherwise). A Supabase project can't be
-  used: its database is always called `postgres`;
-- you do not need to run any migrations yourself. The tests apply them.
-
-### Easiest: Docker
+## Run everything, database tests included (one command)
 
 ```
-docker run -d --name bountied-test-db -e POSTGRES_PASSWORD=pw -e POSTGRES_DB=bountied_test -p 5433:5432 postgres:16
+npm run test:db --workspace apps/web
 ```
 
-The URL is `postgresql://postgres:pw@localhost:5433/bountied_test`. Next time, `docker start bountied-test-db`.
-(Port 5433 so it can't clash with a Postgres you already run on 5432.)
+That is all. It starts a private, temporary Postgres on a free local port (random password, a
+temporary folder), creates an empty `bountied_test` database in it, runs the whole suite against it,
+then stops Postgres and deletes everything. There is nothing to install besides `npm install`, no
+Docker, no URL and no password to choose.
 
-### Without Docker
+To run only some tests, add a path after `--`:
 
-Install PostgreSQL 16 for Windows from postgresql.org, then create an empty database, for example in
-PowerShell: `& "C:\Program Files\PostgreSQL\16\bin\createdb.exe" -U postgres bountied_test`.
-The URL is `postgresql://postgres:<your-password>@localhost:5432/bountied_test`. If the password has
-special characters, URL-encode them (`@` becomes `%40`).
+```
+npm run test:db --workspace apps/web -- src/lib/payments
+```
 
-### Tell the tests about it (pick one)
+Notes:
 
-1. **Once, in a file (recommended):** create `apps/web/.env.test` containing the single line
-   `TEST_DATABASE_URL=postgresql://postgres:pw@localhost:5433/bountied_test`.
-   It is gitignored, and only `TEST_*` keys are ever read from it.
-2. **Per terminal:** `$env:TEST_DATABASE_URL="postgresql://postgres:pw@localhost:5433/bountied_test"`
-   (PowerShell; it lasts until you close the window).
+- On Windows, open PowerShell normally (not "Run as administrator"): Postgres refuses to start as an administrator.
+- If it can't start, run it again with `$env:TEST_DB_VERBOSE=1` to see everything Postgres prints.
+- It can never touch your real database. The test process is started without `DATABASE_URL` or
+  `DIRECT_URL`, so your Supabase connection string is never seen by the tests.
 
-Then run `npm run test --workspace apps/web`. The integration test files stop showing as skipped.
+## NEVER point the tests at your real database
+
+Every integration test file wipes and rebuilds the `public` schema of whatever database it is given.
+Pointing it at your Supabase project would erase your live data. The tests refuse any database whose
+name doesn't contain `test` (a Supabase database is always called `postgres`), and `npm run test:db`
+never uses one. The Supabase URL and `anon` key are not database addresses and are not needed here.
+
+## Using a Postgres you run yourself (optional)
+
+If you would rather keep one running, create an **empty** database whose name contains `test`
+(Docker, or the Windows installer from postgresql.org), then tell the tests about it, either with a
+gitignored `apps/web/.env.test` file containing one line:
+
+```
+TEST_DATABASE_URL=postgresql://postgres:<password>@localhost:5432/bountied_test
+```
+
+or for one terminal only: `$env:TEST_DATABASE_URL="postgresql://postgres:<password>@localhost:5432/bountied_test"`,
+and run `npm run test --workspace apps/web`. The tests apply the migrations themselves.

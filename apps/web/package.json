@@ -11,7 +11,8 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:db": "node scripts/test-db.mjs"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",
@@ -52,6 +53,7 @@
     "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "embedded-postgres": "16.14.0-beta.17",
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
     "prisma": "^7.9.1",
