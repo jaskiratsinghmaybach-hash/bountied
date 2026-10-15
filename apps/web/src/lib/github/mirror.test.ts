@@ -21,7 +21,9 @@ function harness(handlers: Array<[RegExp, Reply]> = [], over: Partial<MirrorDeps
       async run(command, options) {
         seen.push({ command, envs: (options as { envs?: Record<string, string> } | undefined)?.envs ?? {} });
         const hit = handlers.find(([re]) => re.test(command));
-        const reply = hit ? hit[1] : {};
+        // Successful default commands resolve HEAD to the fixture SHA. Tests
+        // that exercise resolution failures override this with an explicit handler.
+        const reply = hit ? hit[1] : command.includes("rev-parse HEAD") ? { stdout: SHA + "\n" } : {};
         if (reply instanceof Error) throw reply;
         return { stdout: "", stderr: "", exitCode: 0, ...reply };
       },

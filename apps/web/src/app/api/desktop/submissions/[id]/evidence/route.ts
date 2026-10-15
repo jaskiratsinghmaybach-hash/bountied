@@ -19,11 +19,16 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (!s) return NextResponse.json({ error: "Submission not found" }, { status: 404 });
   if (s.problem.giverId !== user.id) return forbidden();
 
+  
   return NextResponse.json({
-    status: s.status, isRevealed: s.isRevealed,
-    exitCode: s.sandboxExitCode, output: s.sandboxOutput,
-    // Zero-source: never the stored text itself (older rows hold the runner's raw
-    // reason, which can echo the Solver's files). Only the fixed, classified summary.
-    error: classifySubmissionFailure(s)?.summary ?? null, ranAt: s.sandboxRanAt,
+    status: s.status,
+    isRevealed: s.isRevealed,
+    exitCode: s.sandboxExitCode,
+    output: s.isRevealed ? s.sandboxOutput : null,
+    // Never return the stored raw runner error; older rows may contain
+    // paths or solver-controlled text.
+    error: classifySubmissionFailure(s)?.summary ?? null,
+    ranAt: s.sandboxRanAt,
   });
+
 }

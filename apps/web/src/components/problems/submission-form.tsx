@@ -29,13 +29,22 @@ export function SubmissionForm({
   const [hasRepo, setHasRepo] = useState(false);
   const [repoUrl, setRepoUrl] = useState<string | null>(null);
   const [selectedCommitSha, setSelectedCommitSha] = useState<string | null>(null);
+  const [writeup, setWriteup] = useState("");
   const draftKey = `bountied:submission-draft:${problemId}`;
   useEffect(() => {
-    try { const raw = localStorage.getItem(draftKey); if (!raw) return; const draft = JSON.parse(raw) as { repoUrl?: string; selectedCommitSha?: string; writeup?: string };
-      if (typeof draft.repoUrl === "string") setRepoUrl(draft.repoUrl);
-      if (typeof draft.selectedCommitSha === "string") setSelectedCommitSha(draft.selectedCommitSha);
-      const writeup = document.getElementById("writeup") as HTMLTextAreaElement | null; if (writeup && typeof draft.writeup === "string") writeup.value = draft.writeup;
-    } catch { /* Ignore an invalid local draft. */ }
+    // Defer restoration until after the initial client render to avoid a
+    // hydration mismatch while still restoring drafts across refreshes.
+    const timer = window.setTimeout(() => {
+      try {
+        const raw = localStorage.getItem(draftKey);
+        if (!raw) return;
+        const draft = JSON.parse(raw) as { repoUrl?: string; selectedCommitSha?: string; writeup?: string };
+        if (typeof draft.repoUrl === "string") setRepoUrl(draft.repoUrl);
+        if (typeof draft.selectedCommitSha === "string") setSelectedCommitSha(draft.selectedCommitSha);
+        if (typeof draft.writeup === "string") setWriteup(draft.writeup);
+      } catch { /* Ignore an invalid local draft. */ }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [draftKey]);
   const saveDraft = useCallback((patch: Record<string, string | null>) => {
     try { const current = JSON.parse(localStorage.getItem(draftKey) ?? "{}") as Record<string, string | null>; localStorage.setItem(draftKey, JSON.stringify({ ...current, ...patch })); } catch { /* Storage may be disabled. */ }
@@ -140,8 +149,8 @@ export function SubmissionForm({
             minLength={30}
             rows={4}
             placeholder="What did you build? What approach did you take? Any known limitations or tradeoffs worth the giver knowing before they review the output?"
-            defaultValue=""
-            onChange={(e) => saveDraft({ writeup: e.target.value })}
+            value={writeup}
+            onChange={(e) => { setWriteup(e.target.value); saveDraft({ writeup: e.target.value }); }}
             className="bg-surface-raised border-border text-foreground placeholder:text-foreground-muted focus-visible:ring-0 focus-visible:border-foreground-muted resize-y"
           />
         </div>
@@ -155,7 +164,7 @@ export function SubmissionForm({
         </Button>
         </div>
         <div className="min-w-0 xl:row-span-2">
-          <CommitHistoryPanel problemId={problemId} repoUrl={repoUrl} selectedSha={selectedCommitSha} onSelect={(sha) => { setSelectedCommitSha(sha); saveDraft({ selectedCommitSha: sha }); }} />
+          <CommitHistoryPanel key={repoUrl ?? "no-repository"} repoUrl={repoUrl} selectedSha={selectedCommitSha} onSelect={(sha) => { setSelectedCommitSha(sha); saveDraft({ selectedCommitSha: sha }); }} />
         </div>
       </form>
     </div>

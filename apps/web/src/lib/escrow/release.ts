@@ -82,6 +82,30 @@ export async function acceptSubmissionAndRelease(params: {
         const bountyAmount = Number(problem.escrow.amount);
         const creditedAmount = amountCreditedOnRelease(bountyAmount); // bounty * 0.95
 
+        
+        // Claim the escrow before changing any submission or balance.
+        // The conditional state transition is the single-winner guard
+        // for concurrent acceptance requests.
+        const claim = await tx.escrow.updateMany({
+          where: {
+            id: problem.escrow.id,
+            state: EscrowState.HELD,
+          },
+          data: {
+            state: EscrowState.RELEASED,
+            releasedAt: new Date(),
+            releasedToSubmissionId: submissionId,
+          },
+        });
+
+        if (claim.count !== 1) {
+          return {
+            ok: false,
+            reason: "Escrow is no longer available for release",
+          };
+        }
+
+
         // 1. Flip the reveal gate.
         await tx.submission.update({
           where: { id: submissionId },
@@ -94,16 +118,7 @@ export async function acceptSubmissionAndRelease(params: {
           data: { status: SubmissionStatus.REJECTED },
         });
 
-        // 3. Release escrow record. paymentProviderRef stays null here — no
-        //    external payout happened yet, only an internal balance credit.
-        await tx.escrow.update({
-          where: { id: problem.escrow.id },
-          data: {
-            state: EscrowState.RELEASED,
-            releasedAt: new Date(),
-            releasedToSubmissionId: submissionId,
-          },
-        });
+        
 
         // 4. Close out the problem.
         await tx.problem.update({

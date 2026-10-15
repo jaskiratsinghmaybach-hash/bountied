@@ -22,13 +22,20 @@ export async function Header() {
           role: true,
           avatarUrl: true,
           creditBalance: true,
+          availableBalance: true,
         },
       })
     : null;
 
-  const showCreditBalance =
-    profile?.role === "GIVER" || profile?.role === "BOTH";
-  const creditBalance = profile ? Number(profile.creditBalance) : 0;
+  const isGiver = profile?.role === "GIVER";
+  const showBalance = !!profile && (profile.role === "GIVER" || profile.role === "SOLVER" || profile.role === "BOTH");
+  // Givers have a wallet balance. Solvers see deposited credit plus available
+  // earnings, matching the balance used by the solver-test charging logic.
+  const balance = !profile ? 0 : isGiver
+    ? Number(profile.creditBalance)
+    : Number(profile.creditBalance) + Number(profile.availableBalance);
+  const balanceHref = isGiver ? "/dashboard/giver/wallet" : "/dashboard/solver/funds";
+  const balanceLabel = isGiver ? "Wallet balance" : "Total balance";
 
   // Fetched here, not inside HeaderNotifications, so this stays a single
   // server-rendered query instead of a second client-side fetch on every
@@ -61,14 +68,15 @@ export async function Header() {
       <nav className="flex items-center gap-1 sm:gap-2">
         {user ? (
           <>
-            {showCreditBalance ? (
+            {showBalance ? (
               <Link
-                href="/dashboard/giver/wallet"
+                href={balanceHref}
                 className="flex items-center gap-1.5 px-2 py-1 text-xs text-foreground-muted transition-colors hover:text-foreground sm:text-sm"
-                title="Wallet balance"
+                title={balanceLabel}
+                aria-label={`${balanceLabel}: $${balance.toFixed(2)}`}
               >
                 <Wallet className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                <span className="tabular-nums">${creditBalance.toFixed(2)}</span>
+                <span className="tabular-nums">${balance.toFixed(2)}</span>
               </Link>
             ) : null}
             <HeaderNotifications notifications={notifications} />

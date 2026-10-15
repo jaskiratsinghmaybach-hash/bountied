@@ -1,0 +1,867 @@
+
+========== apps/web/src/app/api/webhooks/whop/route.ts ==========
+
+import { NextResponse } from "next/server";
+import { createHmac, timingSafeEqual } from "crypto";
+import { handleWhopEvent } from "@/lib/payments/whop-events";
+
+/**
+ * Whop signs webhooks using the Standard Webhooks spec (standardwebhooks.com),
+ * NOT a bare HMAC-over-body-in-hex scheme. Three headers arrive together:
+ *   webhook-id        - unique event id
+ *   webhook-timestamp  - unix seconds
+ *   webhook-signature  - space-separated list of "v1,<base64-hmac-sha256>"
+ *
+ * The signed content is "{id}.{timestamp}.{body}" (period-joined), HMAC-SHA256'd
+ * with the base64-DECODED secret, then base64-encoded for comparison — not hex.
+ * Getting any of these wrong means every real webhook gets silently rejected
+ * with no error surfaced anywhere except a 401 in server logs.
+ */
+function verifyWhopSignature(params: {
+  rawBody: string;
+  webhookId: string | null;
+  webhookTimestamp: string | null;
+  webhookSignature: string | null;
+}): boolean {
+  const { rawBody, webhookId, webhookTimestamp, webhookSignature } = params;
+
+  if (!webhookId || !webhookTimestamp || !webhookSignature) return false;
+  if (!process.env.WHOP_WEBHOOK_SECRET) return false;
+
+  // Reject stale events (>5 min old) to limit replay-attack window.
+  const timestampSeconds = Number(webhookTimestamp);
+  if (!Number.isFinite(timestampSeconds)) return false;
+  const ageSeconds = Math.abs(Date.now() / 1000 - timestampSeconds);
+  if (ageSeconds > 300) return false;
+
+  const signedContent = `${webhookId}.${webhookTimestamp}.${rawBody}`;
+
+  // Whop's webhook secret is prefixed "whsec_" and base64-encoded after that.
+  const secretRaw = process.env.WHOP_WEBHOOK_SECRET.startsWith("whsec_")
+    ? process.env.WHOP_WEBHOOK_SECRET.slice("whsec_".length)
+    : process.env.WHOP_WEBHOOK_SECRET;
+  const secretBytes = Buffer.from(secretRaw, "base64");
+
+  const expectedSignature = createHmac("sha256", secretBytes)
+    .update(signedContent)
+    .digest("base64");
+
+  // webhook-signature can contain multiple space-separated "v1,<sig>" entries —
+  // any match is valid (used during secret rotation).
+  const candidates = webhookSignature
+    .split(" ")
+    .map((entry) => entry.split(",")[1])
+    .filter(Boolean);
+
+  return candidates.some((candidate) => {
+    try {
+      const a = Buffer.from(candidate, "base64");
+      const b = Buffer.from(expectedSignature, "base64");
+      return a.length === b.length && timingSafeEqual(a, b);
+    } catch {
+      return false;
+    }
+  });
+}
+
+export async function POST(request: Request) {
+  const rawBody = await request.text();
+
+  const isValid = verifyWhopSignature({
+    rawBody,
+    webhookId: request.headers.get("webhook-id"),
+    webhookTimestamp: request.headers.get("webhook-timestamp"),
+    webhookSignature: request.headers.get("webhook-signature"),
+  });
+
+  if (!isValid) {
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+  }
+
+  let event;
+  try {
+    event = JSON.parse(rawBody);
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  // Crediting (idempotent, for Givers and Solvers alike) lives in lib/payments/whop-events.ts.
+  const result = await handleWhopEvent(event);
+  return NextResponse.json(result.body, { status: result.status });
+}
+
+========== apps/web/src/lib/payments/whop-events.ts ==========
+
+import { CreditTransactionType } from "@prisma/client";
+import { creditUserBalance, fundProblemFromCredits } from "./credits";
+import { parseDepositAmount } from "./deposit";
+
+/** Flat shape (not a union) so it narrows under this repo's `strict: false`. */
+export type WhopEventResult = { status: number; body: Record<string, unknown> };
+
+type WhopPaymentData = {
+  id?: unknown;
+  metadata?: Record<string, unknown>;
+  currency?: unknown;
+  final_amount?: unknown;
+  total?: unknown;
+};
+type WhopEvent = { type?: string; data?: WhopPaymentData };
+
+function readAmount(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) return Number(value);
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const amount = (value as Record<string, unknown>).amount;
+    if (typeof amount === "number" && Number.isFinite(amount)) return amount;
+    if (typeof amount === "string" && amount.trim() !== "" && Number.isFinite(Number(amount))) return Number(amount);
+  }
+  return null;
+}
+
+/** Whop payment payloads expose the customer charge as final_amount or total.amount. */
+function actualPaymentAmount(data: WhopPaymentData): number | null {
+  return readAmount(data.final_amount) ?? readAmount(data.total);
+}
+
+const text = (v: unknown) => (typeof v === "string" && v.length > 0 ? v : null);
+
+/**
+ * What to do with a Whop event AFTER its signature has been verified (that
+ * stays in the route). A top-up is for whoever started the checkout, Giver or
+ * Solver alike: the user id is the one the server put in the checkout's
+ * metadata. Older in-flight checkouts carry it as `giverId`, so both are read.
+ *
+ * Idempotent: a repeated delivery of the same payment credits nothing more,
+ * but still retries funding a draft bounty (which only happens while the
+ * problem is still a DRAFT), so a delivery that crashed between the two steps
+ * is finished by Whop's retry.
+ */
+export async function handleWhopEvent(event: WhopEvent): Promise<WhopEventResult> {
+  if (event.type !== "payment.succeeded") return { status: 200, body: { received: true } };
+
+  const metadata = event.data?.metadata ?? {};
+  const userId = text(metadata.userId) ?? text(metadata.giverId);
+  const draftProblemId = text(metadata.draftProblemId);
+  const chargeRef = text(event.data?.id);
+
+  if (!userId || metadata.requiredAmount === undefined) {
+    return { status: 400, body: { error: "Missing metadata on event" } };
+  }
+  // Without a payment id a retry could not be recognised, so refuse rather than risk crediting twice.
+  if (!chargeRef) return { status: 400, body: { error: "Missing payment id on event" } };
+
+  const amount = parseDepositAmount(Number(metadata.requiredAmount));
+  if (!amount.ok || amount.amount === undefined) {
+    console.error("Whop payment with an invalid credit amount:", chargeRef, String(metadata.requiredAmount));
+    return { status: 400, body: { error: "Invalid amount on event" } };
+  }
+
+  // Checkout metadata is our expected amount, not proof of what Whop charged.
+  // Fail closed if the provider payload doesn't contain a verifiable charge.
+  const paidAmount = actualPaymentAmount(event.data ?? {});
+  if (paidAmount === null || Math.abs(paidAmount - amount.amount) > 0.009) {
+    console.error("Whop payment amount missing or mismatched:", chargeRef);
+    return { status: 400, body: { error: "Payment amount could not be verified" } };
+  }
+  const total = event.data?.total && typeof event.data.total === "object"
+    ? event.data.total as Record<string, unknown>
+    : null;
+  const rawCurrency = event.data?.currency ?? total?.currency;
+  const currency = typeof rawCurrency === "string" ? rawCurrency.toUpperCase() : null;
+  if (currency !== "USD") {
+    console.error("Whop payment currency missing or mismatched:", chargeRef, currency ?? "missing");
+    return { status: 400, body: { error: "Payment currency could not be verified" } };
+  }
+
+  const credit = await creditUserBalance({
+    userId,
+    amount: amount.amount,
+    type: CreditTransactionType.PURCHASE,
+    whopChargeRef: chargeRef,
+  });
+
+  if (draftProblemId) {
+    await fundProblemFromCredits({ problemId: draftProblemId, giverId: userId });
+  }
+
+  return { status: 200, body: { received: true, credited: credit.credited } };
+}
+
+========== apps/web/src/lib/payments/credits.ts ==========
+
+import { prisma } from "@/lib/db";
+import { EscrowState, ProblemStatus, CreditTransactionType } from "@prisma/client";
+import { creditsRequiredToFund } from "./fees";
+
+export type FundBountyResult =
+  | { ok: true; reason?: undefined; required?: undefined; balance?: undefined; message?: undefined }
+  | { ok: false; reason: "INSUFFICIENT_FUNDS"; required: number; balance: number; message?: undefined }
+  | { ok: false; reason: "OTHER"; message: string; required?: undefined; balance?: undefined };
+
+/**
+ * Attempts to fund a Problem's Escrow directly from a Giver's credit
+ * balance. This is the "balance check" step from the payment spec. If the
+ * balance is insufficient, the caller (a Server Action or route) is
+ * responsible for surfacing the "Add Credits via Whop" flow.
+ *
+ * The Giver is charged bountyAmount * 1.10 (the platform's 10% funding
+ * fee) — see lib/payments/fees.ts. Escrow itself always holds exactly
+ * bountyAmount, since that's the number solvers see and the number that
+ * gets released on acceptance.
+ */
+export async function fundProblemFromCredits(params: {
+  problemId: string;
+  giverId: string;
+}): Promise<FundBountyResult> {
+  return prisma.$transaction(async (tx) => {
+    // Funding must happen once per bounty. Two callers can arrive together (a
+    // webhook retry and the page's own funding call, or a double click): both
+    // would read DRAFT and both would charge. Locking the problem row first
+    // makes the second caller wait, then see it is no longer a DRAFT.
+    await tx.$queryRaw`SELECT id FROM "Problem" WHERE id = ${params.problemId} FOR UPDATE`;
+
+    const problem = await tx.problem.findUnique({
+      where: { id: params.problemId },
+      include: { escrow: true },
+    });
+
+    if (!problem) return { ok: false, reason: "OTHER", message: "Problem not found" };
+    if (problem.giverId !== params.giverId) {
+      return { ok: false, reason: "OTHER", message: "Only the problem's giver can fund it" };
+    }
+    if (problem.status !== ProblemStatus.DRAFT) {
+      return { ok: false, reason: "OTHER", message: "Problem is not in DRAFT status" };
+    }
+    if (!problem.bountyAmount) {
+      return { ok: false, reason: "OTHER", message: "Problem has no bounty amount set" };
+    }
+
+    const giver = await tx.user.findUnique({ where: { id: params.giverId } });
+    if (!giver) return { ok: false, reason: "OTHER", message: "Giver not found" };
+
+    const bountyAmount = Number(problem.bountyAmount);
+    const required = creditsRequiredToFund(bountyAmount); // bountyAmount + 10%
+
+    // The debit is decided by the database, not by the balance read above: a
+    // top-up or a sandbox charge landing at the same moment can no longer be
+    // overwritten by a stale "balance - required" write.
+    const debited = await tx.user.updateMany({
+      where: { id: giver.id, creditBalance: { gte: required } },
+      data: { creditBalance: { decrement: required } },
+    });
+    if (debited.count === 0) {
+      const fresh = await tx.user.findUniqueOrThrow({ where: { id: giver.id }, select: { creditBalance: true } });
+      return { ok: false, reason: "INSUFFICIENT_FUNDS", required, balance: Number(fresh.creditBalance) };
+    }
+    const after = await tx.user.findUniqueOrThrow({ where: { id: giver.id }, select: { creditBalance: true } });
+
+    const ledgerEntry = await tx.creditTransaction.create({
+      data: {
+        userId: giver.id,
+        type: CreditTransactionType.BOUNTY_FUNDING,
+        amount: -required,
+        balanceAfter: after.creditBalance,
+        problemId: problem.id,
+      },
+    });
+
+    await tx.escrow.upsert({
+      where: { problemId: problem.id },
+      create: {
+        problemId: problem.id,
+        amount: problem.bountyAmount,
+        currency: problem.currency,
+        state: EscrowState.HELD,
+        heldAt: new Date(),
+        paymentProviderRef: ledgerEntry.id,
+        paymentProviderType: "credit_wallet",
+      },
+      update: {
+        state: EscrowState.HELD,
+        heldAt: new Date(),
+        paymentProviderRef: ledgerEntry.id,
+        paymentProviderType: "credit_wallet",
+      },
+    });
+
+    await tx.problem.update({
+      where: { id: problem.id },
+      // Funded bounties go straight to OPEN — that's the only status the
+      // public /problems listing shows, and there is no separate "publish"
+      // step in this product. FUNDED remains a valid enum value/label for
+      // display purposes but is no longer used as a real transitional state.
+      data: { status: ProblemStatus.OPEN },
+    });
+
+    return { ok: true };
+  });
+}
+
+/** Flat shape (not a union) so it narrows under this repo's `strict: false`. */
+export type CreditUserResult = {
+  /** False when this payment (whopChargeRef) had already been credited and nothing changed. */
+  credited: boolean;
+  /** The balance after this call (unchanged when !credited). */
+  balance: number;
+};
+
+/**
+ * Credits a user's wallet balance. Called by the Whop webhook after a
+ * successful checkout (PURCHASE), and can be reused for REFUND if a funded
+ * Problem is later cancelled with no accepted submission.
+ *
+ * Safe to call twice for the same payment. Whop delivers webhooks at least
+ * once and retries on a timeout or an error, so the same `payment.succeeded`
+ * can arrive repeatedly, even at the same moment. When a whopChargeRef is
+ * given, a transaction-scoped advisory lock on that reference serializes the
+ * deliveries and the ledger is checked for it before anything is added, so a
+ * payment is credited exactly once. (Needs no schema change. A unique index on
+ * CreditTransaction.whopChargeRef would be a good second layer once the table
+ * is confirmed to have no duplicates.)
+ *
+ * The balance changes with an atomic increment, never "read, add, write", so
+ * a debit committing at the same moment is never lost.
+ */
+export async function creditUserBalance(params: {
+  userId: string;
+  amount: number;
+  type: CreditTransactionType;
+  whopChargeRef?: string;
+  problemId?: string;
+}): Promise<CreditUserResult> {
+  if (!Number.isFinite(params.amount) || params.amount <= 0) {
+    throw new Error(`Refusing to credit a non-positive amount (${params.amount})`);
+  }
+  const amount = Math.round(params.amount * 100) / 100;
+
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.user.findUnique({ where: { id: params.userId }, select: { id: true, creditBalance: true } });
+    if (!user) throw new Error(`User ${params.userId} not found`);
+
+    if (params.whopChargeRef) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"whop-charge:" + params.whopChargeRef}))`;
+      const already = await tx.creditTransaction.findFirst({
+        where: { whopChargeRef: params.whopChargeRef },
+        select: { id: true },
+      });
+      if (already) return { credited: false, balance: Number(user.creditBalance) };
+    }
+
+    const updated = await tx.user.update({
+      where: { id: params.userId },
+      data: { creditBalance: { increment: amount } },
+      select: { creditBalance: true },
+    });
+
+    await tx.creditTransaction.create({
+      data: {
+        userId: params.userId,
+        type: params.type,
+        amount,
+        balanceAfter: updated.creditBalance,
+        whopChargeRef: params.whopChargeRef,
+        problemId: params.problemId,
+      },
+    });
+
+    return { credited: true, balance: Number(updated.creditBalance) };
+  });
+}
+
+========== apps/web/src/lib/payments/deposit.ts ==========
+
+/**
+ * Validation for a wallet top-up amount, shared by the checkout route (before
+ * any money is asked for) and the Whop webhook (before any money is credited).
+ * One rule in one place.
+ *
+ *  - dollars and cents only: what the button says is exactly what is charged
+ *    and exactly what is credited, with no hidden rounding;
+ *  - at least $1 (the amount field's own minimum);
+ *  - at most MAX_DEPOSIT_USD, which is Whop's own ceiling: Whop caps a single
+ *    checkout at $2,500 for accounts that haven't been approved for higher
+ *    amounts (docs.whop.com, "Access Higher Checkout Links"). Asking Whop for
+ *    more would fail at checkout, so the form says so up front. If your Whop
+ *    account is approved for higher checkouts, raise this constant to match.
+ *    It is also far below the ledger column's limit, so a payment that
+ *    succeeds can always be credited.
+ */
+export const MIN_DEPOSIT_USD = 1;
+export const MAX_DEPOSIT_USD = 2_500;
+
+/** Flat shape (not a union) so it narrows under this repo's `strict: false`. */
+export type DepositAmountResult = { ok: boolean; amount?: number; error?: string };
+
+export function parseDepositAmount(raw: unknown): DepositAmountResult {
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    return { ok: false, error: "Enter an amount in dollars." };
+  }
+  if (Math.abs(raw * 100 - Math.round(raw * 100)) > 1e-6) {
+    return { ok: false, error: "Enter an amount in dollars and cents, like 25.00." };
+  }
+  const amount = Math.round(raw * 100) / 100;
+  if (amount < MIN_DEPOSIT_USD) return { ok: false, error: `The minimum top-up is $${MIN_DEPOSIT_USD.toFixed(2)}.` };
+  if (amount > MAX_DEPOSIT_USD) return { ok: false, error: `The maximum top-up is $${MAX_DEPOSIT_USD.toLocaleString("en-US")}.` };
+  return { ok: true, amount };
+}
+
+========== apps/web/src/lib/escrow/release.ts ==========
+
+import { EscrowState, SubmissionStatus, ProblemStatus } from "@prisma/client";
+import { amountCreditedOnRelease } from "@/lib/payments/fees";
+import { grantGiverRepoAccess } from "@/lib/github/grant-access";
+import { prisma } from "@/lib/db";
+
+/**
+ * THE core trust guarantee of the platform:
+ *
+ *   Submission.isRevealed must ONLY ever become true here, as a side effect
+ *   of Escrow.state actually becoming RELEASED after funds are credited to
+ *   the solver.
+ *
+ * Every place that serves submission code to a problem-giver (the
+ * platformRepoUrl link on the giver detail page, for example) must check
+ * isRevealed server-side and refuse to serve real repo access if false. Never
+ * trust a client-supplied "I paid" flag. Never let a UI button flip
+ * isRevealed directly.
+ *
+ * This function is intentionally the ONLY writer of:
+ *   - Escrow.state -> RELEASED
+ *   - Submission.isRevealed -> true
+ *   - Submission.status -> ACCEPTED / REJECTED
+ *   - Submission.githubAccessGrantedAt -> set (the GitHub-side reveal — a
+ *     specific collaborator invite to the specific giver who paid, NOT a
+ *     public/private flip; see lib/github/grant-access.ts. A mirror repo
+ *     is never made public — its name is derivable from a visible
+ *     submission id, so "public" would mean world-readable, not
+ *     giver-readable.)
+ *   - Problem.status -> COMPLETED
+ * so there is exactly one code path to audit for the money-moves-code-unlocks
+ * guarantee.
+ *
+ * NOTE on the fee model: release does NOT call any payment provider —
+ * escrow is platform-held credit, not a live bank transfer per problem, so
+ * "releasing" it means crediting the solver's internal availableBalance at
+ * 95% of the bounty (the platform's first 5% cut — see
+ * lib/payments/fees.ts). The actual bank transfer happens later and is
+ * fully manual in v1: the solver requests a withdrawal (see
+ * lib/payouts/withdraw.ts), which creates a PayoutRequest that the
+ * platform admin transfers by hand via Wise — see /admin/payouts.
+ */
+export async function acceptSubmissionAndRelease(params: {
+  problemId: string;
+  submissionId: string;
+  actingGiverId: string; // for authorization check — must equal Problem.giverId
+}): Promise<{ ok: true; reason?: undefined } | { ok: false; reason: string }> {
+  const { problemId, submissionId, actingGiverId } = params;
+
+  // maxWait/timeout widened from Prisma's defaults (2s / 5s) — reported
+  // failure: "Unable to start a transaction in the given time" against
+  // the Supabase pooler (aws-0-ap-southeast-2.pooler.supabase.com), which
+  // can take longer than 2s to hand out a pooled connection under load or
+  // after being idle. This is pool contention, not a sign the transaction
+  // body itself is slow — the work inside is a handful of simple updates
+  // on indexed rows. Widening the wait window is the correct fix for
+  // "couldn't get a connection in time"; it would NOT be the right fix
+  // for a slow transaction body, which this isn't.
+  const outcome: { ok: true; platformRepoFullName: string | null } | { ok: false; reason: string } =
+    await prisma.$transaction(
+      async (tx) => {
+        const problem = await tx.problem.findUnique({
+          where: { id: problemId },
+          include: { escrow: true },
+        });
+
+        if (!problem) return { ok: false, reason: "Problem not found" };
+        if (problem.giverId !== actingGiverId) {
+          return { ok: false, reason: "Only the problem giver can accept a submission" };
+        }
+        if (!problem.escrow || problem.escrow.state !== EscrowState.HELD) {
+          return { ok: false, reason: "Escrow is not in a releasable state" };
+        }
+
+        const submission = await tx.submission.findUnique({ where: { id: submissionId } });
+        if (!submission || submission.problemId !== problemId) {
+          return { ok: false, reason: "Submission not found for this problem" };
+        }
+        if (submission.isRevealed) {
+          return { ok: false, reason: "Submission already revealed/paid" };
+        }
+
+        const bountyAmount = Number(problem.escrow.amount);
+        const creditedAmount = amountCreditedOnRelease(bountyAmount); // bounty * 0.95
+
+        // 1. Flip the reveal gate.
+        await tx.submission.update({
+          where: { id: submissionId },
+          data: { status: SubmissionStatus.ACCEPTED, isRevealed: true },
+        });
+
+        // 2. Reject every other submission on this problem.
+        await tx.submission.updateMany({
+          where: { problemId, id: { not: submissionId } },
+          data: { status: SubmissionStatus.REJECTED },
+        });
+
+        // 3. Release escrow record. paymentProviderRef stays null here — no
+        //    external payout happened yet, only an internal balance credit.
+        await tx.escrow.update({
+          where: { id: problem.escrow.id },
+          data: {
+            state: EscrowState.RELEASED,
+            releasedAt: new Date(),
+            releasedToSubmissionId: submissionId,
+          },
+        });
+
+        // 4. Close out the problem.
+        await tx.problem.update({
+          where: { id: problemId },
+          data: { status: ProblemStatus.COMPLETED, completedAt: new Date() },
+        });
+
+        // 5. Credit the solver: availableBalance (withdrawable now) at 95%,
+        //    totalEarned (lifetime stat, always the full bounty) unchanged.
+        await tx.user.update({
+          where: { id: submission.solverId },
+          data: {
+            completionCount: { increment: 1 },
+            totalEarned: { increment: bountyAmount },
+            availableBalance: { increment: creditedAmount },
+          },
+        });
+
+        return { ok: true, platformRepoFullName: submission.platformRepoFullName };
+      },
+      { maxWait: 10_000, timeout: 15_000 }
+    );
+
+  if (!outcome.ok) return outcome;
+
+  // Invite the giver as a collaborator on the platform mirror — the
+  // actual code reveal.
+  //
+  // Deliberately OUTSIDE the transaction: this is a network round-trip to
+  // GitHub, and holding a DB transaction open across it would pin a
+  // connection for seconds and risk a transaction timeout rolling back a
+  // payment that already succeeded.
+  //
+  // Ordering is money-first, reveal-second on purpose. If this call fails
+  // — most often because the giver hasn't connected GitHub yet, so there
+  // is no githubUsername to invite — the payment stands and isRevealed
+  // stays true; we never claw back a release. githubAccessGrantedAt
+  // simply stays null and the giver's page offers a retry once they've
+  // connected GitHub. The reverse order would risk granting access to
+  // code the giver never paid for.
+  if (outcome.platformRepoFullName) {
+    const giver = await prisma.user.findUnique({
+      where: { id: actingGiverId },
+      select: { githubUsername: true },
+    });
+
+    if (giver?.githubUsername) {
+      const grant = await grantGiverRepoAccess({
+        platformRepoFullName: outcome.platformRepoFullName,
+        giverGithubUsername: giver.githubUsername,
+      });
+      if (grant.ok) {
+        await prisma.submission.update({
+          where: { id: submissionId },
+          data: { githubAccessGrantedAt: new Date() },
+        });
+      } else {
+        console.error(`[github-access] submission ${submissionId}: ${grant.reason}`);
+      }
+    } else {
+      console.error(
+        `[github-access] submission ${submissionId}: giver ${actingGiverId} has no GitHub username on file yet — retry once they connect GitHub`
+      );
+    }
+  }
+
+  return { ok: true };
+}
+
+========== apps/web/src/lib/payouts/withdraw.ts ==========
+
+import { PayoutRequestStatus } from "@prisma/client";
+import { amountPaidOnWithdrawal, withdrawalFeeFor } from "@/lib/payments/fees";
+import { prisma } from "@/lib/db";
+
+export type WithdrawResult =
+  | { ok: true; payoutAmount: number; eligibleAt: Date; reason?: undefined }
+  | { ok: false; reason: string };
+
+const PAYOUT_WINDOW_DAYS = 7;
+
+/**
+ * Solver-initiated withdrawal from availableBalance.
+ *
+ * v1 is fully manual: there is no live payout-provider call here. This
+ * function debits availableBalance immediately and creates a PayoutRequest
+ * row (with a snapshot of the solver's bank details at request time) that
+ * shows up in the admin payout queue. The platform admin transfers the
+ * money by hand via Wise, any time at or after eligibleAt (createdAt + 7
+ * days), then marks the request SUCCEEDED from the admin page.
+ *
+ * The platform's second 5% cut (see lib/payments/fees.ts) is taken here —
+ * requestedAmount leaves availableBalance, but payoutAmount (95% of that)
+ * is what the admin actually wires to the bank.
+ */
+export async function requestWithdrawal(params: {
+  userId: string;
+  requestedAmount: number;
+}): Promise<WithdrawResult> {
+  const { userId, requestedAmount } = params;
+
+  if (requestedAmount <= 0) {
+    return { ok: false, reason: "Withdrawal amount must be greater than zero" };
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) return { ok: false, reason: "User not found" };
+
+  if (
+    !user.bankDetailsAdded ||
+    !user.legalName ||
+    !user.bankCountry ||
+    !user.bankAccountNumber ||
+    !user.bankIfscOrSwift
+  ) {
+    return { ok: false, reason: "Add your bank details before withdrawing" };
+  }
+
+  const balance = Number(user.availableBalance);
+  if (requestedAmount > balance) {
+    return { ok: false, reason: "Withdrawal amount exceeds available balance" };
+  }
+
+  const payoutAmount = amountPaidOnWithdrawal(requestedAmount);
+  const feeAmount = withdrawalFeeFor(requestedAmount);
+  const eligibleAt = new Date(Date.now() + PAYOUT_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+
+  // Debit and record atomically. There's no external call to wait on here
+  // (v1 has no live payout API) — the balance leaves availableBalance the
+  // moment the request is made, and the admin queue is the source of truth
+  // for what's still owed.
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: userId },
+      data: { availableBalance: { decrement: requestedAmount } },
+    }),
+    prisma.payoutRequest.create({
+      data: {
+        userId,
+        requestedAmount,
+        feeAmount,
+        payoutAmount,
+        legalName: user.legalName,
+        bankCountry: user.bankCountry,
+        bankAccountNumber: user.bankAccountNumber,
+        bankIfscOrSwift: user.bankIfscOrSwift,
+        status: PayoutRequestStatus.PENDING,
+        eligibleAt,
+      },
+    }),
+  ]);
+
+  return { ok: true, payoutAmount, eligibleAt };
+}
+
+========== apps/web/src/lib/payouts/actions.ts ==========
+
+"use server";
+
+import { createClient } from "@/lib/supabase/server";
+import { requestWithdrawal } from "@/lib/payouts/withdraw";
+import { revalidatePath } from "next/cache";
+
+export type WithdrawActionResult =
+  | { error: string }
+  | { ok: true; payoutAmount: number; eligibleAt: Date };
+
+export async function withdrawEarnings(
+  _prevState: WithdrawActionResult | undefined,
+  formData: FormData
+): Promise<WithdrawActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "You must be logged in to do this." };
+
+  const requestedAmount = Number(formData.get("amount"));
+  if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
+    return { error: "Enter a valid withdrawal amount." };
+  }
+
+  const result = await requestWithdrawal({
+    userId: user.id,
+    requestedAmount,
+  });
+
+  if (!result.ok) return { error: result.reason };
+
+  revalidatePath("/dashboard/solver/earnings");
+  return { ok: true, payoutAmount: result.payoutAmount, eligibleAt: result.eligibleAt };
+}
+
+========== apps/web/src/lib/security/github-token.ts ==========
+
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+
+const PREFIX = "enc:v1:";
+const IV_BYTES = 12;
+const TAG_BYTES = 16;
+
+function encryptionKey(): Buffer {
+  const configured = process.env.GITHUB_TOKEN_ENCRYPTION_KEY;
+  if (!configured) {
+    throw new Error("GITHUB_TOKEN_ENCRYPTION_KEY must be configured before storing or reading encrypted GitHub tokens.");
+  }
+
+  const key = Buffer.from(configured, "base64");
+  if (key.length !== 32 || key.toString("base64").replace(/=+$/, "") !== configured.replace(/=+$/, "")) {
+    throw new Error("GITHUB_TOKEN_ENCRYPTION_KEY must be a base64-encoded 32-byte key.");
+  }
+  return key;
+}
+
+/** Encrypt a newly received GitHub OAuth token before it is written to the database. */
+export function encryptGithubToken(token: string): string {
+  if (token.startsWith(PREFIX)) {
+    // Validate existing ciphertext rather than accidentally encrypting it twice.
+    decryptGithubToken(token);
+    return token;
+  }
+  const iv = randomBytes(IV_BYTES);
+  const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
+  const ciphertext = Buffer.concat([cipher.update(token, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `${PREFIX}${iv.toString("base64url")}:${tag.toString("base64url")}:${ciphertext.toString("base64url")}`;
+}
+
+/**
+ * Decrypt stored GitHub tokens. Plaintext is accepted only as a migration
+ * compatibility path; new writes must always go through encryptGithubToken.
+ * Invalid ciphertext fails closed and is never returned as a bearer token.
+ */
+export function decryptGithubToken(stored: string): string {
+  if (!stored.startsWith(PREFIX)) return stored;
+
+  const parts = stored.slice(PREFIX.length).split(":");
+  if (parts.length !== 3 || parts.some((part) => !part)) {
+    throw new Error("Stored GitHub token has an invalid enc:v1 format.");
+  }
+
+  try {
+    const iv = Buffer.from(parts[0], "base64url");
+    const tag = Buffer.from(parts[1], "base64url");
+    const ciphertext = Buffer.from(parts[2], "base64url");
+    if (iv.length !== IV_BYTES || tag.length !== TAG_BYTES || ciphertext.length === 0) {
+      throw new Error("Invalid ciphertext dimensions.");
+    }
+    const decipher = createDecipheriv("aes-256-gcm", encryptionKey(), iv);
+    decipher.setAuthTag(tag);
+    return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("GITHUB_TOKEN_ENCRYPTION_KEY")) throw error;
+    throw new Error("Could not decrypt the stored GitHub token. Check GITHUB_TOKEN_ENCRYPTION_KEY and the stored value.");
+  }
+}
+
+export function decryptGithubTokenOrNull(stored: string | null | undefined): string | null {
+  return stored ? decryptGithubToken(stored) : null;
+}
+
+export function isEncryptedGithubToken(stored: string | null | undefined): boolean {
+  return typeof stored === "string" && stored.startsWith(PREFIX);
+}
+
+========== apps/web/src/lib/sandbox/review-evidence.ts ==========
+
+import type { ExecutionResult } from "./execute";
+
+/**
+ * What a Giver is allowed to see from a sandbox evaluation BEFORE escrow
+ * release. This is the explicit contract the review UI renders against —
+ * not "whatever the process printed" (docs/review-engine-architecture.md §6).
+ *
+ * TRUST BOUNDARY: the platform chooses the command, but the command still
+ * executes Solver-controlled code, so its stdout/stderr is UNTRUSTED DATA.
+ * `output` is bounded and is NOT a sanitized or classified-safe channel: a
+ * Solver's program can print arbitrary text (including its own source or
+ * environment), and a test runner's own diagnostics can include source
+ * snippets. Runtime adapters therefore prefer terse, traceback-free
+ * invocations (see PYTHON_TEST_COMMAND in runtimes.ts), and structured
+ * fields (status, exitCode) are the primary evidence. Do not widen what is
+ * rendered from `output` without classifying it as safe first.
+ *
+ * `testSummary` (parsed pass/fail counts) is intentionally not implemented
+ * yet: with no runtime parser it falls back to the bounded raw `output`.
+ * If added, remember the counts are derived from Solver-controlled output.
+ *
+ * Storage: this maps onto the existing Submission.sandboxOutput /
+ * sandboxExitCode / sandboxError columns (no schema churn) — what changed
+ * is WHAT populates them: bounded output from a fixed platform command.
+ */
+export type ReviewEvidence = {
+  exitCode: number | null;
+  status: "passed" | "failed" | "error";
+  /** Bounded; carries a "[truncated …]" marker when the cap is hit. Empty for "error". */
+  output: string;
+};
+
+/** Cap for stored/shown evaluation output (stdout + stderr combined). */
+export const EVIDENCE_OUTPUT_MAX_CHARS = 10_000;
+
+function bound(text: string, max = EVIDENCE_OUTPUT_MAX_CHARS): string {
+  if (text.length <= max) return text;
+  return text.slice(0, max) + `\n\n[output truncated — ${text.length - max} more characters]`;
+}
+
+export function buildReviewEvidence(result: ExecutionResult): ReviewEvidence {
+  if (!result.ok) {
+    // Never ran to completion (clone/install/infra). The human-readable
+    // reason travels separately as sandboxError; no process output exists.
+    return { exitCode: null, status: "error", output: "" };
+  }
+  const combined = result.stdout + (result.stderr ? "\n" + result.stderr : "");
+  return {
+    exitCode: result.exitCode,
+    status: result.exitCode === 0 ? "passed" : "failed",
+    output: bound(combined),
+  };
+}
+
+========== apps/web/src/app/api/desktop/submissions/accept/route.ts ==========
+
+import { NextResponse } from "next/server";
+import { getDesktopUser, unauthorized } from "@/lib/desktop/auth";
+import { acceptSubmissionAndRelease } from "@/lib/escrow/release";
+
+/**
+ * Accept + release escrow. acceptSubmissionAndRelease is the ONLY writer of
+ * isRevealed/escrow state and re-checks actingGiverId === Problem.giverId
+ * itself; we pass the TOKEN-derived user id, never a client-supplied one.
+ */
+export async function POST(req: Request) {
+  const user = await getDesktopUser(req);
+  if (!user) return unauthorized();
+
+  const body = await req.json().catch(() => null);
+  const problemId = typeof body?.problemId === "string" ? body.problemId : null;
+  const submissionId = typeof body?.submissionId === "string" ? body.submissionId : null;
+  if (!problemId || !submissionId) {
+    return NextResponse.json({ error: "Missing problemId or submissionId" }, { status: 400 });
+  }
+
+  const result = await acceptSubmissionAndRelease({ problemId, submissionId, actingGiverId: user.id });
+  if (!result.ok) return NextResponse.json({ error: (result as { reason: string }).reason }, { status: 400 });
+  return NextResponse.json({ ok: true });
+}
+
+========== MISSING: apps/web/src/app/api/desktop/submissions/[id]/evidence/route.ts ==========
+

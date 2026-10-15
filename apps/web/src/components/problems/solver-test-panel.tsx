@@ -39,16 +39,63 @@ export function SolverTestPanel({ problemId, repoUrl, selectedCommitSha, onCommi
   const [state, setState] = useState<PanelState>({ phase: "idle" });
   const runId = state.run?.runId;
   const selectedRef = useRef(selectedCommitSha);
-  useEffect(() => { if (selectedRef.current !== selectedCommitSha) { selectedRef.current = selectedCommitSha; setState((current) => ("commitSha" in current && current.commitSha === selectedCommitSha ? current : { phase: "idle" })); } }, [selectedCommitSha]);
-
-  // A different repo means a different test: drop whatever we knew about the last one.
   const lastRepo = useRef(repoUrl);
+  // Keep each commit's full UI state while the user browses other commits.
+  // The database remains authoritative across refreshes; this map prevents a
+  // commit switch from discarding the result already fetched in this session.
+  const commitStates = useRef(new Map<string, PanelState>());
+  const cacheKey = (repo: string, sha: string) => `${repo.trim().toLowerCase()}::${sha.toLowerCase()}`;
+
   useEffect(() => {
-    if (lastRepo.current !== repoUrl) {
-      lastRepo.current = repoUrl;
-      setState({ phase: "idle" });
+    const repoChanged = lastRepo.current !== repoUrl;
+
+    // Save the outgoing commit before restoring the newly selected one. Do not
+    // save an old repo's state under the newly selected repository's key.
+    if (!repoChanged && repoUrl && state.commitSha) {
+      commitStates.current.set(cacheKey(repoUrl, state.commitSha), state);
     }
-  }, [repoUrl]);
+
+    if (repoChanged || selectedRef.current !== selectedCommitSha) {
+      lastRepo.current = repoUrl;
+      selectedRef.current = selectedCommitSha;
+      const cached = !repoChanged && repoUrl && selectedCommitSha
+        ? commitStates.current.get(cacheKey(repoUrl, selectedCommitSha))
+        : undefined;
+      setState(cached ?? { phase: "idle" });
+    }
+  }, [repoUrl, selectedCommitSha, state]);
+
+  // Restore the latest persisted run for the exact selected commit after a page
+  // refresh or commit switch. The server/database is authoritative; this is not
+  // merely a per-mount React cache.
+  const historyRequest = useRef(0);
+  useEffect(() => {
+    if (!repoUrl || !selectedCommitSha || !/^[0-9a-f]{40}$/i.test(selectedCommitSha)) return;
+    const requestId = ++historyRequest.current;
+    const params = new URLSearchParams({ problemId, repoUrl, commitSha: selectedCommitSha });
+
+    void (async () => {
+      const reply = await callApi(`/api/solver-tests/history?${params.toString()}`, { cache: "no-store" });
+      if (requestId !== historyRequest.current || reply.status !== 200 || reply.body.found !== true) return;
+      const rawRun = reply.body.run as PanelRun | undefined;
+      if (!rawRun || rawRun.commitSha?.toLowerCase() !== selectedCommitSha.toLowerCase()) return;
+      const restored: PanelState = {
+        phase: rawRun.status === "RUNNING" ? "running" : "done",
+        commitSha: rawRun.commitSha,
+        run: rawRun,
+      };
+      setState((current) => {
+        // A user may start/check a test while the history request is in flight.
+        // Never let a slower history response overwrite that newer interaction.
+        if (current.phase === "checking" || current.phase === "starting" || current.phase === "running") return current;
+        return restored;
+      });
+    })();
+
+    return () => {
+      if (historyRequest.current === requestId) historyRequest.current += 1;
+    };
+  }, [problemId, repoUrl, selectedCommitSha]);
 
   // Poll the run until it finishes.
   useEffect(() => {

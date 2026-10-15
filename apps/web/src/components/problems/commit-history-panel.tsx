@@ -13,8 +13,8 @@ const ago = (date: string | null) => {
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(parsed);
 };
 
-export function CommitHistoryPanel({ problemId, repoUrl, selectedSha, onSelect }: {
-  problemId: string; repoUrl: string | null; selectedSha: string | null; onSelect: (sha: string) => void;
+export function CommitHistoryPanel({ repoUrl, selectedSha, onSelect }: {
+  repoUrl: string | null; selectedSha: string | null; onSelect: (sha: string) => void;
 }) {
   const [commits, setCommits] = useState<Commit[]>([]);
   const [page, setPage] = useState(1);
@@ -33,7 +33,8 @@ export function CommitHistoryPanel({ problemId, repoUrl, selectedSha, onSelect }
   const load = useCallback(async (nextPage = 1, append = false) => {
     if (!repoUrl) { setCommits([]); setError(null); return; }
     const id = ++requestId.current;
-    append ? setLoadingMore(true) : setLoading(true);
+    if (append) setLoadingMore(true);
+    else setLoading(true);
     setError(null);
     try {
       const res = await fetch(`/api/github/repos/commits?repoUrl=${encodeURIComponent(repoUrl)}&page=${nextPage}&perPage=50`, { cache: "no-store" });
@@ -63,7 +64,12 @@ export function CommitHistoryPanel({ problemId, repoUrl, selectedSha, onSelect }
     finally { if (id === requestId.current) { setLoading(false); setLoadingMore(false); } }
   }, [repoUrl]);
 
-  useEffect(() => { setCommits([]); setPage(1); setHasMore(false); setQuery(""); void load(1, false); }, [repoUrl, load]);
+  useEffect(() => {
+    // Defer the initial request so its loading-state updates happen outside
+    // the synchronous effect body (React's set-state-in-effect lint rule).
+    const timer = window.setTimeout(() => { void load(1, false); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
   useEffect(() => () => { if (hoverTimer.current) clearTimeout(hoverTimer.current); }, []);
 
   const filtered = commits.filter(c => `${c.message} ${c.author} ${c.sha}`.toLowerCase().includes(query.toLowerCase()));

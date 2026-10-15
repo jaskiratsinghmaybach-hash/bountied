@@ -22,14 +22,22 @@ const PAYOUT_WINDOW_DAYS = 7;
  * requestedAmount leaves availableBalance, but payoutAmount (95% of that)
  * is what the admin actually wires to the bank.
  */
+
 export async function requestWithdrawal(params: {
   userId: string;
   requestedAmount: number;
 }): Promise<WithdrawResult> {
   const { userId, requestedAmount } = params;
 
-  if (requestedAmount <= 0) {
-    return { ok: false, reason: "Withdrawal amount must be greater than zero" };
+  // Validate independently of the server action: this function is the
+  // financial boundary and must not rely on callers validating input.
+  if (
+    !Number.isFinite(requestedAmount) ||
+    requestedAmount <= 0 ||
+    !Number.isSafeInteger(Math.round(requestedAmount * 100)) ||
+    Math.abs(requestedAmount * 100 - Math.round(requestedAmount * 100)) > 1e-7
+  ) {
+    return { ok: false, reason: "Enter a valid withdrawal amount with at most two decimal places" };
   }
 
   const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -45,39 +53,57 @@ export async function requestWithdrawal(params: {
     return { ok: false, reason: "Add your bank details before withdrawing" };
   }
 
-  const balance = Number(user.availableBalance);
-  if (requestedAmount > balance) {
+  // A friendly early check only. The conditional update inside the
+  // transaction below is the authoritative balance check.
+  if (requestedAmount > Number(user.availableBalance)) {
     return { ok: false, reason: "Withdrawal amount exceeds available balance" };
   }
 
   const payoutAmount = amountPaidOnWithdrawal(requestedAmount);
   const feeAmount = withdrawalFeeFor(requestedAmount);
-  const eligibleAt = new Date(Date.now() + PAYOUT_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const eligibleAt = new Date(
+    Date.now() + PAYOUT_WINDOW_DAYS * 24 * 60 * 60 * 1000
+  );
 
-  // Debit and record atomically. There's no external call to wait on here
-  // (v1 has no live payout API) — the balance leaves availableBalance the
-  // moment the request is made, and the admin queue is the source of truth
-  // for what's still owed.
-  await prisma.$transaction([
-    prisma.user.update({
-      where: { id: userId },
-      data: { availableBalance: { decrement: requestedAmount } },
-    }),
-    prisma.payoutRequest.create({
+  const created = await prisma.$transaction(async (tx) => {
+    const debit = await tx.user.updateMany({
+      where: {
+        id: userId,
+        availableBalance: { gte: requestedAmount },
+      },
+      data: {
+        availableBalance: { decrement: requestedAmount },
+      },
+    });
+
+    // Another request may have spent the balance after our initial read.
+    if (debit.count !== 1) return false;
+
+    await tx.payoutRequest.create({
       data: {
         userId,
         requestedAmount,
         feeAmount,
         payoutAmount,
-        legalName: user.legalName,
-        bankCountry: user.bankCountry,
-        bankAccountNumber: user.bankAccountNumber,
-        bankIfscOrSwift: user.bankIfscOrSwift,
+        legalName: user.legalName!,
+        bankCountry: user.bankCountry!,
+        bankAccountNumber: user.bankAccountNumber!,
+        bankIfscOrSwift: user.bankIfscOrSwift!,
         status: PayoutRequestStatus.PENDING,
         eligibleAt,
       },
-    }),
-  ]);
+    });
+
+    return true;
+  });
+
+  if (!created) {
+    return {
+      ok: false,
+      reason: "Withdrawal amount exceeds available balance",
+    };
+  }
 
   return { ok: true, payoutAmount, eligibleAt };
 }
+

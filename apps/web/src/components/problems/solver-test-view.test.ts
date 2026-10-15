@@ -125,8 +125,8 @@ describe("SolverTestView", () => {
     const html = render({ phase: "done", run: run() });
     expect(html).toContain(">Passed<");
     expect(html).toContain("exit 0");
-    expect(html).toContain("marked Passed");
-    expect(html).toContain("Untested");
+    expect(html).toContain("This exact commit passed.");
+    expect(html).toContain("newer commits exist");
   });
 
   it("shows a failure with the diagnosis, exit code, docs link and output open", () => {
