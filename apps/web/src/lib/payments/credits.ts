@@ -124,9 +124,12 @@ export type CreditUserResult = {
  * can arrive repeatedly, even at the same moment. When a whopChargeRef is
  * given, a transaction-scoped advisory lock on that reference serializes the
  * deliveries and the ledger is checked for it before anything is added, so a
- * payment is credited exactly once. (Needs no schema change. A unique index on
- * CreditTransaction.whopChargeRef would be a good second layer once the table
- * is confirmed to have no duplicates.)
+ * payment is credited exactly once. This is backstopped by a second layer:
+ * CreditTransaction.whopChargeRef has a DB-level UNIQUE constraint
+ * (migration 20261014100000_unique_whop_charge_ref / schema.prisma's
+ * @@unique([whopChargeRef])), so even if the advisory-lock path were ever
+ * bypassed, a duplicate insert would fail the constraint rather than
+ * silently double-credit.
  *
  * The balance changes with an atomic increment, never "read, add, write", so
  * a debit committing at the same moment is never lost.

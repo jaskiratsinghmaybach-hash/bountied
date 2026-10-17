@@ -21,7 +21,35 @@ export async function GET(request: Request) {
   const next = searchParams.get("next");
   // Only honor an explicit redirectedFrom for already-onboarded users;
   // first-time OAuth users always go through /onboarding first (decided below).
-  const explicitRedirect = searchParams.get("redirectedFrom");
+  //
+  // SECURITY: redirectedFrom is attacker-controlled query-string input, and
+  // the destination is built below as `${origin}${destination}` — a plain
+  // string concatenation, not a relative-redirect API. That concatenation
+  // does NOT stop an open redirect: `redirectedFrom=@evil.com/x` turns
+  // "https://bountied.com" + "@evil.com/x" into
+  // "https://bountied.com@evil.com/x", which the URL spec parses as
+  // userinfo "bountied.com" @ host "evil.com" — i.e. a redirect straight to
+  // evil.com under a URL that starts with the trusted origin (classic
+  // https://trusted@evil.com/ phishing pattern). Every legitimate caller
+  // (lib/supabase/middleware.ts, the desktop /connect page) only ever sets
+  // this to `request.nextUrl.pathname` — an internal relative path — so it
+  // is validated against that shape here: must start with exactly one "/"
+  // (not "//", which is protocol-relative), contain no "@" (userinfo
+  // trick), no backslash (some browsers normalize "\" to "/" before this
+  // app ever sees the Location header), and no "://" (absolute URL with a
+  // scheme). Anything else falls back to the normal /dashboard destination
+  // instead of being rejected outright, so a malformed or malicious value
+  // just loses the "return to where you were" convenience rather than
+  // breaking the login flow.
+  const rawRedirect = searchParams.get("redirectedFrom");
+  const isSafeRelativePath = (value: string | null): value is string =>
+    value !== null &&
+    value.startsWith("/") &&
+    !value.startsWith("//") &&
+    !value.includes("@") &&
+    !value.includes("\\") &&
+    !value.includes("://");
+  const explicitRedirect = isSafeRelativePath(rawRedirect) ? rawRedirect : null;
 
   if (code) {
     const supabase = await createClient();

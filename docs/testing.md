@@ -12,6 +12,43 @@ talk to a real Postgres and are **skipped** by that command, because it has no d
 - `src/lib/reviews/start-review.integration.test.ts`: the Giver's review flow and refunds
 - `src/lib/desktop/pairing.integration.test.ts`: Bountied Desktop device pairing
 - `src/lib/problems/submission-actions.integration.test.ts`: submitting a solution, the test gate and the mirror-time re-check
+- `src/lib/escrow/release.integration.test.ts`: escrow release/accept concurrency, double-release and double-win races
+- `src/lib/payouts/withdraw.integration.test.ts`: withdrawal concurrency, decimal/boundary validation
+- `src/lib/payouts/admin-actions.integration.test.ts`: admin payout success/failure races, including the required succeeded-vs-failed race and double-transition rejection
+
+## Test organization: why there's no `tests/` directory
+
+This is currently a single-test-package monorepo: every test lives under `apps/web/src`,
+co-located with the source file it covers, and `apps/desktop` and `packages/shared` have no
+tests of their own yet. Given that, tests stay **co-located with their source** rather than
+moved into a separate top-level `tests/` tree, because:
+
+- the project is small enough that `grep`-ing for `foo.test.ts` next to `foo.ts` is already the
+  fastest way to find a test, and moving 30+ files into a parallel tree would make that one hop
+  longer for every file without adding real discoverability;
+- `vitest.config.ts`'s `include: ["src/**/*.test.ts"]`, every `@/...` import alias inside the
+  test files, and this very doc's file list are all path-sensitive — relocating files is real
+  risk (broken imports, silently-undiscovered tests) for a purely organizational change, which
+  the security-audit scope this doc accompanies explicitly treats as something to avoid unless
+  it's clearly justified;
+- the existing `*.test.ts` vs. `*.integration.test.ts` suffix convention already gives a clean,
+  grep-able way to distinguish "runs with no setup" from "needs the Postgres harness" — which is
+  the main distinction this codebase actually needs today.
+
+**If and when `apps/desktop` or `packages/shared` grow their own test suites**, mirror the same
+co-located convention inside each package (`apps/desktop/src/**/*.test.ts`, each package wires up
+its own `vitest.config.ts`/test script) rather than centralizing into one cross-package `tests/`
+directory — that keeps ownership of each test obviously tied to the package it tests, consistent
+with how `apps/web` already works. Revisit a shared top-level `tests/` layout only if a genuinely
+cross-package test (one that exercises both the web app and the desktop app together) shows up —
+there isn't one today.
+
+**Security/regression tests** are not a separate category in the file tree; they are ordinary
+`*.test.ts` / `*.integration.test.ts` files placed next to the code they guard, so a change to
+that code can't drift away from its regression coverage. `src/lib/security/` is a real exception:
+it holds project-wide security *policy* checks that don't belong to one feature area —
+`api-auth-coverage.test.ts` (every API route under `src/app/api` has a recognizable auth check)
+and `github-token.test.ts` (GitHub OAuth tokens are never stored or logged in plaintext).
 
 ## Run everything, database tests included (one command)
 
